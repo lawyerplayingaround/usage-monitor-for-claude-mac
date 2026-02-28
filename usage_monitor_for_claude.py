@@ -109,25 +109,30 @@ T: dict[str, Any] = load_translations()
 # ───────────────────────────────────────────────────────────────
 
 
-def api_headers() -> dict[str, str] | None:
-    """Return auth headers for the Anthropic OAuth API, or None."""
+def read_access_token() -> str | None:
+    """Read the current access token from the Claude credentials file."""
     if not CLAUDE_CREDENTIALS.exists():
         return None
 
     try:
         creds = json.loads(CLAUDE_CREDENTIALS.read_text())
-        token = creds.get('claudeAiOauth', {}).get('accessToken')
-        if not token:
-            return None
-
-        return {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json',
-            'User-Agent': f'usage-monitor-for-claude/{__version__}',
-            'anthropic-beta': 'oauth-2025-04-20',
-        }
+        return creds.get('claudeAiOauth', {}).get('accessToken') or None
     except (json.JSONDecodeError, KeyError):
         return None
+
+
+def api_headers() -> dict[str, str] | None:
+    """Return auth headers for the Anthropic OAuth API, or None."""
+    token = read_access_token()
+    if not token:
+        return None
+
+    return {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+        'User-Agent': f'usage-monitor-for-claude/{__version__}',
+        'anthropic-beta': 'oauth-2025-04-20',
+    }
 
 
 def fetch_usage() -> dict[str, Any]:
@@ -697,6 +702,7 @@ class UsageMonitorForClaude:
         self.running = True
         self.usage_data = {}
         self.profile_data = None
+        self._last_failed_token: str | None = None
         self._prev_5h = None
         self._prev_7d = None
         self._fast_polls_remaining = 0
@@ -725,6 +731,7 @@ class UsageMonitorForClaude:
         threading.Thread(target=self._open_popup, daemon=True).start()
 
     def on_refresh(self, icon: Any = None, item: Any = None) -> None:
+        self._last_failed_token = None
         threading.Thread(target=self.update, daemon=True).start()
 
     def on_toggle_autostart(self, icon: Any = None, item: Any = None) -> None:
@@ -762,11 +769,22 @@ class UsageMonitorForClaude:
         """Fetch current usage and update the tray icon and tooltip.
 
         Tracks session usage changes to enable adaptive fast-polling
-        when usage is actively increasing.
+        when usage is actively increasing. After a 401 auth error,
+        subsequent polls only re-read the credentials file and skip
+        the API call until the token actually changes.
         """
+        if self._last_failed_token is not None:
+            if read_access_token() == self._last_failed_token:
+                return
+
+            self._last_failed_token = None
+
         self.usage_data = fetch_usage()
 
         if 'error' in self.usage_data:
+            if self.usage_data.get('auth_error'):
+                self._last_failed_token = read_access_token()
+
             self.icon.icon = create_status_image('C!' if self.usage_data.get('auth_error') else '!', self._light_taskbar)
             self.icon.title = format_tooltip(self.usage_data)
             self._data_version += 1

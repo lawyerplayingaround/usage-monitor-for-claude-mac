@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- No longer sends repeated API requests after a 401 auth error; polls only re-read the credentials file until the token actually changes
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.1.0...HEAD)
 
 ## [1.1.0] - 2026-02-28
