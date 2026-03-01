@@ -14,7 +14,7 @@ from typing import Callable
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .config import ICON_DARK, ICON_LIGHT
+from .settings import ICON_DARK, ICON_LIGHT
 
 # ── Theme registry ────────────────────────────────────────────
 THEME_REG_KEY = r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'

@@ -18,7 +18,7 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 
 from .api import api_headers, fetch_profile, fetch_usage, read_access_token
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
-from .config import POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL
+from .settings import POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL
 from .formatting import format_tooltip
 from .i18n import T
 from .popup import UsagePopup

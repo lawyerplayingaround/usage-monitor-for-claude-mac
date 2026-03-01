@@ -11,7 +11,7 @@ import ctypes.wintypes
 import tkinter as tk
 from typing import TYPE_CHECKING, Any
 
-from .config import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
+from .settings import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, time_until
 from .i18n import T
 

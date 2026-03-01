@@ -22,6 +22,7 @@ Usage Monitor for Claude is a lightweight Windows desktop tool that shows your c
 - **Manual refresh** via right-click menu at any time
 - **Multilingual UI** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - automatically selected based on your Windows display language
 - **Zero configuration** - authenticates through your existing Claude Code login
+- **Customizable** - optionally override polling intervals, colors, and more via a [JSON settings file](#configuration)
 
 ---
 
@@ -65,6 +66,62 @@ Each bar in the detail popup has up to three visual elements:
 1. **Blue fill** - how much of the limit you have used (turns **red** at 80%+)
 2. **White vertical line** - how much *time* has passed in the current period. If the blue fill is to the left of this line, you are using Claude slower than the rate limit refills. If it is to the right, you are on track to hit the limit before the period resets.
 3. **Reset text** - when the limit resets, shown as a countdown with clock time
+
+---
+
+## Configuration
+
+All settings work out of the box — no configuration file is needed. To customize behavior, create a file called `usage-monitor-settings.json` with only the keys you want to change:
+
+```json
+{
+  "poll_interval": 180,
+  "bar_fg": "#00cc66",
+  "bar_fg_high": "#ff6600"
+}
+```
+
+The app searches for this file in two locations (first match wins):
+
+1. **Next to the EXE** (or project root when running from source)
+2. **`~/.claude/usage-monitor-settings.json`**
+
+The app never creates or modifies this file. To start, create an empty file and add keys as needed.
+
+<details>
+<summary>Available settings</summary>
+
+### Polling intervals
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `poll_interval` | `120` | Seconds between API updates |
+| `poll_fast` | `60` | Seconds when usage is actively increasing |
+| `poll_fast_extra` | `2` | Extra fast polls after usage stops increasing |
+| `poll_error` | `30` | Seconds after a failed request |
+
+### Popup colors
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `bg` | `"#1e1e1e"` | Background |
+| `fg` | `"#cccccc"` | Text |
+| `fg_dim` | `"#888888"` | Dimmed text (labels, reset times) |
+| `fg_heading` | `"#ffffff"` | Section headings |
+| `bar_bg` | `"#333333"` | Progress bar background |
+| `bar_fg` | `"#4a9eff"` | Progress bar fill |
+| `bar_fg_high` | `"#e05050"` | Progress bar fill when usage ≥ 80% |
+
+### Tray icon colors
+
+Override individual channels as RGBA arrays `[R, G, B, A]` (0–255). Unspecified keys keep their defaults.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `icon_light` | `{"fg": [255,255,255,255], "fg_half": [255,255,255,80], "fg_dim": [255,255,255,140]}` | Light icons for dark taskbar |
+| `icon_dark` | `{"fg": [0,0,0,255], "fg_half": [0,0,0,80], "fg_dim": [0,0,0,140]}` | Dark icons for light taskbar |
+
+</details>
 
 ---
 

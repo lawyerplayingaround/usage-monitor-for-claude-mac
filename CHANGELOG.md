@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Optional settings file (`usage-monitor-settings.json`) to customize polling intervals, popup colors, and icon colors
+
 ### Changed
 
 - The code has been split into smaller, focused modules. Running from source now uses `python -m usage_monitor_for_claude`
