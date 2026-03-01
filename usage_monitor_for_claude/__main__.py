@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import traceback
 
-from .app import UsageMonitorForClaude, crash_log
+from usage_monitor_for_claude.app import UsageMonitorForClaude, crash_log
 
 try:
     app = UsageMonitorForClaude()
