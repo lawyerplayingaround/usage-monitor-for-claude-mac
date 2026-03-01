@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.2.0...HEAD)
+
+## [1.2.0] - 2026-03-01
+
 ### Added
 
 - Optional settings file (`usage-monitor-settings.json`) to customize polling intervals, popup colors, and icon colors
@@ -19,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - No longer sends repeated API requests after a 401 auth error; polls only re-read the credentials file until the token actually changes
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.1.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.1.0...v1.2.0)
 
 ## [1.1.0] - 2026-02-28
 
