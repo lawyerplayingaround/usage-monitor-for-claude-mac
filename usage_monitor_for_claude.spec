@@ -7,7 +7,7 @@ Build:
 """
 
 a = Analysis(
-    ['usage_monitor_for_claude.py'],
+    ['usage_monitor_for_claude/__main__.py'],
     pathex=[],
     binaries=[],
     datas=[('locale/*.json', 'locale')],

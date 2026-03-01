@@ -91,7 +91,7 @@ pip install -r requirements.txt
 ### Run
 
 ```bash
-python usage_monitor_for_claude.py
+python -m usage_monitor_for_claude
 ```
 
 ### Build EXE
@@ -104,7 +104,7 @@ Produces `dist/UsageMonitorForClaude.exe` (~20 MB), a single-file executable tha
 
 ### Create a Release
 
-1. Update `__version__` in [`usage_monitor_for_claude.py`](usage_monitor_for_claude.py) and the version in [`version_info.py`](version_info.py) (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
+1. Update `__version__` in [`usage_monitor_for_claude/__init__.py`](usage_monitor_for_claude/__init__.py) and the version in [`version_info.py`](version_info.py) (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
 2. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [1.x.x] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it
 3. Build the EXE with `python build.py`
 4. Commit, tag, push, and publish:

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The code has been split into smaller, focused modules. Running from source now uses `python -m usage_monitor_for_claude`
+
 ### Fixed
 
 - No longer sends repeated API requests after a 401 auth error; polls only re-read the credentials file until the token actually changes

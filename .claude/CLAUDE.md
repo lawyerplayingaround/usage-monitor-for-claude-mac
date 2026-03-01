@@ -10,8 +10,9 @@ Prioritize readability and auditability — users handle credentials and must be
 - No file write operations — the app is read-only
 - No `eval()`, `exec()`, `compile()`, or dynamic imports — no dynamic code execution
 - No obfuscation — no base64-encoded strings, no encoded URLs or tokens
-- Single-file architecture preferred — one file is easier to audit than many
-- Exception: pure data files (translations, config) may be separate — they contain no logic or credential access
+- Modular package architecture in `usage_monitor_for_claude/` — small focused modules are easier to audit than one large file
+- Security-critical code (credentials, API calls) isolated in `api.py` — the only module handling credentials
+- Pure data files (translations, config) stay separate — they contain no logic or credential access
 - Minimal, well-known dependencies only (e.g., requests, Pillow, pystray)
 
 ## Type Hints & Documentation
@@ -37,7 +38,8 @@ Prioritize readability and auditability — users handle credentials and must be
 ## Imports
 - Three groups separated by blank lines: standard library, third-party, local
 - Within groups: `import` before `from...import`, sorted alphabetically
-- Absolute imports, avoid wildcards, import NumPy as `np`
+- Relative imports within the `usage_monitor_for_claude` package (e.g. `from .api import ...`)
+- Absolute imports for external packages, avoid wildcards, import NumPy as `np`
 
 ## Structure
 - Main exported functions first, then helpers in logical order
@@ -77,9 +79,13 @@ Prioritize readability and auditability — users handle credentials and must be
 - One bullet point per logical change; keep it concise (one sentence)
 
 ## Releasing
-- Update `__version__` in `usage_monitor_for_claude.py` and all four version fields in `version_info.py` (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
+- Update `__version__` in `usage_monitor_for_claude/__init__.py` and all four version fields in `version_info.py` (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
 - In `CHANGELOG.md`: rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, add a fresh empty `## [Unreleased]` section above it, and update the compare links
 - GitHub release notes (`gh release create --notes`) must use the exact content from the version's `CHANGELOG.md` section (the `### Added` / `### Changed` / `### Fixed` / `### Removed` blocks), followed by a `[Full changelog](compare-url)` link
+
+## Git
+- **NEVER create commits** — only suggest commit messages when asked, the user commits manually
+- Never push, tag, or run any destructive git operations
 
 ## Execution
 - Always activate virtual environment before running Python code
