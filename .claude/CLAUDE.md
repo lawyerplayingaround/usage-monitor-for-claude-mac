@@ -83,6 +83,14 @@ Prioritize readability and auditability — users handle credentials and must be
 - In `CHANGELOG.md`: rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, add a fresh empty `## [Unreleased]` section above it, and update the compare links
 - GitHub release notes (`gh release create --notes`) must use the exact content from the version's `CHANGELOG.md` section (the `### Added` / `### Changed` / `### Fixed` / `### Removed` blocks), followed by a `[Full changelog](compare-url)` link
 
+## Testing
+- After completing all changes, run the full test suite (`python -m unittest discover -s tests`) and ensure all tests pass — this applies to any change (code, locale files, config, data files), not just Python modules
+- Fix the code to make tests pass — never weaken or remove tests to avoid failures
+- When adding new functionality or changing existing behavior, update or add corresponding tests
+- Tests live in `tests/` (outside the package, not included in PyInstaller builds)
+- Use `unittest` from the standard library — no additional test dependencies
+- Mock time-dependent logic by patching `datetime` in the module under test
+
 ## Git
 - **NEVER create commits** — only suggest commit messages when asked, the user commits manually
 - Never push, tag, or run any destructive git operations
