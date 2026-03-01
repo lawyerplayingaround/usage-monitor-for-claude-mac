@@ -317,12 +317,171 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertEqual(result['poll_fast'], 60)
         self.assertEqual(result['bg'], '#000')
 
+    # ── Threshold array validation ─────────────────────────────
+
+    def test_valid_threshold_array(self):
+        """Valid threshold array passes through without MessageBox."""
+        result, mock = self._run_validate({'alert_thresholds_five_hour': [80, 95]})
+        self.assertEqual(result['alert_thresholds_five_hour'], [80, 95])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_threshold_array_sorted_and_deduped(self):
+        """Threshold values are sorted and deduplicated."""
+        result, _ = self._run_validate({'alert_thresholds_five_hour': [95, 80, 50, 80]})
+        self.assertEqual(result['alert_thresholds_five_hour'], [50, 80, 95])
+
+    def test_threshold_empty_array_valid(self):
+        """Empty threshold array is valid (disables alerts)."""
+        result, mock = self._run_validate({'alert_thresholds_five_hour': []})
+        self.assertEqual(result['alert_thresholds_five_hour'], [])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_threshold_not_array_dropped(self):
+        """Non-array value for threshold key is dropped."""
+        result, mock = self._run_validate({'alert_thresholds_five_hour': 80})
+        self.assertNotIn('alert_thresholds_five_hour', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_threshold_string_in_array_dropped(self):
+        """String element in threshold array causes the key to be dropped."""
+        result, mock = self._run_validate({'alert_thresholds_five_hour': [80, 'high']})
+        self.assertNotIn('alert_thresholds_five_hour', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_threshold_bool_in_array_dropped(self):
+        """Boolean element in threshold array causes the key to be dropped."""
+        result, _ = self._run_validate({'alert_thresholds_five_hour': [True, 80]})
+        self.assertNotIn('alert_thresholds_five_hour', result)
+
+    def test_threshold_zero_dropped(self):
+        """Value 0 in threshold array causes the key to be dropped (must be 1-100)."""
+        result, _ = self._run_validate({'alert_thresholds_five_hour': [0, 80]})
+        self.assertNotIn('alert_thresholds_five_hour', result)
+
+    def test_threshold_over_100_dropped(self):
+        """Value > 100 in threshold array causes the key to be dropped."""
+        result, _ = self._run_validate({'alert_thresholds_five_hour': [80, 101]})
+        self.assertNotIn('alert_thresholds_five_hour', result)
+
+    def test_threshold_float_valid(self):
+        """Float values in threshold array are valid."""
+        result, mock = self._run_validate({'alert_thresholds_five_hour': [80.5, 95.0]})
+        self.assertEqual(result['alert_thresholds_five_hour'], [80.5, 95.0])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_threshold_seven_day_key_validated(self):
+        """Weekly threshold key is validated the same way."""
+        result, mock = self._run_validate({'alert_thresholds_seven_day': [70, 90]})
+        self.assertEqual(result['alert_thresholds_seven_day'], [70, 90])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_threshold_per_variant_invalid_dropped(self):
+        """Invalid per-variant threshold is dropped."""
+        result, _ = self._run_validate({'alert_thresholds_seven_day': 'bad'})
+        self.assertNotIn('alert_thresholds_seven_day', result)
+
+    # ── Percent key validation ─────────────────────────────────
+
+    def test_alert_time_aware_below_valid(self):
+        """Valid number for alert_time_aware_below passes through."""
+        result, mock = self._run_validate({'alert_time_aware_below': 90})
+        self.assertEqual(result['alert_time_aware_below'], 90)
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_alert_time_aware_below_float_valid(self):
+        """Float value for alert_time_aware_below is valid."""
+        result, mock = self._run_validate({'alert_time_aware_below': 85.5})
+        self.assertEqual(result['alert_time_aware_below'], 85.5)
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_alert_time_aware_below_zero_dropped(self):
+        """Value 0 for alert_time_aware_below is dropped (must be 1-100)."""
+        result, mock = self._run_validate({'alert_time_aware_below': 0})
+        self.assertNotIn('alert_time_aware_below', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_alert_time_aware_below_over_100_dropped(self):
+        """Value > 100 for alert_time_aware_below is dropped."""
+        result, mock = self._run_validate({'alert_time_aware_below': 101})
+        self.assertNotIn('alert_time_aware_below', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_alert_time_aware_below_string_dropped(self):
+        """String value for alert_time_aware_below is dropped."""
+        result, mock = self._run_validate({'alert_time_aware_below': '90'})
+        self.assertNotIn('alert_time_aware_below', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_alert_time_aware_below_bool_dropped(self):
+        """Boolean for alert_time_aware_below is dropped."""
+        result, _ = self._run_validate({'alert_time_aware_below': True})
+        self.assertNotIn('alert_time_aware_below', result)
+
+    # ── Boolean key validation ──────────────────────────────────
+
+    def test_alert_time_aware_true_valid(self):
+        """Boolean true for alert_time_aware passes through."""
+        result, mock = self._run_validate({'alert_time_aware': True})
+        self.assertIs(result['alert_time_aware'], True)
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_alert_time_aware_false_valid(self):
+        """Boolean false for alert_time_aware passes through."""
+        result, mock = self._run_validate({'alert_time_aware': False})
+        self.assertIs(result['alert_time_aware'], False)
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_alert_time_aware_int_dropped(self):
+        """Integer 1 for alert_time_aware is dropped (must be boolean)."""
+        result, mock = self._run_validate({'alert_time_aware': 1})
+        self.assertNotIn('alert_time_aware', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_alert_time_aware_string_dropped(self):
+        """String 'true' for alert_time_aware is dropped."""
+        result, mock = self._run_validate({'alert_time_aware': 'true'})
+        self.assertNotIn('alert_time_aware', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
     def _run_validate(self, data: dict) -> tuple[dict, MagicMock]:
         """Run _validate with mocked ctypes and return (result, mock_ctypes)."""
         mock_ctypes = MagicMock()
         with patch.object(settings_mod, 'ctypes', mock_ctypes):
             result = settings_mod._validate(dict(data), Path('/fake/settings.json'))
         return result, mock_ctypes
+
+
+class TestGetAlertThresholds(unittest.TestCase):
+    """Tests for get_alert_thresholds() lookup logic."""
+
+    def test_five_hour_returns_session_thresholds(self):
+        """five_hour variant returns session thresholds."""
+        thresholds = {'five_hour': [70, 90], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+            self.assertEqual(settings_mod.get_alert_thresholds('five_hour'), [70, 90])
+
+    def test_seven_day_returns_weekly_thresholds(self):
+        """seven_day variant returns weekly thresholds."""
+        thresholds = {'five_hour': [70, 90], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+            self.assertEqual(settings_mod.get_alert_thresholds('seven_day'), [80, 95])
+
+    def test_seven_day_sonnet_shares_weekly_thresholds(self):
+        """seven_day_sonnet uses the same thresholds as seven_day."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+            self.assertEqual(settings_mod.get_alert_thresholds('seven_day_sonnet'), [80, 95])
+
+    def test_seven_day_opus_shares_weekly_thresholds(self):
+        """seven_day_opus uses the same thresholds as seven_day."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+            self.assertEqual(settings_mod.get_alert_thresholds('seven_day_opus'), [80, 95])
+
+    def test_unknown_variant_returns_empty(self):
+        """Unknown variant key returns empty list."""
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', {'five_hour': [80], 'seven_day': [80], 'seven_day_sonnet': [80], 'seven_day_opus': [80]}):
+            self.assertEqual(settings_mod.get_alert_thresholds('unknown'), [])
 
 
 if __name__ == '__main__':

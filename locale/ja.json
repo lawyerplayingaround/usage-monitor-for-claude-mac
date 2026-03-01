@@ -28,5 +28,10 @@
     "warn_no_token": "警告: Claude Code OAuthトークンが見つかりません！",
     "warn_login": "Claude Codeをインストールしてログインしてください：",
     "notify_reset_title": "クォータリセット",
-    "notify_reset": "クォータがリセットされました。Claudeが再び利用可能です。"
+    "notify_reset": "クォータがリセットされました。Claudeが再び利用可能です。",
+    "notify_threshold_title": "使用状況のお知らせ",
+    "notify_threshold_five_hour": "セッションの使用量が{pct}%に達しました。",
+    "notify_threshold_seven_day": "週間の使用量が{pct}%に達しました。",
+    "notify_threshold_seven_day_sonnet": "週間Sonnetの使用量が{pct}%に達しました。",
+    "notify_threshold_seven_day_opus": "週間Opusの使用量が{pct}%に達しました。"
 }

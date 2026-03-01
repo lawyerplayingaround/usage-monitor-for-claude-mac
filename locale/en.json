@@ -28,5 +28,10 @@
     "warn_no_token": "WARNING: No Claude Code OAuth token found!",
     "warn_login": "Please install and log in to Claude Code first:",
     "notify_reset_title": "Quota Reset",
-    "notify_reset": "Your quota has been reset. Claude is ready to use again."
+    "notify_reset": "Your quota has been reset. Claude is ready to use again.",
+    "notify_threshold_title": "Usage Notice",
+    "notify_threshold_five_hour": "Your session usage has reached {pct}%.",
+    "notify_threshold_seven_day": "Your weekly usage has reached {pct}%.",
+    "notify_threshold_seven_day_sonnet": "Your weekly Sonnet usage has reached {pct}%.",
+    "notify_threshold_seven_day_opus": "Your weekly Opus usage has reached {pct}%."
 }

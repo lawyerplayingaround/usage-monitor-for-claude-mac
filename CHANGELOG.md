@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Configurable usage alerts when quota exceeds defined thresholds (e.g., 80%, 95%), with separate settings for session and weekly quotas
+- Time-aware alert mode (on by default) — suppresses notifications when usage is on track with elapsed time; `alert_time_aware_below` controls up to which threshold this applies, so high thresholds can always fire
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.2.0...HEAD)
 
 ## [1.2.0] - 2026-03-01

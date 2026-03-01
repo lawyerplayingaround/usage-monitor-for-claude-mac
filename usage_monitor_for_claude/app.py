@@ -18,11 +18,25 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 
 from .api import api_headers, fetch_profile, fetch_usage, read_access_token
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
-from .settings import POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL
-from .formatting import format_tooltip
+from .settings import ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds
+from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_tooltip
 from .i18n import T
 from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
+
+
+_VARIANT_NOTIFY_KEYS = {
+    'five_hour': 'notify_threshold_five_hour',
+    'seven_day': 'notify_threshold_seven_day',
+    'seven_day_sonnet': 'notify_threshold_seven_day_sonnet',
+    'seven_day_opus': 'notify_threshold_seven_day_opus',
+}
+_VARIANT_PERIODS = {
+    'five_hour': PERIOD_5H,
+    'seven_day': PERIOD_7D,
+    'seven_day_sonnet': PERIOD_7D,
+    'seven_day_opus': PERIOD_7D,
+}
 
 
 class UsageMonitorForClaude:
@@ -39,6 +53,7 @@ class UsageMonitorForClaude:
         self._fast_polls_remaining = 0
         self._popup_open = False
         self._data_version = 0
+        self._notified_thresholds: dict[str, float] = {}
         self._light_taskbar = taskbar_uses_light_theme()
         self.icon = pystray.Icon(
             'usage_monitor',
@@ -130,6 +145,8 @@ class UsageMonitorForClaude:
         if self._prev_7d is not None and self._prev_7d > 98 and pct_7d < self._prev_7d and pct_5h < 99:
             self.icon.notify(T['notify_reset'], T['notify_reset_title'])
 
+        self._check_threshold_alerts()
+
         # Adaptive polling: speed up when session usage is increasing
         if self._prev_5h is not None and pct_5h > self._prev_5h:
             self._fast_polls_remaining = POLL_FAST_EXTRA + 1
@@ -141,6 +158,44 @@ class UsageMonitorForClaude:
         self.icon.icon = create_icon_image(pct_5h, pct_7d, self._light_taskbar)
         self.icon.title = format_tooltip(self.usage_data)
         self._data_version += 1
+
+    def _check_threshold_alerts(self) -> None:
+        """Show a notification when usage crosses a configured threshold.
+
+        For each variant, finds the highest threshold exceeded by current
+        utilization.  If it exceeds a threshold not yet notified, shows a
+        single notification with the current usage percentage.  When usage
+        drops (e.g. after reset), tracking resets so thresholds can
+        re-trigger in the next cycle.
+        """
+        for variant_key, notify_key in _VARIANT_NOTIFY_KEYS.items():
+            entry = self.usage_data.get(variant_key)
+            if not entry or entry.get('utilization') is None:
+                continue
+
+            pct = entry['utilization']
+            thresholds = get_alert_thresholds(variant_key)
+            if not thresholds:
+                continue
+
+            exceeded = [t for t in thresholds if pct >= t]
+            highest_exceeded = max(exceeded) if exceeded else 0
+            last_notified = self._notified_thresholds.get(variant_key, 0)
+
+            if ALERT_TIME_AWARE and highest_exceeded > last_notified and highest_exceeded < ALERT_TIME_AWARE_BELOW:
+                time_pct = elapsed_pct(entry.get('resets_at'), _VARIANT_PERIODS[variant_key])
+                if time_pct is not None and pct <= time_pct:
+                    self._notified_thresholds[variant_key] = highest_exceeded
+                    continue
+
+            if highest_exceeded > last_notified:
+                self.icon.notify(
+                    T[notify_key].format(pct=f'{pct:.0f}'),
+                    T['notify_threshold_title'],
+                )
+                self._notified_thresholds[variant_key] = highest_exceeded
+            elif highest_exceeded < last_notified:
+                self._notified_thresholds[variant_key] = highest_exceeded
 
     def _seconds_until_next_reset(self) -> float | None:
         """Return seconds until the earliest upcoming quota reset, or None."""

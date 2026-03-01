@@ -28,5 +28,10 @@
     "warn_no_token": "경고: Claude Code OAuth 토큰을 찾을 수 없습니다!",
     "warn_login": "Claude Code를 설치하고 로그인하세요:",
     "notify_reset_title": "할당량 재설정",
-    "notify_reset": "할당량이 재설정되었습니다. Claude를 다시 사용할 수 있습니다."
+    "notify_reset": "할당량이 재설정되었습니다. Claude를 다시 사용할 수 있습니다.",
+    "notify_threshold_title": "사용량 알림",
+    "notify_threshold_five_hour": "세션 사용량이 {pct}%에 도달했습니다.",
+    "notify_threshold_seven_day": "주간 사용량이 {pct}%에 도달했습니다.",
+    "notify_threshold_seven_day_sonnet": "주간 Sonnet 사용량이 {pct}%에 도달했습니다.",
+    "notify_threshold_seven_day_opus": "주간 Opus 사용량이 {pct}%에 도달했습니다."
 }

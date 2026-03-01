@@ -28,5 +28,10 @@
     "warn_no_token": "PERINGATAN: Token OAuth Claude Code tidak ditemukan!",
     "warn_login": "Silakan instal dan masuk ke Claude Code terlebih dahulu:",
     "notify_reset_title": "Kuota Direset",
-    "notify_reset": "Kuota Anda telah direset. Claude siap digunakan kembali."
+    "notify_reset": "Kuota Anda telah direset. Claude siap digunakan kembali.",
+    "notify_threshold_title": "Pemberitahuan Penggunaan",
+    "notify_threshold_five_hour": "Penggunaan sesi Anda telah mencapai {pct}%.",
+    "notify_threshold_seven_day": "Penggunaan mingguan Anda telah mencapai {pct}%.",
+    "notify_threshold_seven_day_sonnet": "Penggunaan mingguan Sonnet Anda telah mencapai {pct}%.",
+    "notify_threshold_seven_day_opus": "Penggunaan mingguan Opus Anda telah mencapai {pct}%."
 }

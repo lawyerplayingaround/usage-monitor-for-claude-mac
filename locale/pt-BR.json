@@ -28,5 +28,10 @@
     "warn_no_token": "AVISO: Nenhum token OAuth do Claude Code encontrado!",
     "warn_login": "Instale e faça login no Claude Code primeiro:",
     "notify_reset_title": "Cota redefinida",
-    "notify_reset": "Sua cota foi redefinida. O Claude está pronto para uso novamente."
+    "notify_reset": "Sua cota foi redefinida. O Claude está pronto para uso novamente.",
+    "notify_threshold_title": "Aviso de uso",
+    "notify_threshold_five_hour": "Seu uso de sessão atingiu {pct}%.",
+    "notify_threshold_seven_day": "Seu uso semanal atingiu {pct}%.",
+    "notify_threshold_seven_day_sonnet": "Seu uso semanal de Sonnet atingiu {pct}%.",
+    "notify_threshold_seven_day_opus": "Seu uso semanal de Opus atingiu {pct}%."
 }

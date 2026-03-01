@@ -16,6 +16,7 @@ Usage Monitor for Claude is a lightweight Windows desktop tool that shows your c
 - **Detail popup** (left-click) - dark-themed window showing your account info (email, plan) and separate usage bars for Session, Weekly, Weekly Sonnet, and Weekly Opus limits
 - **Time marker** - a white vertical line on each bar shows how much time has passed in the current period, so you can tell whether usage is ahead of or behind the clock
 - **Color warning** - bars turn red once usage reaches 80%
+- **Usage alerts** - optional Windows notifications when usage exceeds configurable thresholds (e.g., 80%, 95%), independently configurable per quota type. Time-aware mode (on by default) suppresses alerts when usage is on track with elapsed time, with a configurable cutoff so high thresholds always fire
 - **Reset notification** - get a Windows notification when your session (>95%) or weekly (>98%) quota resets after being nearly exhausted
 - **Reset countdown** below each bar, e.g. "Resets in 2h 20m (14:30)"
 - **Smart refresh** - updates every 2 minutes by default; automatically speeds up to 1-minute intervals while you are actively using Claude, then slows back down
@@ -111,6 +112,17 @@ The app never creates or modifies this file. To start, create an empty file and 
 | `bar_bg` | `"#333333"` | Progress bar background |
 | `bar_fg` | `"#4a9eff"` | Progress bar fill |
 | `bar_fg_high` | `"#e05050"` | Progress bar fill when usage ≥ 80% |
+
+### Alert thresholds
+
+Configure usage percentage thresholds that trigger Windows notifications. Session and weekly quotas have separate thresholds since their time horizons differ significantly. Set to an empty array `[]` to disable alerts for a specific quota type.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `alert_thresholds_five_hour` | `[50, 80, 95]` | Thresholds for Session (5hr) |
+| `alert_thresholds_seven_day` | `[95]` | Thresholds for all Weekly quotas (7 day, Sonnet, Opus) |
+| `alert_time_aware` | `true` | Only alert when usage outpaces elapsed time |
+| `alert_time_aware_below` | `90` | Time-aware check applies only to thresholds below this value; thresholds at or above always fire |
 
 ### Tray icon colors
 
