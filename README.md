@@ -27,6 +27,20 @@ Usage Monitor for Claude is a lightweight Windows desktop tool that shows your c
 
 ---
 
+## Security & Transparency
+
+This tool handles your Claude Code OAuth token, so you should be able to verify it is safe. The codebase is deliberately structured for easy auditing:
+
+- **Single network destination** - communicates exclusively with `api.anthropic.com`, no other hosts
+- **Credentials stay local** - the OAuth token is used only in HTTP Authorization headers, never logged, stored elsewhere, or transmitted to third parties
+- **Read-only** - the app never writes files to disk
+- **No dynamic code execution** - no `eval()`, `exec()`, `compile()`, or dynamic imports
+- **No obfuscation** - no encoded strings, no hidden URLs, no minified logic
+- **Modular architecture** - small, focused modules with security-critical code (credentials, API calls) isolated in a single file ([`api.py`](usage_monitor_for_claude/api.py))
+- **Minimal runtime dependencies** - only three well-known packages: [requests](https://pypi.org/project/requests/), [Pillow](https://pypi.org/project/pillow/), [pystray](https://pypi.org/project/pystray/)
+
+---
+
 ## Requirements
 
 - **Windows 10 or Windows 11** (64-bit)
