@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.3.0...HEAD)
+
+## [1.3.0] - 2026-03-02
+
 ### Added
 
 - Configurable usage alerts when quota exceeds defined thresholds (e.g., 80%, 95%), with separate settings for session and weekly quotas
@@ -20,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Popup opens immediately with cached data instead of waiting for the API response; errors are shown in the status line while usage bars remain visible
 - Popup grows away from the taskbar edge regardless of taskbar position (bottom, top, left, or right)
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.2.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.2.0...v1.3.0)
 
 ## [1.2.0] - 2026-03-01
 
