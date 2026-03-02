@@ -38,7 +38,7 @@ Prioritize readability and auditability — users handle credentials and must be
 ## Imports
 - Three groups separated by blank lines: standard library, third-party, local
 - Within groups: `import` before `from...import`, sorted alphabetically
-- Relative imports within the `usage_monitor_for_claude` package (e.g. `from .api import ...`)
+- Relative imports within the `usage_monitor_for_claude` package (e.g. `from .api import ...`), except `__main__.py` which requires absolute imports for PyInstaller compatibility
 - Absolute imports for external packages, avoid wildcards, import NumPy as `np`
 
 ## Structure
