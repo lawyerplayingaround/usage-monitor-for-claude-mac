@@ -1,18 +1,18 @@
 # Project Guidelines
 
 Apply Python best practices and clean code principles. Only change code relevant to the prompt.
-Prioritize readability and auditability — users handle credentials and must be able to verify the code is safe at a glance.
+Prioritize readability and auditability - users handle credentials and must be able to verify the code is safe at a glance.
 
 ## Security & Transparency
-- All URLs and API endpoints as top-level constants — no dynamic URL construction
-- Network communication exclusively with `api.anthropic.com` — no other destinations
-- Credentials used only in HTTP Authorization headers — never log, store, or transmit elsewhere
-- No file write operations — the app is read-only
-- No `eval()`, `exec()`, `compile()`, or dynamic imports — no dynamic code execution
-- No obfuscation — no base64-encoded strings, no encoded URLs or tokens
-- Modular package architecture in `usage_monitor_for_claude/` — small focused modules are easier to audit than one large file
-- Security-critical code (credentials, API calls) isolated in `api.py` — the only module handling credentials
-- Pure data files (translations, config) stay separate — they contain no logic or credential access
+- All URLs and API endpoints as top-level constants - no dynamic URL construction
+- Network communication exclusively with `api.anthropic.com` - no other destinations
+- Credentials used only in HTTP Authorization headers - never log, store, or transmit elsewhere
+- No file write operations - the app is read-only
+- No `eval()`, `exec()`, `compile()`, or dynamic imports - no dynamic code execution
+- No obfuscation - no base64-encoded strings, no encoded URLs or tokens
+- Modular package architecture in `usage_monitor_for_claude/` - small focused modules are easier to audit than one large file
+- Security-critical code (credentials, API calls) isolated in `api.py` - the only module handling credentials
+- Pure data files (translations, config) stay separate - they contain no logic or credential access
 - Minimal, well-known dependencies only (e.g., requests, Pillow, pystray)
 
 ## Type Hints & Documentation
@@ -30,6 +30,7 @@ Prioritize readability and auditability — users handle credentials and must be
 - Never use deep indentation to align with previous line's opening bracket/parenthesis
 - When breaking lines, use standard 4-space indentation from statement start
 - Single quotes (`'`) default, double (`"`) when containing single quotes, triple-double (`"""`) for docstrings
+- Use hyphens (`-`) for dashes in text, never em dashes (`—`) or en dashes (`–`)
 
 ## Spacing
 - Two blank lines between top-level functions/classes, one between methods
@@ -61,7 +62,7 @@ Prioritize readability and auditability — users handle credentials and must be
 - Early returns and guard clauses
 
 ## PyInstaller / Build
-- Spec file: `usage_monitor_for_claude.spec` — all build config lives there
+- Spec file: `usage_monitor_for_claude.spec` - all build config lives there
 - When adding new data files (translations, configs, assets): add them to the `datas` list in the spec file
 - When adding new imports: check if PyInstaller detects them automatically; if not, add to `hiddenimports`
 - Never exclude standard library modules that are transitive dependencies (e.g., `email` is needed by `urllib3`/`requests`)
@@ -73,9 +74,9 @@ Prioritize readability and auditability — users handle credentials and must be
 ## Changelog
 - Update `CHANGELOG.md` for every user-facing change (new features, bug fixes, behavior changes, UI changes)
 - Do not add changelog entries for internal refactors, code style changes, or documentation-only changes unless they affect the user
-- Changes to `CLAUDE.md` are invisible to users — never mention them in changelog entries or commit messages
+- Changes to `CLAUDE.md` are invisible to users - never mention them in changelog entries or commit messages
 - Add entries under the `## [Unreleased]` section, grouped by: Added, Changed, Fixed, Removed
-- Write entries from the user's perspective — describe what changed, not how the code changed
+- Write entries from the user's perspective - describe what changed, not how the code changed
 - One bullet point per logical change; keep it concise (one sentence)
 
 ## Releasing
@@ -84,15 +85,15 @@ Prioritize readability and auditability — users handle credentials and must be
 - GitHub release notes (`gh release create --notes`) must use the exact content from the version's `CHANGELOG.md` section (the `### Added` / `### Changed` / `### Fixed` / `### Removed` blocks), followed by a `[Full changelog](compare-url)` link
 
 ## Testing
-- After completing all changes, run the full test suite (`python -m unittest discover -s tests`) and ensure all tests pass — this applies to any change (code, locale files, config, data files), not just Python modules
-- Fix the code to make tests pass — never weaken or remove tests to avoid failures
+- After completing all changes, run the full test suite (`python -m unittest discover -s tests`) and ensure all tests pass - this applies to any change (code, locale files, config, data files), not just Python modules
+- Fix the code to make tests pass - never weaken or remove tests to avoid failures
 - When adding new functionality or changing existing behavior, update or add corresponding tests
 - Tests live in `tests/` (outside the package, not included in PyInstaller builds)
-- Use `unittest` from the standard library — no additional test dependencies
+- Use `unittest` from the standard library - no additional test dependencies
 - Mock time-dependent logic by patching `datetime` in the module under test
 
 ## Git
-- **NEVER create commits** — only suggest commit messages when asked, the user commits manually
+- **NEVER create commits** - only suggest commit messages when asked, the user commits manually
 - Never push, tag, or run any destructive git operations
 
 ## Execution
