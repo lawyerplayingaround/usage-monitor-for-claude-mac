@@ -2,28 +2,21 @@
 
 **Monitor your Claude rate limits in real time - right from your Windows system tray.**
 
-Usage Monitor for Claude is a lightweight desktop tool that shows your current Claude usage as a live system tray icon. Rate limits are shared across claude.ai, Claude Code, and IDE extensions like the VS Code or JetBrains plugin - always know how much of your session and weekly limits you have left.
+A native Windows tray app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, and its IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits you have left.
 
 ![Detail popup showing account info and usage bars](screenshot.png)
 
 ## Features
 
-- **Portable** - single EXE, no installation required. Just download, place anywhere, and run
-- **Autostart** - optional "Start with Windows" toggle in the right-click menu
-- **Live tray icon** - displays a "C" during normal use, switches to the current percentage when session usage exceeds 50%, and shows "✕" when you hit the rate limit
-- **Two progress bars** in the icon: top bar = 5-hour session limit, bottom bar = 7-day weekly limit
-- **Hover tooltip** with a quick summary of your 5-hour and 7-day usage, including reset times
-- **Detail popup** (left-click) - dark-themed window showing your account info (email, plan), separate usage bars for Session, Weekly, Weekly Sonnet, and Weekly Opus limits, an extra usage section when enabled on your account, and a status line showing data freshness
-- **Time marker** - a white vertical line on each bar shows how much time has passed in the current period, so you can tell whether usage is ahead of or behind the clock
-- **Color warning** - bars turn red once usage reaches 80%
-- **Usage alerts** - optional Windows notifications when usage exceeds configurable thresholds (e.g., 80%, 95%), independently configurable per quota type. Time-aware mode (on by default) suppresses alerts when usage is on track with elapsed time, with a configurable cutoff so high thresholds always fire
-- **Reset notification** - get a Windows notification when your session (>95%) or weekly (>98%) quota resets after being nearly exhausted
-- **Reset countdown** below each bar, e.g. "Resets in 2h 20m (14:30)"
-- **Smart refresh** - updates every 2 minutes by default; automatically speeds up to 1-minute intervals while you are actively using Claude, then slows back down
-- **Manual refresh** via right-click menu at any time
-- **Multilingual UI** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - automatically selected based on your Windows display language
-- **Zero configuration** - authenticates through your existing Claude Code login
-- **Customizable** - optionally override polling intervals, colors, and more via a [JSON settings file](#configuration)
+- **Portable** - single EXE (~20 MB), no installation, no Electron, no runtime. Download, place anywhere, run
+- **Zero configuration** - authenticates through your existing Claude Code login. No API key, no manual token entry
+- **Live tray icon** with two progress bars (session + weekly), percentage display at high usage, and theme-aware colors for light and dark taskbars
+- **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, and data freshness
+- **Time marker** on each bar - a white line showing elapsed time in the current period, so you can instantly see whether your usage is ahead of or behind the clock
+- **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
+- **Adaptive polling** - speeds up during active usage, slows down when idle, and aligns to imminent quota resets
+- **12 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - auto-detected from your Windows display language
+- **Customizable** - optionally override polling intervals, colors, alert thresholds, and more via a [JSON settings file](#configuration)
 
 ---
 
@@ -44,7 +37,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 ## Requirements
 
 - **Windows 10 or Windows 11** (64-bit)
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`). No API key, no manual token entry.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`).
 
 > [!TIP]
 > If the token is missing or expired, the app shows a notification and a "!" icon. Simply log in to Claude Code again and the monitor picks it up automatically.
