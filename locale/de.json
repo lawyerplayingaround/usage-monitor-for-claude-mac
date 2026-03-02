@@ -19,7 +19,7 @@
     "weekdays": ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
     "loading": "Usage Monitor: Laden...",
     "error_label": "Usage Monitor: Fehler",
-    "connection_error": "Keine Verbindung zur Anthropic API.",
+    "connection_error": "Keine Verbindung zur Anthropic API möglich.",
     "http_error": "API-Anfrage fehlgeschlagen (HTTP {code}).",
     "auth_expired": "Sitzung abgelaufen – bitte Claude Code öffnen, um die Anmeldung zu erneuern, sofern Ihr Konto und Abo noch aktiv sind.",
     "auth_expired_label": "Claude Sitzung ist abgelaufen",
@@ -35,5 +35,9 @@
     "notify_threshold_seven_day_sonnet": "Ihre wöchentliche Sonnet-Nutzung hat {pct}% erreicht.",
     "notify_threshold_seven_day_opus": "Ihre wöchentliche Opus-Nutzung hat {pct}% erreicht.",
     "extra_usage": "ZUSATZNUTZUNG",
-    "extra_usage_spent": "{used} / {limit} verbraucht"
+    "extra_usage_spent": "{used} / {limit} verbraucht",
+    "server_error": "Anthropic API vorübergehend nicht erreichbar (HTTP {code}).",
+    "status_updated": "Aktualisiert vor {duration}",
+    "status_updated_now": "Gerade aktualisiert",
+    "status_refreshing": "Aktualisiere..."
 }

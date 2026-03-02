@@ -131,8 +131,8 @@ class TestFetchUsage(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.api.requests.get')
     @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
-    def test_other_http_error(self, _mock_headers, mock_get):
-        """Non-401 HTTP error returns http_error with status code."""
+    def test_server_error_500(self, _mock_headers, mock_get):
+        """HTTP 500 returns server_error with status code."""
         import requests
         mock_resp = MagicMock()
         mock_resp.status_code = 500
@@ -141,7 +141,35 @@ class TestFetchUsage(unittest.TestCase):
 
         result = fetch_usage()
 
-        self.assertEqual(result, {'error': EN['http_error'].format(code=500)})
+        self.assertEqual(result, {'error': EN['server_error'].format(code=500)})
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_server_error_503(self, _mock_headers, mock_get):
+        """HTTP 503 returns server_error with status code."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 503
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertEqual(result, {'error': EN['server_error'].format(code=503)})
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_client_http_error(self, _mock_headers, mock_get):
+        """Non-5xx, non-401 HTTP error returns http_error with status code."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 403
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertEqual(result, {'error': EN['http_error'].format(code=403)})
 
     @patch('usage_monitor_for_claude.api.requests.get')
     @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})

@@ -12,6 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Configurable usage alerts when quota exceeds defined thresholds (e.g., 80%, 95%), with separate settings for session and weekly quotas
 - Time-aware alert mode (on by default) — suppresses notifications when usage is on track with elapsed time; `alert_time_aware_below` controls up to which threshold this applies, so high thresholds can always fire
 - Extra usage section in the detail popup when extra usage is enabled on your account, with automatic currency symbol detection from the system locale (overridable via `currency_symbol` in the settings file)
+- Status line in the popup showing when data was last updated and whether a refresh is in progress or failed
+
+### Changed
+
+- Server errors (HTTP 5xx) now show a specific "temporarily unavailable" message instead of the generic HTTP error
+- Popup opens immediately with cached data instead of waiting for the API response; errors are shown in the status line while usage bars remain visible
+- Popup grows away from the taskbar edge regardless of taskbar position (bottom, top, left, or right)
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.2.0...HEAD)
 

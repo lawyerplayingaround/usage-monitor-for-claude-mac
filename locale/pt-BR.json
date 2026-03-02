@@ -35,5 +35,9 @@
     "notify_threshold_seven_day_sonnet": "Seu uso semanal de Sonnet atingiu {pct}%.",
     "notify_threshold_seven_day_opus": "Seu uso semanal de Opus atingiu {pct}%.",
     "extra_usage": "USO EXTRA",
-    "extra_usage_spent": "{used} / {limit} gasto"
+    "extra_usage_spent": "{used} / {limit} gasto",
+    "server_error": "A API da Anthropic está temporariamente indisponível (HTTP {code}).",
+    "status_updated": "Atualizado há {duration}",
+    "status_updated_now": "Atualizado agora mesmo",
+    "status_refreshing": "Atualizando..."
 }

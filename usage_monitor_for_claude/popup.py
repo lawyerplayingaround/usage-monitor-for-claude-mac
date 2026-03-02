@@ -12,7 +12,7 @@ import tkinter as tk
 from typing import TYPE_CHECKING, Any
 
 from .settings import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, time_until
+from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, time_until
 from .i18n import T
 
 if TYPE_CHECKING:
@@ -50,10 +50,13 @@ class UsagePopup:
         self._usage_bars: list[dict[str, Any]] = []
         self._extra_frame: tk.Frame | None = None
         self._extra_widgets: dict[str, Any] | None = None
+        self._status_frame: tk.Frame | None = None
+        self._status_label: tk.Label | None = None
+        self._status_text = ''
+        self._status_fg = ''
         self._last_version = self.app._data_version
         self._build_content()
 
-        self.win.update_idletasks()
         self._position_near_tray()
         self._schedule_check()
 
@@ -81,22 +84,40 @@ class UsagePopup:
                 self._last_version = self.app._data_version
                 self._update_usage_section()
                 self._update_extra_usage_section()
+                self._position_near_tray()
+            self._update_status_line()
             self._schedule_check()
         except tk.TclError:
             pass
 
     def _position_near_tray(self) -> None:
-        """Place the popup in the bottom-right corner, above the Windows taskbar."""
+        """Place the popup near the system tray, growing away from the taskbar.
+
+        Detects the taskbar position from the work area and anchors the
+        popup so that size changes expand away from the taskbar edge.
+        """
+        self.win.update_idletasks()
         w = self.win.winfo_width()
         h = self.win.winfo_height()
-        sx = self.win.winfo_screenwidth()
 
         # Use the taskbar-aware work area so the popup clears the taskbar regardless of its size or DPI
         work_area = ctypes.wintypes.RECT()
         ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work_area), 0)
 
-        x = sx - w - 12
-        y = work_area.bottom - h - 12
+        margin = 12
+
+        # Horizontal: anchor near the taskbar side, grow away from it
+        if work_area.left > 0:
+            x = work_area.left + margin
+        else:
+            x = work_area.right - w - margin
+
+        # Vertical: anchor near the taskbar side, grow away from it
+        if work_area.top > 0:
+            y = work_area.top + margin
+        else:
+            y = work_area.bottom - h - margin
+
         self.win.geometry(f'+{x}+{y}')
 
     def _build_content(self) -> None:
@@ -133,9 +154,12 @@ class UsagePopup:
         # ── Extra usage section ──
         self._build_extra_usage_section()
 
+        # ── Status line ──
+        self._build_status_line()
+
     def _usage_entries(self) -> list[tuple[str, dict[str, Any] | None, int]]:
-        """Return the list of usage entry tuples from current data."""
-        usage = self.app.usage_data
+        """Return the list of usage entry tuples from cached data."""
+        usage = self.app._cached_usage
         return [
             (T['session'], usage.get('five_hour'), PERIOD_5H),
             (T['weekly'], usage.get('seven_day'), PERIOD_7D),
@@ -149,23 +173,18 @@ class UsagePopup:
 
     def _build_usage_section(self) -> None:
         """Build the usage bars section from scratch, replacing any previous content."""
-        usage = self.app.usage_data
-
         if self._usage_frame:
             self._usage_frame.destroy()
+            self._usage_frame = None
         self._usage_bars = []
+
+        if not self.app._cached_usage:
+            return
 
         self._usage_frame = tk.Frame(self._main_frame, bg=BG)
         self._usage_frame.pack(fill='x')
 
         self._section_heading(self._usage_frame, T['usage'])
-
-        if 'error' in usage:
-            tk.Label(
-                self._usage_frame, text=usage['error'][:120], fg='#e05050', bg=BG,
-                font=('Segoe UI', 9), wraplength=self.WIDTH - 32, justify='left',
-            ).pack(anchor='w', pady=4)
-            return
 
         first = True
         for label, entry, period in self._visible_entries():
@@ -175,20 +194,20 @@ class UsagePopup:
 
     def _update_usage_section(self) -> None:
         """Update usage bars in-place, falling back to full rebuild if structure changed."""
-        usage = self.app.usage_data
         visible = self._visible_entries()
 
-        if 'error' in usage or len(visible) != len(self._usage_bars):
-            self._build_usage_section()
-            self._build_extra_usage_section()
+        if len(visible) == len(self._usage_bars):
+            for (_label, entry, period), widgets in zip(visible, self._usage_bars):
+                self._update_usage_bar(widgets, entry, period)
             return
 
-        for (_label, entry, period), widgets in zip(visible, self._usage_bars):
-            self._update_usage_bar(widgets, entry, period)
+        self._build_usage_section()
+        self._build_extra_usage_section()
+        self._repack_status_line()
 
     def _extra_usage_data(self) -> tuple[float, float, float] | None:
         """Return extra usage (pct, used_cents, limit_cents), or None if not enabled."""
-        extra = self.app.usage_data.get('extra_usage')
+        extra = self.app._cached_usage.get('extra_usage')
         if not extra or not extra.get('is_enabled'):
             return None
 
@@ -250,6 +269,7 @@ class UsagePopup:
 
         if (data is None) != (not had_section):
             self._build_extra_usage_section()
+            self._repack_status_line()
             return
 
         if data is None or self._extra_widgets is None:
@@ -275,6 +295,46 @@ class UsagePopup:
         elif self._extra_widgets['fill_frame']:
             self._extra_widgets['fill_frame'].destroy()
             self._extra_widgets['fill_frame'] = None
+
+    def _build_status_line(self) -> None:
+        """Build the status line at the bottom of the popup."""
+        self._status_frame = tk.Frame(self._main_frame, bg=BG)
+        self._status_frame.pack(fill='x', side='bottom')
+
+        tk.Frame(self._status_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
+        self._status_label = tk.Label(
+            self._status_frame, text='', fg=FG_DIM, bg=BG,
+            font=('Segoe UI', 8), wraplength=self.WIDTH - 32, justify='left',
+        )
+        self._status_label.pack(anchor='w')
+
+        self._update_status_line()
+
+    def _repack_status_line(self) -> None:
+        """Ensure the status line stays at the bottom after section rebuilds."""
+        if self._status_frame:
+            self._status_frame.pack_forget()
+            self._status_frame.pack(fill='x', side='bottom')
+
+    def _update_status_line(self) -> None:
+        """Refresh the status text with current freshness and error state."""
+        if not self._status_label:
+            return
+
+        if not self.app._cached_usage:
+            if self.app._last_error:
+                text, fg = self.app._last_error[:120], '#e05050'
+            else:
+                text, fg = T['status_refreshing'], FG_DIM
+        else:
+            status_text, has_error = format_status(self.app._last_success_time, self.app._refreshing, self.app._last_error)
+            text, fg = status_text, '#e05050' if has_error else FG_DIM
+
+        if text != self._status_text or fg != self._status_fg:
+            self._status_text = text
+            self._status_fg = fg
+            self._status_label.configure(text=text, fg=fg)
+            self._position_near_tray()
 
     def _section_heading(self, parent: tk.Frame, text: str) -> None:
         tk.Label(parent, text=text, font=('Segoe UI', 9, 'bold'), fg=FG_DIM, bg=BG).pack(anchor='w', pady=(8, 2))

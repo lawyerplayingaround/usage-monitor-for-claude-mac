@@ -35,5 +35,9 @@
     "notify_threshold_seven_day_sonnet": "Penggunaan mingguan Sonnet Anda telah mencapai {pct}%.",
     "notify_threshold_seven_day_opus": "Penggunaan mingguan Opus Anda telah mencapai {pct}%.",
     "extra_usage": "PENGGUNAAN EKSTRA",
-    "extra_usage_spent": "{used} / {limit} terpakai"
+    "extra_usage_spent": "{used} / {limit} terpakai",
+    "server_error": "API Anthropic tidak tersedia sementara (HTTP {code}).",
+    "status_updated": "Diperbarui {duration} yang lalu",
+    "status_updated_now": "Baru saja diperbarui",
+    "status_refreshing": "Memperbarui..."
 }

@@ -35,5 +35,9 @@
     "notify_threshold_seven_day_sonnet": "您的每週 Sonnet 用量已達到 {pct}%。",
     "notify_threshold_seven_day_opus": "您的每週 Opus 用量已達到 {pct}%。",
     "extra_usage": "額外用量",
-    "extra_usage_spent": "已用 {used} / {limit}"
+    "extra_usage_spent": "已用 {used} / {limit}",
+    "server_error": "Anthropic API 暫時無法使用 (HTTP {code})。",
+    "status_updated": "{duration}前更新",
+    "status_updated_now": "剛剛更新",
+    "status_refreshing": "重新整理中..."
 }

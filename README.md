@@ -13,7 +13,7 @@ Usage Monitor for Claude is a lightweight Windows desktop tool that shows your c
 - **Live tray icon** - displays a "C" during normal use, switches to the current percentage when session usage exceeds 50%, and shows "✕" when you hit the rate limit
 - **Two progress bars** in the icon: top bar = 5-hour session limit, bottom bar = 7-day weekly limit
 - **Hover tooltip** with a quick summary of your 5-hour and 7-day usage, including reset times
-- **Detail popup** (left-click) - dark-themed window showing your account info (email, plan), separate usage bars for Session, Weekly, Weekly Sonnet, and Weekly Opus limits, and an extra usage section when enabled on your account
+- **Detail popup** (left-click) - dark-themed window showing your account info (email, plan), separate usage bars for Session, Weekly, Weekly Sonnet, and Weekly Opus limits, an extra usage section when enabled on your account, and a status line showing data freshness
 - **Time marker** - a white vertical line on each bar shows how much time has passed in the current period, so you can tell whether usage is ahead of or behind the clock
 - **Color warning** - bars turn red once usage reaches 80%
 - **Usage alerts** - optional Windows notifications when usage exceeds configurable thresholds (e.g., 80%, 95%), independently configurable per quota type. Time-aware mode (on by default) suppresses alerts when usage is on track with elapsed time, with a configurable cutoff so high thresholds always fire

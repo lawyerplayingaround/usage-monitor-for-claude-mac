@@ -45,8 +45,12 @@ class UsageMonitorForClaude:
     def __init__(self) -> None:
         """Set up the tray icon with context menu and polling state."""
         self.running = True
-        self.usage_data = {}
-        self.profile_data = None
+        self.usage_data: dict[str, Any] = {}
+        self.profile_data: dict[str, Any] | None = None
+        self._cached_usage: dict[str, Any] = {}
+        self._last_success_time: float | None = None
+        self._refreshing = False
+        self._last_error: str | None = None
         self._last_failed_token: str | None = None
         self._prev_5h = None
         self._prev_7d = None
@@ -90,9 +94,14 @@ class UsageMonitorForClaude:
     def _open_popup(self) -> None:
         self._popup_open = True
         try:
-            self.update()
-            if not self.profile_data:
-                self.profile_data = fetch_profile()
+            stale = self._last_success_time is None or time.time() - self._last_success_time > POLL_FAST
+            if stale or not self.profile_data:
+                def _bg_refresh() -> None:
+                    if not self.profile_data:
+                        self.profile_data = fetch_profile()
+                    if stale:
+                        self.update()
+                threading.Thread(target=_bg_refresh, daemon=True).start()
             UsagePopup(self)
         finally:
             self._popup_open = False
@@ -118,6 +127,9 @@ class UsageMonitorForClaude:
         when usage is actively increasing. After a 401 auth error,
         subsequent polls only re-read the credentials file and skip
         the API call until the token actually changes.
+
+        Successful responses are cached in ``_cached_usage`` so the
+        popup can display stale-but-valid data during transient errors.
         """
         if self._last_failed_token is not None:
             if read_access_token() == self._last_failed_token:
@@ -125,16 +137,25 @@ class UsageMonitorForClaude:
 
             self._last_failed_token = None
 
+        self._refreshing = True
+        self._data_version += 1
+
         self.usage_data = fetch_usage()
 
         if 'error' in self.usage_data:
+            self._last_error = self.usage_data['error']
             if self.usage_data.get('auth_error'):
                 self._last_failed_token = read_access_token()
 
             self.icon.icon = create_status_image('C!' if self.usage_data.get('auth_error') else '!', self._light_taskbar)
             self.icon.title = format_tooltip(self.usage_data)
+            self._refreshing = False
             self._data_version += 1
             return
+
+        self._last_error = None
+        self._last_success_time = time.time()
+        self._cached_usage = self.usage_data
 
         pct_5h = self.usage_data.get('five_hour', {}).get('utilization', 0) or 0
         pct_7d = self.usage_data.get('seven_day', {}).get('utilization', 0) or 0
@@ -157,6 +178,7 @@ class UsageMonitorForClaude:
 
         self.icon.icon = create_icon_image(pct_5h, pct_7d, self._light_taskbar)
         self.icon.title = format_tooltip(self.usage_data)
+        self._refreshing = False
         self._data_version += 1
 
     def _check_threshold_alerts(self) -> None:

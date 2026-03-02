@@ -67,6 +67,8 @@ def fetch_usage() -> dict[str, Any]:
         code = e.response.status_code if e.response is not None else 0
         if code == 401:
             return {'error': T['auth_expired'], 'auth_error': True}
+        if 500 <= code < 600:
+            return {'error': T['server_error'].format(code=code)}
         return {'error': T['http_error'].format(code=code or '?')}
     except Exception:
         return {'error': T['connection_error']}

@@ -294,5 +294,74 @@ class TestTimeAwareAlerts(unittest.TestCase):
         self.app.icon.notify.assert_called_once()
 
 
+class TestCachedUsageOnError(unittest.TestCase):
+    """Tests for cached usage preservation during API errors."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_successful_fetch_caches_data(self, _tooltip, _icon, mock_fetch):
+        """Successful API response is stored in _cached_usage."""
+        data = {'five_hour': {'utilization': 42.0}}
+        mock_fetch.return_value = data
+
+        self.app.update()
+
+        self.assertEqual(self.app._cached_usage, data)
+        self.assertIsNotNone(self.app._last_success_time)
+        self.assertIsNone(self.app._last_error)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_error_preserves_cached_data(self, _tooltip, _status, mock_fetch):
+        """API error does not overwrite previously cached successful data."""
+        self.app._cached_usage = {'five_hour': {'utilization': 42.0}}
+        mock_fetch.return_value = {'error': 'server down'}
+
+        self.app.update()
+
+        self.assertEqual(self.app._cached_usage, {'five_hour': {'utilization': 42.0}})
+        self.assertEqual(self.app._last_error, 'server down')
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_error_clears_on_success(self, _tooltip, _status, mock_fetch):
+        """Successful fetch after error clears _last_error."""
+        self.app._last_error = 'previous error'
+
+        with patch('usage_monitor_for_claude.app.create_icon_image'):
+            mock_fetch.return_value = {'five_hour': {'utilization': 50.0}}
+            self.app.update()
+
+        self.assertIsNone(self.app._last_error)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_refreshing_flag_set_during_update(self, _tooltip, _status, mock_fetch):
+        """_refreshing is True during the API call and False after."""
+        observed_refreshing = []
+
+        def capture_refreshing():
+            observed_refreshing.append(self.app._refreshing)
+            return {'five_hour': {'utilization': 10.0}}
+
+        mock_fetch.side_effect = capture_refreshing
+
+        with patch('usage_monitor_for_claude.app.create_icon_image'):
+            self.app.update()
+
+        self.assertTrue(observed_refreshing[0])
+        self.assertFalse(self.app._refreshing)
+
+
 if __name__ == '__main__':
     unittest.main()
