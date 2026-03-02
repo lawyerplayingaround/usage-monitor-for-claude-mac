@@ -354,7 +354,7 @@ class UsagePopup:
         high = pct >= 80
 
         row = tk.Frame(parent, bg=BG)
-        row.pack(fill='x', pady=(4 if first else 8, 4))
+        row.pack(fill='x', pady=(0 if first else 8, 4))
         tk.Label(row, text=label, fg=FG, bg=BG, font=('Segoe UI', 10), padx=0).pack(side='left')
         pct_label = tk.Label(row, text=f'{pct:.0f}%', fg=FG, bg=BG, font=('Segoe UI', 10), padx=0)
         pct_label.pack(side='right')
