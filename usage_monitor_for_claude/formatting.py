@@ -7,10 +7,12 @@ elapsed period percentages, and tooltip text.
 """
 from __future__ import annotations
 
+import locale as _locale
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .i18n import T
+from .settings import CURRENCY_SYMBOL, _SYSTEM_CURRENCY_SYMBOL
 
 PERIOD_5H = 5 * 3600
 PERIOD_7D = 7 * 24 * 3600
@@ -85,6 +87,33 @@ def time_until(iso_str: str) -> str:
         return T['resets_weekday'].format(day=wd, clock=time_str)
     except Exception:
         return ''
+
+
+def format_credits(cents: float) -> str:
+    """Format a cent amount as a localized currency string.
+
+    Uses the system locale for formatting (decimal separator, symbol placement,
+    grouping).  If the user overrides ``currency_symbol`` in settings, the
+    system symbol is replaced in the formatted output.
+
+    Parameters
+    ----------
+    cents : float
+        Amount in cents (e.g. 420.0 for 4.20 in the base currency unit).
+    """
+    amount = cents / 100
+
+    try:
+        formatted = _locale.currency(amount, grouping=True)
+
+        if CURRENCY_SYMBOL != _SYSTEM_CURRENCY_SYMBOL and _SYSTEM_CURRENCY_SYMBOL:
+            formatted = formatted.replace(_SYSTEM_CURRENCY_SYMBOL, CURRENCY_SYMBOL)
+
+        return formatted
+    except (ValueError, _locale.Error):
+        if CURRENCY_SYMBOL:
+            return f'{CURRENCY_SYMBOL}\u00a0{amount:.2f}'
+        return f'{amount:.2f}'
 
 
 def format_tooltip(data: dict[str, Any]) -> str:

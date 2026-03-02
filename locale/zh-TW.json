@@ -33,5 +33,7 @@
     "notify_threshold_five_hour": "您的工作階段用量已達到 {pct}%。",
     "notify_threshold_seven_day": "您的每週用量已達到 {pct}%。",
     "notify_threshold_seven_day_sonnet": "您的每週 Sonnet 用量已達到 {pct}%。",
-    "notify_threshold_seven_day_opus": "您的每週 Opus 用量已達到 {pct}%。"
+    "notify_threshold_seven_day_opus": "您的每週 Opus 用量已達到 {pct}%。",
+    "extra_usage": "額外用量",
+    "extra_usage_spent": "已用 {used} / {limit}"
 }

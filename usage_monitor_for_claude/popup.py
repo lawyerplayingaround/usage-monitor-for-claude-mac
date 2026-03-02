@@ -12,7 +12,7 @@ import tkinter as tk
 from typing import TYPE_CHECKING, Any
 
 from .settings import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, time_until
+from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, time_until
 from .i18n import T
 
 if TYPE_CHECKING:
@@ -48,6 +48,8 @@ class UsagePopup:
         self._main_frame: tk.Frame | None = None
         self._usage_frame: tk.Frame | None = None
         self._usage_bars: list[dict[str, Any]] = []
+        self._extra_frame: tk.Frame | None = None
+        self._extra_widgets: dict[str, Any] | None = None
         self._last_version = self.app._data_version
         self._build_content()
 
@@ -78,6 +80,7 @@ class UsagePopup:
             if self.app._data_version != self._last_version:
                 self._last_version = self.app._data_version
                 self._update_usage_section()
+                self._update_extra_usage_section()
             self._schedule_check()
         except tk.TclError:
             pass
@@ -127,6 +130,9 @@ class UsagePopup:
         # ── Usage section (rebuilt on refresh) ──
         self._build_usage_section()
 
+        # ── Extra usage section ──
+        self._build_extra_usage_section()
+
     def _usage_entries(self) -> list[tuple[str, dict[str, Any] | None, int]]:
         """Return the list of usage entry tuples from current data."""
         usage = self.app.usage_data
@@ -174,10 +180,101 @@ class UsagePopup:
 
         if 'error' in usage or len(visible) != len(self._usage_bars):
             self._build_usage_section()
+            self._build_extra_usage_section()
             return
 
         for (_label, entry, period), widgets in zip(visible, self._usage_bars):
             self._update_usage_bar(widgets, entry, period)
+
+    def _extra_usage_data(self) -> tuple[float, float, float] | None:
+        """Return extra usage (pct, used_cents, limit_cents), or None if not enabled."""
+        extra = self.app.usage_data.get('extra_usage')
+        if not extra or not extra.get('is_enabled'):
+            return None
+
+        limit = extra.get('monthly_limit', 0) or 0
+        if limit <= 0:
+            return None
+
+        used = extra.get('used_credits', 0) or 0
+        return (used / limit * 100, used, limit)
+
+    def _build_extra_usage_section(self) -> None:
+        """Build the extra usage section from scratch."""
+        if self._extra_frame:
+            self._extra_frame.destroy()
+        self._extra_frame = None
+        self._extra_widgets = None
+
+        data = self._extra_usage_data()
+        if data is None:
+            return
+
+        pct, used, limit = data
+        high = pct >= 80
+
+        self._extra_frame = tk.Frame(self._main_frame, bg=BG)
+        self._extra_frame.pack(fill='x')
+
+        tk.Frame(self._extra_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
+        self._section_heading(self._extra_frame, T['extra_usage'])
+
+        spent_text = T['extra_usage_spent'].format(used=format_credits(used), limit=format_credits(limit))
+
+        row = tk.Frame(self._extra_frame, bg=BG)
+        row.pack(fill='x', pady=(0, 4))
+        spent_label = tk.Label(row, text=spent_text, fg=FG_DIM, bg=BG, font=('Segoe UI', 10), padx=0)
+        spent_label.pack(side='left')
+        pct_label = tk.Label(row, text=f'{pct:.0f}%', fg=FG, bg=BG, font=('Segoe UI', 10), padx=0)
+        pct_label.pack(side='right')
+
+        bar_h = 8
+        bar_frame = tk.Frame(self._extra_frame, bg=BAR_BG, height=bar_h)
+        bar_frame.pack(fill='x', padx=2, pady=(0, 2))
+        bar_frame.pack_propagate(False)
+        fill_pct = max(0.0, min(1.0, pct / 100))
+        fill_frame = None
+        if fill_pct > 0:
+            fill_frame = tk.Frame(bar_frame, bg=BAR_FG_HIGH if high else BAR_FG)
+            fill_frame.place(relwidth=fill_pct, relheight=1.0)
+
+        self._extra_widgets = {
+            'pct_label': pct_label, 'bar_frame': bar_frame,
+            'fill_frame': fill_frame, 'spent_label': spent_label,
+        }
+
+    def _update_extra_usage_section(self) -> None:
+        """Update extra usage bar in-place, or rebuild if visibility changed."""
+        data = self._extra_usage_data()
+        had_section = self._extra_widgets is not None
+
+        if (data is None) != (not had_section):
+            self._build_extra_usage_section()
+            return
+
+        if data is None or self._extra_widgets is None:
+            return
+
+        pct, used, limit = data
+        high = pct >= 80
+        self._extra_widgets['pct_label'].configure(text=f'{pct:.0f}%')
+
+        spent_text = T['extra_usage_spent'].format(used=format_credits(used), limit=format_credits(limit))
+        self._extra_widgets['spent_label'].configure(text=spent_text)
+
+        fill_pct = max(0.0, min(1.0, pct / 100))
+        color = BAR_FG_HIGH if high else BAR_FG
+        bar_frame = self._extra_widgets['bar_frame']
+        if fill_pct > 0:
+            if self._extra_widgets['fill_frame']:
+                self._extra_widgets['fill_frame'].place_configure(relwidth=fill_pct)
+                self._extra_widgets['fill_frame'].configure(bg=color)
+            else:
+                self._extra_widgets['fill_frame'] = tk.Frame(bar_frame, bg=color)
+                self._extra_widgets['fill_frame'].place(relwidth=fill_pct, relheight=1.0)
+        elif self._extra_widgets['fill_frame']:
+            self._extra_widgets['fill_frame'].destroy()
+            self._extra_widgets['fill_frame'] = None
 
     def _section_heading(self, parent: tk.Frame, text: str) -> None:
         tk.Label(parent, text=text, font=('Segoe UI', 9, 'bold'), fg=FG_DIM, bg=BG).pack(anchor='w', pady=(8, 2))

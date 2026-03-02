@@ -33,5 +33,7 @@
     "notify_threshold_five_hour": "Penggunaan sesi Anda telah mencapai {pct}%.",
     "notify_threshold_seven_day": "Penggunaan mingguan Anda telah mencapai {pct}%.",
     "notify_threshold_seven_day_sonnet": "Penggunaan mingguan Sonnet Anda telah mencapai {pct}%.",
-    "notify_threshold_seven_day_opus": "Penggunaan mingguan Opus Anda telah mencapai {pct}%."
+    "notify_threshold_seven_day_opus": "Penggunaan mingguan Opus Anda telah mencapai {pct}%.",
+    "extra_usage": "PENGGUNAAN EKSTRA",
+    "extra_usage_spent": "{used} / {limit} terpakai"
 }

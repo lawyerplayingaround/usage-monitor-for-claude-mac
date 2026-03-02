@@ -33,5 +33,7 @@
     "notify_threshold_five_hour": "Tu uso de sesión ha alcanzado el {pct}%.",
     "notify_threshold_seven_day": "Tu uso semanal ha alcanzado el {pct}%.",
     "notify_threshold_seven_day_sonnet": "Tu uso semanal de Sonnet ha alcanzado el {pct}%.",
-    "notify_threshold_seven_day_opus": "Tu uso semanal de Opus ha alcanzado el {pct}%."
+    "notify_threshold_seven_day_opus": "Tu uso semanal de Opus ha alcanzado el {pct}%.",
+    "extra_usage": "USO EXTRA",
+    "extra_usage_spent": "{used} / {limit} gastado"
 }

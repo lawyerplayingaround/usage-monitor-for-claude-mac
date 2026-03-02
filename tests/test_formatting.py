@@ -11,7 +11,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_tooltip, time_until
+from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip, time_until
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
@@ -331,6 +331,104 @@ class TestFormatTooltip(unittest.TestCase):
         data = {'error': 'Something broke', 'auth_error': False}
         result = format_tooltip(data)
         self.assertEqual(result, 'Usage Monitor: Error\nSomething broke')
+
+    @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
+    def test_extra_usage_ignored(self, _mock_tu):
+        """Extra usage data is not shown in tooltip."""
+        data = {
+            'five_hour': {'utilization': 26.0, 'resets_at': ''},
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 420.0},
+        }
+        self.assertEqual(format_tooltip(data), 'Account & Usage\n5h: 26%')
+
+
+# ---------------------------------------------------------------------------
+# tooltip length – Windows limits tooltip text to 127 characters
+# ---------------------------------------------------------------------------
+
+class TestTooltipMaxLength(unittest.TestCase):
+    """Verify tooltip text stays within Windows' 127-char limit for all locales."""
+
+    TOOLTIP_MAX = 127
+
+    def _longest_reset(self, t: dict, max_hours: int) -> str:
+        """Return the longest possible reset text for a given max-hour value."""
+        dur = t['duration_hm'].format(h=max_hours, m=59)
+        candidates = [
+            t['resets_in'].format(duration=dur, clock='23:59'),
+            t['resets_tomorrow'].format(clock='23:59'),
+        ]
+        for wd in t['weekdays']:
+            candidates.append(t['resets_weekday'].format(day=wd, clock='23:59'))
+
+        return max(candidates, key=len)
+
+    def _worst_case_tooltip(self, t: dict) -> str:
+        """Build the longest possible tooltip from a locale dict.
+
+        Worst case: both 5h and 7d visible at 100%, each with the longest
+        possible reset text (same-day, tomorrow, or weekday).
+        """
+        reset_5h = self._longest_reset(t, max_hours=4)
+        reset_7d = self._longest_reset(t, max_hours=23)
+
+        return f"{t['title']}\n5h: 100% ({reset_5h})\n7d: 100% ({reset_7d})"
+
+    def test_all_locales_fit_tooltip(self):
+        """Every locale's worst-case tooltip must fit in 127 characters."""
+        for locale_file in sorted(LOCALE_DIR.glob('*.json')):
+            with self.subTest(locale=locale_file.stem):
+                t = json.loads(locale_file.read_text(encoding='utf-8'))
+                tooltip = self._worst_case_tooltip(t)
+                self.assertLessEqual(
+                    len(tooltip), self.TOOLTIP_MAX,
+                    f"Locale '{locale_file.stem}' tooltip is {len(tooltip)} chars "
+                    f"(max {self.TOOLTIP_MAX}):\n{tooltip}",
+                )
+
+
+# ---------------------------------------------------------------------------
+# format_credits
+# ---------------------------------------------------------------------------
+
+class TestFormatCredits(unittest.TestCase):
+    """Tests for format_credits()."""
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$4.20')
+    def test_uses_locale_currency(self, mock_currency):
+        """Uses locale.currency() for formatting."""
+        self.assertEqual(format_credits(420.0), '$4.20')
+        mock_currency.assert_called_once_with(4.2, grouping=True)
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '€')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='10,00 €')
+    def test_symbol_override_replaces(self, mock_currency):
+        """Settings override replaces system symbol in formatted output."""
+        self.assertEqual(format_credits(1000.0), '10,00 $')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', side_effect=ValueError)
+    def test_no_symbol_plain_number(self, mock_currency):
+        """No currency symbol falls back to plain number."""
+        self.assertEqual(format_credits(420.0), '4.20')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '¥')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', side_effect=ValueError)
+    def test_locale_error_uses_symbol_fallback(self, mock_currency):
+        """Locale error falls back to manual formatting with symbol."""
+        self.assertEqual(format_credits(420.0), '¥\u00a04.20')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$0.00')
+    def test_zero_cents(self, mock_currency):
+        """Zero cents formats correctly."""
+        self.assertEqual(format_credits(0.0), '$0.00')
 
 
 if __name__ == '__main__':

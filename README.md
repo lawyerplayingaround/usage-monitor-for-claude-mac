@@ -13,7 +13,7 @@ Usage Monitor for Claude is a lightweight Windows desktop tool that shows your c
 - **Live tray icon** - displays a "C" during normal use, switches to the current percentage when session usage exceeds 50%, and shows "✕" when you hit the rate limit
 - **Two progress bars** in the icon: top bar = 5-hour session limit, bottom bar = 7-day weekly limit
 - **Hover tooltip** with a quick summary of your 5-hour and 7-day usage, including reset times
-- **Detail popup** (left-click) - dark-themed window showing your account info (email, plan) and separate usage bars for Session, Weekly, Weekly Sonnet, and Weekly Opus limits
+- **Detail popup** (left-click) - dark-themed window showing your account info (email, plan), separate usage bars for Session, Weekly, Weekly Sonnet, and Weekly Opus limits, and an extra usage section when enabled on your account
 - **Time marker** - a white vertical line on each bar shows how much time has passed in the current period, so you can tell whether usage is ahead of or behind the clock
 - **Color warning** - bars turn red once usage reaches 80%
 - **Usage alerts** - optional Windows notifications when usage exceeds configurable thresholds (e.g., 80%, 95%), independently configurable per quota type. Time-aware mode (on by default) suppresses alerts when usage is on track with elapsed time, with a configurable cutoff so high thresholds always fire
@@ -132,6 +132,14 @@ Override individual channels as RGBA arrays `[R, G, B, A]` (0–255). Unspecifie
 |-----|---------|-------------|
 | `icon_light` | `{"fg": [255,255,255,255], "fg_half": [255,255,255,80], "fg_dim": [255,255,255,140]}` | Light icons for dark taskbar |
 | `icon_dark` | `{"fg": [0,0,0,255], "fg_half": [0,0,0,80], "fg_dim": [0,0,0,140]}` | Dark icons for light taskbar |
+
+### Currency
+
+The Anthropic API does not include currency information, so the app detects the currency symbol from your Windows locale settings. If your Windows locale currency differs from the currency Anthropic bills you in, you can override just the symbol here. Number formatting (decimal separator, symbol position) always follows your system locale.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `currency_symbol` | *(auto-detected)* | Override the auto-detected currency symbol (e.g., `"$"`, `"€"`, `"¥"`) |
 
 </details>
 

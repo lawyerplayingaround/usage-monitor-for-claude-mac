@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import locale as _locale
 import sys
 from pathlib import Path
 
@@ -27,6 +28,7 @@ _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg',
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
+_STRING_KEYS = frozenset({'currency_symbol'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 
 
@@ -106,6 +108,11 @@ def _validate(data: dict, path: Path) -> dict:
                 errors.append(f'  {key}: must be between 1 and 100, got {value}')
                 drop.append(key)
 
+        elif key in _STRING_KEYS:
+            if not isinstance(value, str):
+                errors.append(f'  {key}: expected a string, got {type(value).__name__}')
+                drop.append(key)
+
         elif key in _BOOL_KEYS:
             if not isinstance(value, bool):
                 errors.append(f'  {key}: expected true or false, got {type(value).__name__}')
@@ -173,6 +180,20 @@ ALERT_THRESHOLDS_FIVE_HOUR: list[float] = _S.get('alert_thresholds_five_hour', [
 ALERT_THRESHOLDS_SEVEN_DAY: list[float] = _S.get('alert_thresholds_seven_day', [95])
 ALERT_TIME_AWARE: bool = _S.get('alert_time_aware', True)
 ALERT_TIME_AWARE_BELOW: float = _S.get('alert_time_aware_below', 90)
+
+# ── Currency ───────────────────────────────────────────────
+
+def _detect_currency_symbol() -> str:
+    """Detect the system locale currency symbol for monetary formatting."""
+    try:
+        _locale.setlocale(_locale.LC_MONETARY, '')
+        return _locale.localeconv().get('currency_symbol', '') or ''
+    except _locale.Error:
+        return ''
+
+
+_SYSTEM_CURRENCY_SYMBOL = _detect_currency_symbol()
+CURRENCY_SYMBOL: str = _S.get('currency_symbol', _SYSTEM_CURRENCY_SYMBOL)
 
 _ALERT_THRESHOLDS = {
     'five_hour': ALERT_THRESHOLDS_FIVE_HOUR,

@@ -33,5 +33,7 @@
     "notify_threshold_five_hour": "आपका सत्र उपयोग {pct}% तक पहुँच गया है।",
     "notify_threshold_seven_day": "आपका साप्ताहिक उपयोग {pct}% तक पहुँच गया है।",
     "notify_threshold_seven_day_sonnet": "आपका साप्ताहिक Sonnet उपयोग {pct}% तक पहुँच गया है।",
-    "notify_threshold_seven_day_opus": "आपका साप्ताहिक Opus उपयोग {pct}% तक पहुँच गया है।"
+    "notify_threshold_seven_day_opus": "आपका साप्ताहिक Opus उपयोग {pct}% तक पहुँच गया है।",
+    "extra_usage": "अतिरिक्त उपयोग",
+    "extra_usage_spent": "{used} / {limit} खर्च"
 }
