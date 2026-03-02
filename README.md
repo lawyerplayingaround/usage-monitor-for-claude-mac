@@ -1,8 +1,8 @@
 # Usage Monitor for Claude
 
-**Monitor your Claude rate limits in real time -right from your Windows system tray.**
+**Monitor your Claude rate limits in real time - right from your Windows system tray.**
 
-Usage Monitor for Claude is a lightweight desktop tool that shows your current Claude usage as a live system tray icon. Rate limits are shared across claude.ai, Claude Code, and IDE extensions like the VS Code or JetBrains plugin -always know how much of your session and weekly limits you have left.
+Usage Monitor for Claude is a lightweight desktop tool that shows your current Claude usage as a live system tray icon. Rate limits are shared across claude.ai, Claude Code, and IDE extensions like the VS Code or JetBrains plugin - always know how much of your session and weekly limits you have left.
 
 ![Detail popup showing account info and usage bars](screenshot.png)
 
@@ -86,7 +86,7 @@ Each bar in the detail popup has up to three visual elements:
 
 ## Configuration
 
-All settings work out of the box -no configuration file is needed. To customize behavior, create a file called `usage-monitor-settings.json` with only the keys you want to change:
+All settings work out of the box - no configuration file is needed. To customize behavior, create a file called `usage-monitor-settings.json` with only the keys you want to change:
 
 ```json
 {
