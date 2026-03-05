@@ -11,6 +11,7 @@ import ctypes.wintypes
 import tkinter as tk
 from typing import TYPE_CHECKING, Any
 
+from .claude_cli import find_installations
 from .settings import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, time_until
 from .i18n import T
@@ -154,6 +155,9 @@ class UsagePopup:
         # ── Extra usage section ──
         self._build_extra_usage_section()
 
+        # ── Claude Code installations ──
+        self._build_installations_section()
+
         # ── Status line ──
         self._build_status_line()
 
@@ -295,6 +299,21 @@ class UsagePopup:
         elif self._extra_widgets['fill_frame']:
             self._extra_widgets['fill_frame'].destroy()
             self._extra_widgets['fill_frame'] = None
+
+    def _build_installations_section(self) -> None:
+        """Build the Claude Code installations section showing discovered versions."""
+        installations = find_installations()
+        if not installations:
+            return
+
+        frame = tk.Frame(self._main_frame, bg=BG)
+        frame.pack(fill='x')
+
+        tk.Frame(frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
+        self._section_heading(frame, T['claude_code'])
+
+        for inst in installations:
+            self._info_row(frame, inst.name, inst.version)
 
     def _build_status_line(self) -> None:
         """Build the status line at the bottom of the popup."""

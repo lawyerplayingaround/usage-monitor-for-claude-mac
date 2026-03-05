@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Automatic token refresh - when the OAuth session expires, the app runs `claude update` in the background to renew the token without user intervention
+- Claude Code version display in the detail popup showing installed versions for CLI, VS Code, Cursor, and Windsurf
+- Notification when `claude update` installs a newer CLI version
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.4.0...HEAD)
 
 ## [1.4.0] - 2026-03-05

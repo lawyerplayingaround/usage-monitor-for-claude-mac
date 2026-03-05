@@ -18,6 +18,7 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 
 from .api import api_headers, fetch_profile, fetch_usage, read_access_token
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
+from .claude_cli import refresh_token
 from .settings import ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_tooltip
 from .i18n import T
@@ -149,7 +150,10 @@ class UsageMonitorForClaude:
             server_msg = self.usage_data.get('server_message')
             if server_msg:
                 self._last_error += f'\n{server_msg}'
+
             if self.usage_data.get('auth_error'):
+                if self._try_token_refresh():
+                    return
                 self._last_failed_token = read_access_token()
 
             self.icon.icon = create_status_image('C!' if self.usage_data.get('auth_error') else '!', self._light_taskbar)
@@ -158,13 +162,7 @@ class UsageMonitorForClaude:
             self._data_version += 1
             return
 
-        self._consecutive_errors = 0
-        self._last_error = None
-        self._last_success_time = time.time()
-        self._cached_usage = self.usage_data
-
-        pct_5h = self.usage_data.get('five_hour', {}).get('utilization', 0) or 0
-        pct_7d = self.usage_data.get('seven_day', {}).get('utilization', 0) or 0
+        pct_5h, pct_7d = self._apply_success()
 
         # Notify when quota resets after being nearly exhausted, but only if the other quota isn't blocking usage
         if self._prev_5h is not None and self._prev_5h > 95 and pct_5h < self._prev_5h and pct_7d < 99:
@@ -182,10 +180,68 @@ class UsageMonitorForClaude:
         self._prev_5h = pct_5h
         self._prev_7d = pct_7d
 
+    def _apply_success(self) -> tuple[float, float]:
+        """Apply common state updates after a successful API response.
+
+        Resets error tracking, caches the response, and updates the
+        tray icon and tooltip.
+
+        Returns
+        -------
+        tuple[float, float]
+            The 5-hour and 7-day utilization percentages.
+        """
+        self._consecutive_errors = 0
+        self._last_error = None
+        self._last_success_time = time.time()
+        self._cached_usage = self.usage_data
+
+        pct_5h = self.usage_data.get('five_hour', {}).get('utilization', 0) or 0
+        pct_7d = self.usage_data.get('seven_day', {}).get('utilization', 0) or 0
+
         self.icon.icon = create_icon_image(pct_5h, pct_7d, self._light_taskbar)
         self.icon.title = format_tooltip(self.usage_data)
         self._refreshing = False
         self._data_version += 1
+
+        return pct_5h, pct_7d
+
+    def _try_token_refresh(self) -> bool:
+        """Attempt to refresh the OAuth token via ``claude update``.
+
+        Called on 401 auth errors.  If the token is successfully
+        refreshed, immediately retries the API call.  If ``claude update``
+        also installed a newer CLI version, shows a notification.
+
+        Returns
+        -------
+        bool
+            True if the token was refreshed and the retry succeeded
+            (caller should skip the normal error path).
+        """
+        result = refresh_token()
+        if not result.success:
+            return False
+
+        if result.updated:
+            self.icon.notify(
+                T['notify_update'].format(old=result.old_version, new=result.new_version),
+                T['notify_update_title'],
+            )
+
+        # Check if the token actually changed
+        if read_access_token() == self._last_failed_token:
+            return False
+
+        # Token changed - retry the API call
+        self.usage_data = fetch_usage()
+        if 'error' not in self.usage_data:
+            pct_5h, pct_7d = self._apply_success()
+            self._prev_5h = pct_5h
+            self._prev_7d = pct_7d
+            return True
+
+        return False
 
     def _check_threshold_alerts(self) -> None:
         """Show a notification when usage crosses a configured threshold.

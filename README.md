@@ -11,9 +11,11 @@ A native Windows tray app that shows your Claude usage at a glance - lightweight
 - **Portable** - single EXE (~20 MB), no installation, no Electron, no runtime. Download, place anywhere, run
 - **Zero configuration** - authenticates through your existing Claude Code login. No API key, no manual token entry
 - **Live tray icon** with two progress bars (session + weekly), percentage display at high usage, and theme-aware colors for light and dark taskbars
-- **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, and data freshness
+- **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, installed Claude Code versions, and data freshness
 - **Time marker** on each bar - a white line showing elapsed time in the current period, so you can instantly see whether your usage is ahead of or behind the clock
 - **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
+- **Automatic token refresh** - when the OAuth session expires, runs `claude update` in the background to renew the token without user intervention. If a CLI update is installed, shows a notification
+- **Claude Code versions** - the popup shows installed Claude Code versions (native CLI, VS Code, Cursor, Windsurf) so you always know which version each environment uses
 - **Adaptive polling** - speeds up during active usage, slows down when idle, aligns to imminent quota resets, and backs off on rate-limit errors
 - **12 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - auto-detected from your Windows display language
 - **Customizable** - optionally override polling intervals, colors, alert thresholds, and more via a [JSON settings file](#configuration)
@@ -40,7 +42,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`).
 
 > [!TIP]
-> If the token is missing or expired, the app shows a notification and a "!" icon. Simply log in to Claude Code again and the monitor picks it up automatically.
+> If the token expires, the app automatically runs `claude update` to refresh it. If the token is missing entirely, the app shows a notification and a "!" icon - log in to Claude Code and the monitor picks it up automatically.
 
 ---
 

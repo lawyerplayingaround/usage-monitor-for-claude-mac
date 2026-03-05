@@ -420,5 +420,148 @@ class TestCachedUsageOnError(unittest.TestCase):
         self.assertFalse(self.app._refreshing)
 
 
+class TestTryTokenRefresh(unittest.TestCase):
+    """Tests for _try_token_refresh() automatic token renewal."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.refresh_token')
+    def test_refresh_failure_returns_false(self, mock_refresh):
+        """When refresh_token() fails, returns False (caller continues error path)."""
+        from usage_monitor_for_claude.claude_cli import RefreshResult
+        mock_refresh.return_value = RefreshResult(success=False, updated=False, old_version='', new_version='', error='CLI not found')
+
+        self.assertFalse(self.app._try_token_refresh())
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.read_access_token')
+    @patch('usage_monitor_for_claude.app.refresh_token')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_refresh_success_with_new_token_retries(self, _tooltip, _icon, mock_refresh, mock_token, mock_fetch):
+        """When token changes after refresh, retries API and returns True on success."""
+        from usage_monitor_for_claude.claude_cli import RefreshResult
+        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+        mock_token.return_value = 'new-token'
+        self.app._last_failed_token = 'old-token'
+        mock_fetch.return_value = {'five_hour': {'utilization': 42.0}}
+
+        result = self.app._try_token_refresh()
+
+        self.assertTrue(result)
+        self.assertEqual(self.app._cached_usage, {'five_hour': {'utilization': 42.0}})
+        self.assertIsNone(self.app._last_error)
+        self.assertEqual(self.app._consecutive_errors, 0)
+
+    @patch('usage_monitor_for_claude.app.read_access_token')
+    @patch('usage_monitor_for_claude.app.refresh_token')
+    def test_refresh_success_but_token_unchanged(self, mock_refresh, mock_token):
+        """When token doesn't change after refresh, returns False."""
+        from usage_monitor_for_claude.claude_cli import RefreshResult
+        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+        mock_token.return_value = 'same-token'
+        self.app._last_failed_token = 'same-token'
+
+        self.assertFalse(self.app._try_token_refresh())
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.read_access_token')
+    @patch('usage_monitor_for_claude.app.refresh_token')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_refresh_success_but_retry_fails(self, _tooltip, _status, mock_refresh, mock_token, mock_fetch):
+        """When token changes but retry still fails, returns False."""
+        from usage_monitor_for_claude.claude_cli import RefreshResult
+        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+        mock_token.return_value = 'new-token'
+        self.app._last_failed_token = 'old-token'
+        mock_fetch.return_value = {'error': 'still broken', 'auth_error': True}
+
+        self.assertFalse(self.app._try_token_refresh())
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.read_access_token')
+    @patch('usage_monitor_for_claude.app.refresh_token')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_update_notification_on_cli_update(self, _tooltip, _icon, mock_refresh, mock_token, mock_fetch):
+        """Shows notification when claude update installs a new version."""
+        from usage_monitor_for_claude.claude_cli import RefreshResult
+        mock_refresh.return_value = RefreshResult(success=True, updated=True, old_version='2.1.38', new_version='2.1.69', error='')
+        mock_token.return_value = 'new-token'
+        self.app._last_failed_token = 'old-token'
+        mock_fetch.return_value = {'five_hour': {'utilization': 10.0}}
+
+        self.app._try_token_refresh()
+
+        self.app.icon.notify.assert_called_once()
+        args = self.app.icon.notify.call_args[0]
+        self.assertIn('2.1.38', args[0])
+        self.assertIn('2.1.69', args[0])
+
+    @patch('usage_monitor_for_claude.app.read_access_token')
+    @patch('usage_monitor_for_claude.app.refresh_token')
+    def test_no_notification_when_no_update(self, mock_refresh, mock_token):
+        """No notification when token refreshed but no CLI update."""
+        from usage_monitor_for_claude.claude_cli import RefreshResult
+        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+        mock_token.return_value = 'same-token'
+        self.app._last_failed_token = 'same-token'
+
+        self.app._try_token_refresh()
+
+        self.app.icon.notify.assert_not_called()
+
+
+class TestUpdateCallsTokenRefresh(unittest.TestCase):
+    """Tests that update() calls _try_token_refresh on auth errors."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_auth_error_triggers_refresh(self, _tooltip, _status, mock_fetch):
+        """update() calls _try_token_refresh on 401 auth error."""
+        mock_fetch.return_value = {'error': 'expired', 'auth_error': True}
+
+        with patch.object(self.app, '_try_token_refresh', return_value=False) as mock_try:
+            self.app.update()
+            mock_try.assert_called_once()
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_non_auth_error_skips_refresh(self, _tooltip, _status, mock_fetch):
+        """update() does not call _try_token_refresh on non-auth errors."""
+        mock_fetch.return_value = {'error': 'server down'}
+
+        with patch.object(self.app, '_try_token_refresh') as mock_try:
+            self.app.update()
+            mock_try.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.read_access_token', return_value='token-123')
+    def test_auth_error_with_successful_refresh_skips_error_path(self, _token, _tooltip, _status, mock_fetch):
+        """When _try_token_refresh succeeds, update() returns early without setting error icon."""
+        mock_fetch.return_value = {'error': 'expired', 'auth_error': True}
+
+        with patch.object(self.app, '_try_token_refresh', return_value=True):
+            self.app.update()
+
+        # Should NOT have set error icon since refresh succeeded
+        _status.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()
