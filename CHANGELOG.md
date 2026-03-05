@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Error polling interval (30s) was shorter than normal polling (120s), causing more frequent requests after rate-limit errors instead of fewer
+- API requests could be permanently rejected (HTTP 429) due to endpoint restrictions on the server side
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.3.0...HEAD)
 

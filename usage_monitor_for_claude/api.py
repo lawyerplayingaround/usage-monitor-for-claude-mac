@@ -16,13 +16,13 @@ from typing import Any
 
 import requests
 
-from . import __version__
 from .i18n import T
 
 # ── API endpoints & credentials ───────────────────────────────
 API_URL_USAGE = 'https://api.anthropic.com/api/oauth/usage'
 API_URL_PROFILE = 'https://api.anthropic.com/api/oauth/profile'
 CLAUDE_CREDENTIALS = Path.home() / '.claude' / '.credentials.json'
+USER_AGENT = 'claude-code/2.1.69'
 
 
 def read_access_token() -> str | None:
@@ -46,7 +46,7 @@ def api_headers() -> dict[str, str] | None:
     return {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
-        'User-Agent': f'usage-monitor-for-claude/{__version__}',
+        'User-Agent': USER_AGENT,
         'anthropic-beta': 'oauth-2025-04-20',
     }
 
