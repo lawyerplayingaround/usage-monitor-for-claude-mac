@@ -2,7 +2,7 @@
 Claude CLI Tests
 ==================
 
-Unit tests for find_installations(), refresh_token(), and _cli_version().
+Unit tests for find_installations(), refresh_token(), and cli_version().
 """
 from __future__ import annotations
 
@@ -16,18 +16,18 @@ from usage_monitor_for_claude import claude_cli
 from usage_monitor_for_claude.claude_cli import (
     ClaudeInstallation,
     RefreshResult,
-    _cli_version,
+    cli_version,
     find_installations,
     refresh_token,
 )
 
 
 # ---------------------------------------------------------------------------
-# _cli_version
+# cli_version
 # ---------------------------------------------------------------------------
 
 class TestCliVersion(unittest.TestCase):
-    """Tests for _cli_version()."""
+    """Tests for cli_version()."""
 
     def setUp(self):
         claude_cli._version_cache.clear()
@@ -37,42 +37,42 @@ class TestCliVersion(unittest.TestCase):
     def test_parses_version_string(self, _mock_stat, mock_run):
         """Extracts version from '2.1.69 (Claude Code)' output."""
         mock_run.return_value = MagicMock(stdout='2.1.69 (Claude Code)\n', returncode=0)
-        self.assertEqual(_cli_version(Path('/fake/claude.exe')), '2.1.69')
+        self.assertEqual(cli_version(Path('/fake/claude.exe')), '2.1.69')
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
     def test_version_only(self, _mock_stat, mock_run):
         """Handles bare version string without suffix."""
         mock_run.return_value = MagicMock(stdout='3.0.0\n', returncode=0)
-        self.assertEqual(_cli_version(Path('/fake/claude.exe')), '3.0.0')
+        self.assertEqual(cli_version(Path('/fake/claude.exe')), '3.0.0')
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
     def test_empty_output(self, _mock_stat, mock_run):
         """Returns empty string when output is empty."""
         mock_run.return_value = MagicMock(stdout='', returncode=0)
-        self.assertEqual(_cli_version(Path('/fake/claude.exe')), '')
+        self.assertEqual(cli_version(Path('/fake/claude.exe')), '')
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
     def test_non_version_output(self, _mock_stat, mock_run):
         """Returns empty string for non-version output."""
         mock_run.return_value = MagicMock(stdout='error: something wrong', returncode=1)
-        self.assertEqual(_cli_version(Path('/fake/claude.exe')), '')
+        self.assertEqual(cli_version(Path('/fake/claude.exe')), '')
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
     def test_timeout_returns_empty(self, _mock_stat, mock_run):
         """Returns empty string on timeout."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd='claude', timeout=10)
-        self.assertEqual(_cli_version(Path('/fake/claude.exe')), '')
+        self.assertEqual(cli_version(Path('/fake/claude.exe')), '')
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
     def test_os_error_returns_empty(self, _mock_stat, mock_run):
         """Returns empty string on OSError (binary not found)."""
         mock_run.side_effect = OSError('not found')
-        self.assertEqual(_cli_version(Path('/fake/claude.exe')), '')
+        self.assertEqual(cli_version(Path('/fake/claude.exe')), '')
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
     @patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0))
@@ -80,7 +80,7 @@ class TestCliVersion(unittest.TestCase):
         """Calls subprocess with correct arguments."""
         mock_run.return_value = MagicMock(stdout='2.1.69\n', returncode=0)
         path = Path('/fake/claude.exe')
-        _cli_version(path)
+        cli_version(path)
         mock_run.assert_called_once_with(
             [str(path), '--version'],
             capture_output=True, text=True, timeout=10,
@@ -92,8 +92,8 @@ class TestCliVersion(unittest.TestCase):
         """Second call with same mtime returns cached version without subprocess."""
         mock_run.return_value = MagicMock(stdout='2.1.69\n', returncode=0)
         path = Path('/fake/claude.exe')
-        self.assertEqual(_cli_version(path), '2.1.69')
-        self.assertEqual(_cli_version(path), '2.1.69')
+        self.assertEqual(cli_version(path), '2.1.69')
+        self.assertEqual(cli_version(path), '2.1.69')
         mock_run.assert_called_once()
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
@@ -102,16 +102,16 @@ class TestCliVersion(unittest.TestCase):
         mock_run.return_value = MagicMock(stdout='2.1.69\n', returncode=0)
         path = Path('/fake/claude.exe')
         with patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=1000.0)):
-            self.assertEqual(_cli_version(path), '2.1.69')
+            self.assertEqual(cli_version(path), '2.1.69')
         mock_run.return_value = MagicMock(stdout='3.0.0\n', returncode=0)
         with patch('pathlib.Path.stat', return_value=MagicMock(st_mtime=2000.0)):
-            self.assertEqual(_cli_version(path), '3.0.0')
+            self.assertEqual(cli_version(path), '3.0.0')
         self.assertEqual(mock_run.call_count, 2)
 
     def test_stat_failure_returns_empty(self):
         """Returns empty string when stat() fails (file deleted)."""
         with patch('pathlib.Path.stat', side_effect=OSError('not found')):
-            self.assertEqual(_cli_version(Path('/fake/claude.exe')), '')
+            self.assertEqual(cli_version(Path('/fake/claude.exe')), '')
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +121,7 @@ class TestCliVersion(unittest.TestCase):
 class TestFindInstallations(unittest.TestCase):
     """Tests for find_installations()."""
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     @patch('usage_monitor_for_claude.claude_cli._EXTENSION_DIRS', [])
     def test_no_installations_found(self, mock_cli_path, _mock_version):
@@ -130,7 +130,7 @@ class TestFindInstallations(unittest.TestCase):
         result = find_installations()
         self.assertEqual(result, [])
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='2.1.69')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='2.1.69')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     @patch('usage_monitor_for_claude.claude_cli._EXTENSION_DIRS', [])
     def test_cli_only(self, mock_cli_path, _mock_version):
@@ -141,7 +141,7 @@ class TestFindInstallations(unittest.TestCase):
         self.assertEqual(result[0].name, 'CLI')
         self.assertEqual(result[0].version, '2.1.69')
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     @patch('usage_monitor_for_claude.claude_cli._EXTENSION_DIRS', [])
     def test_cli_exists_but_version_fails(self, mock_cli_path, _mock_version):
@@ -150,7 +150,7 @@ class TestFindInstallations(unittest.TestCase):
         result = find_installations()
         self.assertEqual(result, [])
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     def test_vscode_extension(self, mock_cli_path, _mock_version):
         """Finds VS Code extension and extracts version from directory name."""
@@ -164,7 +164,7 @@ class TestFindInstallations(unittest.TestCase):
         self.assertEqual(result[0].name, 'VS Code')
         self.assertEqual(result[0].version, '2.1.69')
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     def test_picks_highest_version(self, mock_cli_path, _mock_version):
         """When multiple extension versions exist, picks the highest."""
@@ -179,7 +179,7 @@ class TestFindInstallations(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].version, '2.1.69')
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     def test_ignores_non_claude_extensions(self, mock_cli_path, _mock_version):
         """Ignores directories that don't match the Claude extension prefix."""
@@ -193,7 +193,7 @@ class TestFindInstallations(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].version, '2.1.69')
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     def test_nonexistent_extension_dir_skipped(self, mock_cli_path, _mock_version):
         """Extension directories that don't exist are silently skipped."""
@@ -202,7 +202,7 @@ class TestFindInstallations(unittest.TestCase):
             result = find_installations()
         self.assertEqual(result, [])
 
-    @patch('usage_monitor_for_claude.claude_cli._cli_version', return_value='2.1.69')
+    @patch('usage_monitor_for_claude.claude_cli.cli_version', return_value='2.1.69')
     @patch('usage_monitor_for_claude.claude_cli.CLAUDE_CLI_PATH')
     def test_cli_and_extensions_combined(self, mock_cli_path, _mock_version):
         """Returns both CLI and extension installations."""

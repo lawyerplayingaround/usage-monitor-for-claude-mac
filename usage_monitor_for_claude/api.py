@@ -22,7 +22,15 @@ from .i18n import T
 API_URL_USAGE = 'https://api.anthropic.com/api/oauth/usage'
 API_URL_PROFILE = 'https://api.anthropic.com/api/oauth/profile'
 CLAUDE_CREDENTIALS = Path.home() / '.claude' / '.credentials.json'
-USER_AGENT = 'claude-code/2.1.69'
+_FALLBACK_USER_AGENT = 'claude-code/2.1.69'
+
+
+def _user_agent() -> str:
+    """Return the User-Agent string with the installed Claude Code version."""
+    from .claude_cli import CLAUDE_CLI_PATH, cli_version
+
+    version = cli_version(CLAUDE_CLI_PATH)
+    return f'claude-code/{version}' if version else _FALLBACK_USER_AGENT
 
 
 def read_access_token() -> str | None:
@@ -46,7 +54,7 @@ def api_headers() -> dict[str, str] | None:
     return {
         'Authorization': f'Bearer {token}',
         'Content-Type': 'application/json',
-        'User-Agent': USER_AGENT,
+        'User-Agent': _user_agent(),
         'anthropic-beta': 'oauth-2025-04-20',
     }
 

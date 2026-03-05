@@ -26,6 +26,8 @@ _EXTENSION_PREFIX = 'anthropic.claude-code-'
 
 CHANGELOG_URL = 'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md'
 
+__all__ = ['CLAUDE_CLI_PATH', 'CHANGELOG_URL', 'ClaudeInstallation', 'RefreshResult', 'cli_version', 'find_installations', 'refresh_token']
+
 # Cache: path → (mtime, version) - avoids re-running subprocess when the binary hasn't changed
 _version_cache: dict[Path, tuple[float, str]] = {}
 
@@ -66,7 +68,7 @@ def find_installations() -> list[ClaudeInstallation]:
 
     # Native CLI
     if CLAUDE_CLI_PATH.is_file():
-        version = _cli_version(CLAUDE_CLI_PATH)
+        version = cli_version(CLAUDE_CLI_PATH)
         if version:
             results.append(ClaudeInstallation('CLI', version, CLAUDE_CLI_PATH))
 
@@ -149,7 +151,7 @@ def refresh_token() -> RefreshResult:
     return RefreshResult(success=False, updated=False, old_version='', new_version='', error=output.strip()[:200])
 
 
-def _cli_version(path: Path) -> str:
+def cli_version(path: Path) -> str:
     """Run ``claude --version`` and return the version string, or ``''``.
 
     Results are cached by file modification time so the subprocess is
