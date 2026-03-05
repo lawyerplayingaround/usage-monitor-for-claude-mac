@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.4.0...HEAD)
+
+## [1.4.0] - 2026-03-05
+
 ### Changed
 
 - Rate-limit errors (HTTP 429) now use exponential backoff instead of the short error interval, preventing the app from making the problem worse by polling faster
@@ -16,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - API requests could be permanently rejected (HTTP 429) due to endpoint restrictions on the server side
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.3.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.3.0...v1.4.0)
 
 ## [1.3.0] - 2026-03-02
 
