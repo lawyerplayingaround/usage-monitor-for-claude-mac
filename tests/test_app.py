@@ -294,6 +294,63 @@ class TestTimeAwareAlerts(unittest.TestCase):
         self.app.icon.notify.assert_called_once()
 
 
+class TestConsecutiveErrors(unittest.TestCase):
+    """Tests for _consecutive_errors tracking."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_error_increments_counter(self, _tooltip, _status, mock_fetch):
+        """Each error increments _consecutive_errors."""
+        mock_fetch.return_value = {'error': 'fail'}
+
+        self.app.update()
+        self.assertEqual(self.app._consecutive_errors, 1)
+
+        self.app.update()
+        self.assertEqual(self.app._consecutive_errors, 2)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_success_resets_counter(self, _tooltip, _icon, mock_fetch):
+        """Successful fetch resets _consecutive_errors to 0."""
+        self.app._consecutive_errors = 5
+        mock_fetch.return_value = {'five_hour': {'utilization': 10.0}}
+
+        self.app.update()
+
+        self.assertEqual(self.app._consecutive_errors, 0)
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_server_message_appended_to_last_error(self, _tooltip, _status, mock_fetch):
+        """Server message is appended to _last_error with newline."""
+        mock_fetch.return_value = {'error': 'HTTP 429', 'server_message': 'Rate limited.'}
+
+        self.app.update()
+
+        self.assertEqual(self.app._last_error, 'HTTP 429\nRate limited.')
+
+    @patch('usage_monitor_for_claude.app.fetch_usage')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    def test_no_server_message_leaves_error_unchanged(self, _tooltip, _status, mock_fetch):
+        """Without server_message, _last_error is just the error string."""
+        mock_fetch.return_value = {'error': 'HTTP 500'}
+
+        self.app.update()
+
+        self.assertEqual(self.app._last_error, 'HTTP 500')
+
+
 class TestCachedUsageOnError(unittest.TestCase):
     """Tests for cached usage preservation during API errors."""
 

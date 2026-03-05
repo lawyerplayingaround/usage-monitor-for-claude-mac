@@ -51,6 +51,37 @@ def api_headers() -> dict[str, str] | None:
     }
 
 
+def _extract_server_message(response: requests.Response | None) -> str | None:
+    """Extract ``error.message`` from a JSON error response body.
+
+    Strips the trailing "Please try again later." suffix that the API
+    appends to some error messages - the app retries automatically, so
+    the advice would be misleading.
+    """
+    if response is None:
+        return None
+    try:
+        msg = response.json().get('error', {}).get('message') or None
+        if msg:
+            msg = msg.removesuffix(' Please try again later.').removesuffix(' Please try again later').strip()
+        return msg or None
+    except Exception:
+        return None
+
+
+def _parse_retry_after(response: requests.Response | None) -> int | None:
+    """Parse the ``Retry-After`` header as an integer number of seconds."""
+    if response is None:
+        return None
+    raw = response.headers.get('Retry-After')
+    if raw is None:
+        return None
+    try:
+        return max(int(raw), 0)
+    except (ValueError, TypeError):
+        return None
+
+
 def fetch_usage() -> dict[str, Any]:
     """Fetch usage data from the Anthropic OAuth usage API."""
     headers = api_headers()
@@ -65,11 +96,21 @@ def fetch_usage() -> dict[str, Any]:
         return {'error': T['connection_error']}
     except requests.HTTPError as e:
         code = e.response.status_code if e.response is not None else 0
+        server_msg = _extract_server_message(e.response)
+        extra: dict[str, Any] = {}
+        if server_msg:
+            extra['server_message'] = server_msg
+
         if code == 401:
-            return {'error': T['auth_expired'], 'auth_error': True}
+            return {**extra, 'error': T['auth_expired'], 'auth_error': True}
+        if code == 429:
+            retry = _parse_retry_after(e.response)
+            if retry is not None:
+                extra['retry_after'] = retry
+            return {**extra, 'error': T['http_error'].format(code=429), 'rate_limited': True}
         if 500 <= code < 600:
-            return {'error': T['server_error'].format(code=code)}
-        return {'error': T['http_error'].format(code=code or '?')}
+            return {**extra, 'error': T['server_error'].format(code=code)}
+        return {**extra, 'error': T['http_error'].format(code=code or '?')}
     except Exception:
         return {'error': T['connection_error']}
 

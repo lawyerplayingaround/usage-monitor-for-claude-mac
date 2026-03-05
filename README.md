@@ -14,7 +14,7 @@ A native Windows tray app that shows your Claude usage at a glance - lightweight
 - **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, and data freshness
 - **Time marker** on each bar - a white line showing elapsed time in the current period, so you can instantly see whether your usage is ahead of or behind the clock
 - **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
-- **Adaptive polling** - speeds up during active usage, slows down when idle, and aligns to imminent quota resets
+- **Adaptive polling** - speeds up during active usage, slows down when idle, aligns to imminent quota resets, and backs off on rate-limit errors
 - **12 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - auto-detected from your Windows display language
 - **Customizable** - optionally override polling intervals, colors, alert thresholds, and more via a [JSON settings file](#configuration)
 
@@ -117,7 +117,7 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | `poll_interval` | `120` | Seconds between API updates |
 | `poll_fast` | `60` | Seconds when usage is actively increasing |
 | `poll_fast_extra` | `2` | Extra fast polls after usage stops increasing |
-| `poll_error` | `30` | Seconds after a failed request |
+| `poll_error` | `30` | Seconds after a transient error (5xx, network). Rate-limit errors (429) use exponential backoff instead |
 
 ### Currency
 

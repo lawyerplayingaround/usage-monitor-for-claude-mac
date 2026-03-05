@@ -12,7 +12,7 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.api import API_URL_USAGE, fetch_usage, read_access_token
+from usage_monitor_for_claude.api import API_URL_USAGE, _extract_server_message, _parse_retry_after, fetch_usage, read_access_token
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
@@ -121,6 +121,7 @@ class TestFetchUsage(unittest.TestCase):
         import requests
         mock_resp = MagicMock()
         mock_resp.status_code = 401
+        mock_resp.json.return_value = {}
         mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
         mock_get.return_value = mock_resp
 
@@ -136,6 +137,7 @@ class TestFetchUsage(unittest.TestCase):
         import requests
         mock_resp = MagicMock()
         mock_resp.status_code = 500
+        mock_resp.json.return_value = {}
         mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
         mock_get.return_value = mock_resp
 
@@ -150,6 +152,7 @@ class TestFetchUsage(unittest.TestCase):
         import requests
         mock_resp = MagicMock()
         mock_resp.status_code = 503
+        mock_resp.json.return_value = {}
         mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
         mock_get.return_value = mock_resp
 
@@ -164,6 +167,7 @@ class TestFetchUsage(unittest.TestCase):
         import requests
         mock_resp = MagicMock()
         mock_resp.status_code = 403
+        mock_resp.json.return_value = {}
         mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
         mock_get.return_value = mock_resp
 
@@ -205,6 +209,165 @@ class TestFetchUsage(unittest.TestCase):
 
         called_url = mock_get.call_args[0][0]
         self.assertEqual(called_url, 'https://api.anthropic.com/api/oauth/usage')
+
+
+# ---------------------------------------------------------------------------
+# 429 / rate limit handling
+# ---------------------------------------------------------------------------
+
+@patch('usage_monitor_for_claude.api.T', EN)
+class TestFetchUsageRateLimit(unittest.TestCase):
+    """Tests for HTTP 429 rate-limit handling in fetch_usage()."""
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_429_returns_rate_limited_flag(self, _mock_headers, mock_get):
+        """HTTP 429 sets rate_limited flag."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        mock_resp.headers = {}
+        mock_resp.json.return_value = {}
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertTrue(result['rate_limited'])
+        self.assertEqual(result['error'], EN['http_error'].format(code=429))
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_429_with_retry_after(self, _mock_headers, mock_get):
+        """HTTP 429 with Retry-After header includes retry_after in result."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        mock_resp.headers = {'Retry-After': '60'}
+        mock_resp.json.return_value = {}
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertEqual(result['retry_after'], 60)
+        self.assertTrue(result['rate_limited'])
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_429_with_server_message(self, _mock_headers, mock_get):
+        """HTTP 429 with JSON error body includes server_message."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        mock_resp.headers = {'Retry-After': '0'}
+        mock_resp.json.return_value = {'error': {'message': 'Rate limited. Please try again later.'}}
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertEqual(result['server_message'], 'Rate limited.')
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_429_without_retry_after_header(self, _mock_headers, mock_get):
+        """HTTP 429 without Retry-After header omits retry_after from result."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 429
+        mock_resp.headers = {}
+        mock_resp.json.return_value = {}
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertNotIn('retry_after', result)
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_server_message_on_non_429_error(self, _mock_headers, mock_get):
+        """Server message is included for non-429 HTTP errors too."""
+        import requests
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        mock_resp.json.return_value = {'error': {'message': 'Internal server error'}}
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        result = fetch_usage()
+
+        self.assertEqual(result['server_message'], 'Internal server error')
+
+
+# ---------------------------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------------------------
+
+class TestExtractServerMessage(unittest.TestCase):
+    """Tests for _extract_server_message()."""
+
+    def test_none_response(self):
+        self.assertIsNone(_extract_server_message(None))
+
+    def test_json_error_message(self):
+        resp = MagicMock()
+        resp.json.return_value = {'error': {'message': 'Something went wrong.'}}
+        self.assertEqual(_extract_server_message(resp), 'Something went wrong.')
+
+    def test_strips_retry_suffix(self):
+        """Strips 'Please try again later.' suffix since the app retries automatically."""
+        resp = MagicMock()
+        resp.json.return_value = {'error': {'message': 'Rate limited. Please try again later.'}}
+        self.assertEqual(_extract_server_message(resp), 'Rate limited.')
+
+    def test_empty_message(self):
+        resp = MagicMock()
+        resp.json.return_value = {'error': {'message': ''}}
+        self.assertIsNone(_extract_server_message(resp))
+
+    def test_no_error_key(self):
+        resp = MagicMock()
+        resp.json.return_value = {'status': 'ok'}
+        self.assertIsNone(_extract_server_message(resp))
+
+    def test_html_body(self):
+        resp = MagicMock()
+        resp.json.side_effect = ValueError('not JSON')
+        self.assertIsNone(_extract_server_message(resp))
+
+
+class TestParseRetryAfter(unittest.TestCase):
+    """Tests for _parse_retry_after()."""
+
+    def test_none_response(self):
+        self.assertIsNone(_parse_retry_after(None))
+
+    def test_valid_integer(self):
+        resp = MagicMock()
+        resp.headers = {'Retry-After': '120'}
+        self.assertEqual(_parse_retry_after(resp), 120)
+
+    def test_zero_value(self):
+        resp = MagicMock()
+        resp.headers = {'Retry-After': '0'}
+        self.assertEqual(_parse_retry_after(resp), 0)
+
+    def test_negative_clamped_to_zero(self):
+        resp = MagicMock()
+        resp.headers = {'Retry-After': '-5'}
+        self.assertEqual(_parse_retry_after(resp), 0)
+
+    def test_missing_header(self):
+        resp = MagicMock()
+        resp.headers = {}
+        self.assertIsNone(_parse_retry_after(resp))
+
+    def test_non_numeric_value(self):
+        resp = MagicMock()
+        resp.headers = {'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT'}
+        self.assertIsNone(_parse_retry_after(resp))
 
 
 if __name__ == '__main__':

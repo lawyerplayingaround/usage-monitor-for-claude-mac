@@ -55,6 +55,7 @@ class UsageMonitorForClaude:
         self._prev_5h = None
         self._prev_7d = None
         self._fast_polls_remaining = 0
+        self._consecutive_errors = 0
         self._popup_open = False
         self._data_version = 0
         self._notified_thresholds: dict[str, float] = {}
@@ -143,7 +144,11 @@ class UsageMonitorForClaude:
         self.usage_data = fetch_usage()
 
         if 'error' in self.usage_data:
+            self._consecutive_errors += 1
             self._last_error = self.usage_data['error']
+            server_msg = self.usage_data.get('server_message')
+            if server_msg:
+                self._last_error += f'\n{server_msg}'
             if self.usage_data.get('auth_error'):
                 self._last_failed_token = read_access_token()
 
@@ -153,6 +158,7 @@ class UsageMonitorForClaude:
             self._data_version += 1
             return
 
+        self._consecutive_errors = 0
         self._last_error = None
         self._last_success_time = time.time()
         self._cached_usage = self.usage_data
@@ -237,19 +243,32 @@ class UsageMonitorForClaude:
 
         return earliest
 
+    _MAX_BACKOFF = 900
+
     def poll_loop(self) -> None:
         """Poll the API in a loop with adaptive intervals.
 
         Uses faster polling (``POLL_FAST``) when session usage is increasing,
-        slower polling (``POLL_INTERVAL``) when idle, and error-rate polling
-        (``POLL_ERROR``) after failed requests.  When a quota reset is
-        imminent (within ``interval * 1.5``), the next poll is aligned to
-        the reset time for immediate post-reset feedback.
+        slower polling (``POLL_INTERVAL``) when idle.  Rate-limit errors
+        (HTTP 429) use the server's ``Retry-After`` header when available,
+        otherwise exponential backoff starting at ``POLL_INTERVAL`` up to
+        ``_MAX_BACKOFF`` (15 min).  Transient errors (5xx, network) use
+        ``POLL_ERROR`` for quick recovery.
+
+        When a quota reset is imminent (within ``interval * 1.5``), the
+        next poll is aligned to the reset time for immediate post-reset
+        feedback.
         """
         self.profile_data = fetch_profile()
         while self.running:
             self.update()
-            if 'error' in self.usage_data:
+            if self.usage_data.get('rate_limited'):
+                retry_after = self.usage_data.get('retry_after')
+                if retry_after is not None and retry_after > 0:
+                    interval = max(retry_after, POLL_INTERVAL)
+                else:
+                    interval = int(min(POLL_INTERVAL * (2 ** (self._consecutive_errors - 1)), self._MAX_BACKOFF))
+            elif 'error' in self.usage_data:
                 interval = POLL_ERROR
             elif self._fast_polls_remaining > 0:
                 interval = POLL_FAST
