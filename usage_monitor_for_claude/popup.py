@@ -150,7 +150,6 @@ class UsagePopup:
                 self._info_row(self._main_frame, T['email'], email)
             if plan:
                 self._info_row(self._main_frame, T['plan'], plan)
-            tk.Frame(self._main_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
 
         # ── Usage section (rebuilt on refresh) ──
         self._build_usage_section(snap.usage)
@@ -190,6 +189,7 @@ class UsagePopup:
         self._usage_frame = tk.Frame(self._main_frame, bg=BG)
         self._usage_frame.pack(fill='x')
 
+        tk.Frame(self._usage_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
         self._section_heading(self._usage_frame, T['usage'])
 
         first = True
