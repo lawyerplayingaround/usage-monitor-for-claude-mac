@@ -9,9 +9,10 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import tkinter as tk
+import webbrowser
 from typing import TYPE_CHECKING, Any
 
-from .claude_cli import find_installations
+from .claude_cli import CHANGELOG_URL, find_installations
 from .settings import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, time_until
 from .i18n import T
@@ -312,7 +313,8 @@ class UsagePopup:
         frame.pack(fill='x')
 
         tk.Frame(frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
-        self._section_heading(frame, T['claude_code'])
+
+        self._section_heading(frame, T['claude_code'], link_text=T['changelog'], link_url=CHANGELOG_URL)
 
         for inst in installations:
             self._info_row(frame, inst.name, inst.version)
@@ -358,8 +360,17 @@ class UsagePopup:
             self._status_label.configure(text=text, fg=fg)
             self._position_near_tray()
 
-    def _section_heading(self, parent: tk.Frame, text: str) -> None:
-        tk.Label(parent, text=text, font=('Segoe UI', 9, 'bold'), fg=FG_DIM, bg=BG).pack(anchor='w', pady=(8, 2))
+    def _section_heading(self, parent: tk.Frame, text: str, *, link_text: str = '', link_url: str = '') -> None:
+        if not link_text:
+            tk.Label(parent, text=text, font=('Segoe UI', 9, 'bold'), fg=FG_DIM, bg=BG).pack(anchor='w', pady=(8, 2))
+            return
+
+        row = tk.Frame(parent, bg=BG)
+        row.pack(fill='x', pady=(8, 2))
+        tk.Label(row, text=text, font=('Segoe UI', 9, 'bold'), fg=FG_DIM, bg=BG).pack(side='left')
+        link = tk.Label(row, text=link_text, font=('Segoe UI', 8, 'underline'), fg=BAR_FG, bg=BG, cursor='hand2')
+        link.pack(side='right')
+        link.bind('<Button-1>', lambda e: webbrowser.open(link_url))
 
     def _info_row(self, parent: tk.Frame, label: str, value: str) -> None:
         row = tk.Frame(parent, bg=BG)

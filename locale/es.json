@@ -44,6 +44,7 @@
     "extra_usage": "USO EXTRA",
     "extra_usage_spent": "{used} / {limit} gastado",
     "claude_code": "CLAUDE CODE",
+    "changelog": "Changelog",
     "notify_update_title": "Claude Code actualizado",
     "notify_update": "Claude Code actualizado de {old} a {new}.",
     "server_error": "La API de Anthropic no está disponible temporalmente (HTTP {code}).",

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic token refresh - when the OAuth session expires, the app runs `claude update` in the background to renew the token without user intervention
 - Claude Code version display in the detail popup showing installed versions for CLI, VS Code, Cursor, and Windsurf
 - Notification when `claude update` installs a newer CLI version
+- Clickable changelog link in the Claude Code section of the detail popup, opening the official Claude Code changelog on GitHub
 - User-configurable `max_backoff` setting to cap rate-limit backoff duration (default 15 minutes)
 - Terminal logging when running via `python -m usage_monitor_for_claude` - shows API calls, skip reasons, and results (silent in EXE builds)
 
