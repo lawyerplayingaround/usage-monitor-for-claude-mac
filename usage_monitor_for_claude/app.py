@@ -63,6 +63,7 @@ class UsageMonitorForClaude:
         # Popup state
         self._popup_lock = threading.Lock()
         self._popup_open = False
+        self._popup_closed_at = 0.0
 
         # Theme state
         self._light_taskbar = taskbar_uses_light_theme()
@@ -88,6 +89,8 @@ class UsageMonitorForClaude:
     def on_show_popup(self, icon: Any = None, item: Any = None) -> None:
         with self._popup_lock:
             if self._popup_open:
+                return
+            if time.time() - self._popup_closed_at < 0.15:
                 return
             self._popup_open = True
         threading.Thread(target=self._open_popup, daemon=True).start()
@@ -125,6 +128,7 @@ class UsageMonitorForClaude:
                 threading.Thread(target=_bg_refresh, daemon=True).start()
             UsagePopup(self)
         finally:
+            self._popup_closed_at = time.time()
             self._popup_open = False
 
     # ── Tray rendering ────────────────────────────────────────
