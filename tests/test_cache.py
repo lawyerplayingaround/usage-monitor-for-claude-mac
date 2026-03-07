@@ -568,7 +568,7 @@ class TestTokenRefresh(unittest.TestCase):
 
         result = cache._try_token_refresh('old-token')
 
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertTrue(result.success)
         self.assertEqual(cache.usage, _SUCCESS_DATA)
         self.assertIsNone(cache.last_error)
@@ -604,7 +604,7 @@ class TestTokenRefresh(unittest.TestCase):
         cache = _make_cache()
 
         result = cache._try_token_refresh('old-token')
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertTrue(result.success)
         self.assertEqual(cache.last_error, 'expired')
         # _try_token_refresh does not increment _consecutive_errors (caller already did)
@@ -669,7 +669,7 @@ class TestTokenRefresh(unittest.TestCase):
         result = cache.update()
 
         self.assertEqual(result.data, _AUTH_ERROR_DATA)
-        self.assertIsNotNone(result.token_refresh)
+        assert result.token_refresh is not None
         self.assertTrue(result.token_refresh.updated)
         self.assertIsNotNone(cache.last_error)
 
@@ -806,6 +806,7 @@ class TestUpdateResult(unittest.TestCase):
         refresh = RefreshResult(success=True, updated=True, old_version='1.0', new_version='2.0', error='')
         result = UpdateResult(data=_SUCCESS_DATA, token_refresh=refresh)
         self.assertEqual(result.data, _SUCCESS_DATA)
+        assert result.token_refresh is not None
         self.assertTrue(result.token_refresh.updated)
 
 

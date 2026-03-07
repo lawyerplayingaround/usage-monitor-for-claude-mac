@@ -241,7 +241,7 @@ class UsageCache:
 
         pct_5h = data.get('five_hour', {}).get('utilization')
         pct_7d = data.get('seven_day', {}).get('utilization')
-        log.info('fetch_usage -> OK (5h: %s%%, 7d: %s%%)', f'{pct_5h:.0f}' if pct_5h is not None else '?', f'{pct_7d:.0f}' if pct_7d is not None else '?')
+        log.info('fetch_usage -> OK (5h: %s%%, 7d: %s%%)', pct_5h if pct_5h is not None else '?', pct_7d if pct_7d is not None else '?')
         self._record_success(data)
         return UpdateResult(data=data)
 
@@ -249,10 +249,11 @@ class UsageCache:
         """Apply common state updates after a failed API response."""
         with self._state_lock:
             self._consecutive_errors += 1
-            self._last_error = data['error']
+            error = data['error']
             server_msg = data.get('server_message')
             if server_msg:
-                self._last_error += f'\n{server_msg}'
+                error += f'\n{server_msg}'
+            self._last_error = error
 
     def _record_success(self, data: dict[str, Any]) -> None:
         """Apply common state updates after a successful API response."""
@@ -305,9 +306,10 @@ class UsageCache:
         # but do not increment _consecutive_errors again (the caller
         # already counted this update cycle as one error).
         with self._state_lock:
-            self._last_error = data['error']
+            error = data['error']
             server_msg = data.get('server_message')
             if server_msg:
-                self._last_error += f'\n{server_msg}'
+                error += f'\n{server_msg}'
+            self._last_error = error
 
         return result

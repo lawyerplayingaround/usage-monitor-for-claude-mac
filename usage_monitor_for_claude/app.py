@@ -294,10 +294,15 @@ class UsageMonitorForClaude:
             self.update()
             interval = self._calculate_poll_interval()
 
-            for _ in range(interval):
-                if not self.running:
-                    break
+            target = time.time() + interval
+            while self.running and time.time() < target:
                 time.sleep(1)
+                # If another thread (manual refresh, popup) fetched
+                # successfully, push the next poll forward to avoid
+                # a redundant fetch right after.
+                lst = self.cache.last_success_time
+                if lst is not None:
+                    target = max(target, lst + interval)
 
     # ── Lifecycle ─────────────────────────────────────────────
 

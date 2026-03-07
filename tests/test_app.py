@@ -748,6 +748,7 @@ class TestSecondsUntilNextReset(unittest.TestCase):
         }
 
         result = self.app._seconds_until_next_reset()
+        assert result is not None
         self.assertAlmostEqual(result, 1800.0, places=0)  # 30 minutes
 
     @patch('usage_monitor_for_claude.app.datetime')
