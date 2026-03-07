@@ -56,8 +56,8 @@ class UpdateResult:
 class UsageCache:
     """Thread-safe cache managing API data, cooldown, and error state.
 
-    All callers (poll loop, popup, manual refresh) go through
-    ``update()`` instead of calling ``fetch_usage()`` directly.
+    All callers (poll loop, popup) go through ``update()`` instead
+    of calling ``fetch_usage()`` directly.
     """
 
     def __init__(self) -> None:
@@ -126,10 +126,6 @@ class UsageCache:
 
     # ── Public methods ────────────────────────────────────────
 
-    def clear_failed_token(self) -> None:
-        """Reset the failed-token guard so the next update retries the API."""
-        self._last_failed_token = None
-
     def ensure_profile(self) -> None:
         """Fetch the account profile if not yet loaded (thread-safe).
 
@@ -149,13 +145,8 @@ class UsageCache:
                 self._profile = profile
             log.info('fetch_profile -> %s', 'OK' if profile else 'failed')
 
-    def update(self, *, force: bool = False) -> UpdateResult:
+    def update(self) -> UpdateResult:
         """Fetch usage data with lock and cooldown protection.
-
-        Parameters
-        ----------
-        force : bool
-            Bypass the cooldown (e.g. for explicit user refresh).
 
         Returns
         -------
@@ -164,28 +155,28 @@ class UsageCache:
             when the call was skipped.  If a token refresh was
             attempted, ``token_refresh`` carries the outcome.
         """
-        if not self._lock.acquire(blocking=force):
+        if not self._lock.acquire(blocking=False):
             log.debug('update skipped (another update in progress)')
             return UpdateResult(data=None)
 
         try:
-            return self._update_locked(force=force)
+            return self._update_locked()
         finally:
             self._lock.release()
 
     # ── Private helpers ───────────────────────────────────────
 
-    def _update_locked(self, *, force: bool = False) -> UpdateResult:
+    def _update_locked(self) -> UpdateResult:
         """Execute the actual update while holding ``_lock``."""
-        if not force and self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
+        if self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
             log.debug('update skipped (cooldown, %.0fs remaining)', POLL_FAST - (time.time() - self._last_success_time))
             return UpdateResult(data=None)
 
-        if not force and time.time() < self._rate_limit_until:
+        if time.time() < self._rate_limit_until:
             log.debug('update skipped (rate-limit backoff, %.0fs remaining)', self._rate_limit_until - time.time())
             return UpdateResult(data=None)
 
-        if not force and self._last_failed_token is not None:
+        if self._last_failed_token is not None:
             if read_access_token() == self._last_failed_token:
                 log.debug('update skipped (token unchanged after auth failure)')
                 return UpdateResult(data=None)

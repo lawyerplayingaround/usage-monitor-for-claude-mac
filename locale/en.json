@@ -8,7 +8,6 @@
     "weekly": "Weekly (7 day)",
     "weekly_sonnet": "Weekly Sonnet",
     "weekly_opus": "Weekly Opus",
-    "refresh": "Refresh now",
     "quit": "Quit",
     "autostart": "Start with Windows",
     "resets_in": "Resets in {duration} ({clock})",

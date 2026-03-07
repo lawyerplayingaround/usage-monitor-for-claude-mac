@@ -50,28 +50,6 @@ class TestLockBehavior(unittest.TestCase):
         result = cache.update()
         self.assertIsNotNone(result.data)
 
-    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
-    def test_force_update_waits_for_lock(self, mock_fetch):
-        """force=True blocks until the lock is released."""
-        import threading
-        cache = _make_cache()
-        cache._lock.acquire()
-        results = []
-
-        def force_update():
-            results.append(cache.update(force=True))
-
-        t = threading.Thread(target=force_update)
-        t.start()
-        # Thread should be blocked waiting for lock
-        t.join(timeout=0.1)
-        self.assertTrue(t.is_alive())
-        # Release the lock to let the thread proceed
-        cache._lock.release()
-        t.join(timeout=5)
-        self.assertFalse(t.is_alive())
-        self.assertIsNotNone(results[0].data)
-
     def test_lock_released_on_exception(self):
         """Lock is released even when fetch_usage raises an exception."""
         cache = _make_cache()
@@ -121,17 +99,6 @@ class TestCooldownBehavior(unittest.TestCase):
         result = cache.update()
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
-
-    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
-    def test_force_bypasses_cooldown(self, mock_fetch):
-        """update(force=True) bypasses the cooldown."""
-        cache = _make_cache()
-        cache.update()
-        mock_fetch.reset_mock()
-
-        result = cache.update(force=True)
-        self.assertIsNotNone(result.data)
-        mock_fetch.assert_called_once()
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
     @patch('usage_monitor_for_claude.cache.time')
@@ -214,12 +181,13 @@ class TestSuccessState(unittest.TestCase):
         # refreshing sets version to 1, _record_success sets version to 2
         self.assertEqual(cache.version, 2)
 
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='new-token')
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
-    def test_success_clears_failed_token_guard(self, _mock):
+    def test_success_clears_failed_token_guard(self, _mock_fetch, _mock_token):
         """Successful response clears a stale _last_failed_token."""
         cache = _make_cache()
         cache._last_failed_token = 'stale-token'
-        cache.update(force=True)
+        cache.update()
         self.assertIsNone(cache._last_failed_token)
 
 
@@ -235,7 +203,7 @@ class TestErrorState(unittest.TestCase):
         cache = _make_cache()
         cache.update()
         self.assertEqual(cache.consecutive_errors, 1)
-        cache.update(force=True)
+        cache.update()
         self.assertEqual(cache.consecutive_errors, 2)
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_ERROR_DATA)
@@ -319,17 +287,6 @@ class TestFailedTokenGuard(unittest.TestCase):
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
 
-    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='same-token')
-    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
-    def test_force_bypasses_failed_token_guard(self, mock_fetch, _mock_token):
-        """force=True bypasses the failed-token guard."""
-        cache = _make_cache()
-        cache._last_failed_token = 'same-token'
-
-        result = cache.update(force=True)
-        self.assertIsNotNone(result.data)
-        mock_fetch.assert_called_once()
-
     @patch('usage_monitor_for_claude.cache.read_access_token', return_value='new-token')
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
     def test_new_token_proceeds(self, mock_fetch, _mock_token):
@@ -348,13 +305,6 @@ class TestFailedTokenGuard(unittest.TestCase):
         cache = _make_cache()
         cache._last_failed_token = 'old-token'
         cache.update()
-        self.assertIsNone(cache._last_failed_token)
-
-    def test_clear_failed_token(self):
-        """clear_failed_token() resets the guard."""
-        cache = _make_cache()
-        cache._last_failed_token = 'some-token'
-        cache.clear_failed_token()
         self.assertIsNone(cache._last_failed_token)
 
     @patch('usage_monitor_for_claude.cache.read_access_token', return_value='token-123')
@@ -403,22 +353,6 @@ class TestRateLimitGuard(unittest.TestCase):
         mock_time.time.return_value = 1000.0 + 200  # Well past POLL_INTERVAL (120s)
         result = cache.update()
         self.assertIsNotNone(result.data)
-
-    @patch('usage_monitor_for_claude.cache.fetch_usage')
-    @patch('usage_monitor_for_claude.cache.time')
-    def test_force_bypasses_rate_limit(self, mock_time, mock_fetch):
-        """force=True bypasses the rate limit guard."""
-        mock_fetch.return_value = {'error': 'HTTP 429', 'rate_limited': True}
-        cache = _make_cache()
-        mock_time.time.return_value = 1000.0
-        cache.update()
-        mock_fetch.reset_mock()
-
-        mock_time.time.return_value = 1010.0  # Still in backoff window
-        mock_fetch.return_value = _SUCCESS_DATA
-        result = cache.update(force=True)
-        self.assertIsNotNone(result.data)
-        mock_fetch.assert_called_once()
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value={'error': 'HTTP 429', 'rate_limited': True, 'retry_after': 300})
     @patch('usage_monitor_for_claude.cache.time')
@@ -488,14 +422,14 @@ class TestRateLimitGuard(unittest.TestCase):
         mock_time.time.return_value = 1000.0
         cache.update()
 
-        # Force a success
-        mock_time.time.return_value = 1010.0
+        # Wait past backoff, then succeed
+        mock_time.time.return_value = 1200.0
         mock_fetch.return_value = _SUCCESS_DATA
-        cache.update(force=True)
+        cache.update()
 
         mock_fetch.reset_mock()
-        # Non-forced call should proceed (rate limit cleared, but cooldown applies)
-        mock_time.time.return_value = 1010.0 + 121
+        # Next call after cooldown should proceed (rate limit cleared by success)
+        mock_time.time.return_value = 1200.0 + 121
         result = cache.update()
         self.assertIsNotNone(result.data)
 

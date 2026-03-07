@@ -8,7 +8,6 @@
     "weekly": "週間（7日間）",
     "weekly_sonnet": "週間 Sonnet",
     "weekly_opus": "週間 Opus",
-    "refresh": "今すぐ更新",
     "quit": "終了",
     "autostart": "Windows起動時に開始",
     "resets_in": "{duration}後にリセット ({clock})",

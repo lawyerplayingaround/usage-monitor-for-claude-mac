@@ -820,22 +820,6 @@ class TestMenuActions(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    def test_on_refresh_clears_failed_token(self):
-        """on_refresh() clears the failed token guard before starting update."""
-        self.app.cache = MagicMock()
-        with patch('usage_monitor_for_claude.app.threading'):
-            self.app.on_refresh()
-        self.app.cache.clear_failed_token.assert_called_once()
-
-    def test_on_refresh_starts_force_update_thread(self):
-        """on_refresh() starts a thread with force=True."""
-        self.app.cache = MagicMock()
-        with patch('usage_monitor_for_claude.app.threading.Thread') as mock_thread:
-            self.app.on_refresh()
-            mock_thread.assert_called_once()
-            call_kwargs = mock_thread.call_args[1]
-            self.assertEqual(call_kwargs['kwargs'], {'force': True})
-
     def test_on_show_popup_guards_against_double_open(self):
         """on_show_popup() does nothing when popup is already open."""
         self.app._popup_open = True

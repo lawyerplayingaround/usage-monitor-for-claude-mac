@@ -75,7 +75,6 @@ class UsageMonitorForClaude:
             title=T['loading'],
             menu=pystray.Menu(
                 pystray.MenuItem(T['title'].replace('&', '&&'), self.on_show_popup, default=True),
-                pystray.MenuItem(T['refresh'], self.on_refresh),
                 pystray.MenuItem(
                     T['autostart'], self.on_toggle_autostart,
                     checked=lambda item: is_autostart_enabled(),
@@ -95,10 +94,6 @@ class UsageMonitorForClaude:
                 return
             self._popup_open = True
         threading.Thread(target=self._open_popup, daemon=True).start()
-
-    def on_refresh(self, icon: Any = None, item: Any = None) -> None:
-        self.cache.clear_failed_token()
-        threading.Thread(target=self.update, kwargs={'force': True}, daemon=True).start()
 
     def on_toggle_autostart(self, icon: Any = None, item: Any = None) -> None:
         set_autostart(not is_autostart_enabled())
@@ -157,15 +152,9 @@ class UsageMonitorForClaude:
 
     # ── Update orchestration ──────────────────────────────────
 
-    def update(self, *, force: bool = False) -> None:
-        """Request a data refresh from the cache and process the result.
-
-        Parameters
-        ----------
-        force : bool
-            Bypass the cooldown (e.g. for explicit user refresh).
-        """
-        result = self.cache.update(force=force)
+    def update(self) -> None:
+        """Request a data refresh from the cache and process the result."""
+        result = self.cache.update()
         if result.data is None:
             return
 

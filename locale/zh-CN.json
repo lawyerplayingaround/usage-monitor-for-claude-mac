@@ -8,7 +8,6 @@
     "weekly": "每周（7天）",
     "weekly_sonnet": "每周 Sonnet",
     "weekly_opus": "每周 Opus",
-    "refresh": "立即刷新",
     "quit": "退出",
     "autostart": "开机自启动",
     "resets_in": "{duration}后重置 ({clock})",

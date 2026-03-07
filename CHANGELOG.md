@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Increased default polling intervals to reduce API rate-limit errors (`poll_interval`: 120 to 180 seconds, `poll_fast`: 60 to 120 seconds)
 - Numeric settings (`poll_interval`, `poll_fast`, etc.) now require integer values - fractional numbers like `120.5` are no longer accepted
 
+### Removed
+
+- "Refresh now" context menu entry - automatic polling makes manual refresh unnecessary, and it could trigger API rate-limit errors
+
 ### Fixed
 
 - A successful token refresh followed by a transient API error (e.g. HTTP 500) no longer permanently blocks the new token from being used

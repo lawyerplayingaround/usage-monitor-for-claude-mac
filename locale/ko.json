@@ -8,7 +8,6 @@
     "weekly": "주간 (7일)",
     "weekly_sonnet": "주간 Sonnet",
     "weekly_opus": "주간 Opus",
-    "refresh": "지금 새로고침",
     "quit": "종료",
     "autostart": "Windows 시작 시 실행",
     "resets_in": "{duration} 후 재설정 ({clock})",
