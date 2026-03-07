@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Claude Code version display in the detail popup showing installed versions for CLI, VS Code, Cursor, and Windsurf
 - Notification when `claude update` installs a newer CLI version
 - User-configurable `max_backoff` setting to cap rate-limit backoff duration (default 15 minutes)
+- Terminal logging when running via `python -m usage_monitor_for_claude` - shows API calls, skip reasons, and results (silent in EXE builds)
 
 ### Fixed
 

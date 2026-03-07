@@ -9,6 +9,7 @@ calls that are too close together (HTTP 429).
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from dataclasses import dataclass
@@ -19,6 +20,8 @@ from .claude_cli import RefreshResult, refresh_token
 from .settings import MAX_BACKOFF, POLL_FAST, POLL_INTERVAL
 
 __all__ = ['CacheSnapshot', 'UpdateResult', 'UsageCache']
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -139,10 +142,12 @@ class UsageCache:
         with self._profile_lock:
             if self._profile is not None:
                 return
+            log.info('fetch_profile started')
             with self._lock:
                 profile = fetch_profile()
             with self._state_lock:
                 self._profile = profile
+            log.info('fetch_profile -> %s', 'OK' if profile else 'failed')
 
     def update(self, *, force: bool = False) -> UpdateResult:
         """Fetch usage data with lock and cooldown protection.
@@ -160,6 +165,7 @@ class UsageCache:
             attempted, ``token_refresh`` carries the outcome.
         """
         if not self._lock.acquire(blocking=force):
+            log.debug('update skipped (another update in progress)')
             return UpdateResult(data=None)
 
         try:
@@ -172,13 +178,16 @@ class UsageCache:
     def _update_locked(self, *, force: bool = False) -> UpdateResult:
         """Execute the actual update while holding ``_lock``."""
         if not force and self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
+            log.debug('update skipped (cooldown, %.0fs remaining)', POLL_FAST - (time.time() - self._last_success_time))
             return UpdateResult(data=None)
 
         if not force and time.time() < self._rate_limit_until:
+            log.debug('update skipped (rate-limit backoff, %.0fs remaining)', self._rate_limit_until - time.time())
             return UpdateResult(data=None)
 
         if not force and self._last_failed_token is not None:
             if read_access_token() == self._last_failed_token:
+                log.debug('update skipped (token unchanged after auth failure)')
                 return UpdateResult(data=None)
             self._last_failed_token = None
 
@@ -197,6 +206,7 @@ class UsageCache:
     def _fetch_and_process(self) -> UpdateResult:
         """Fetch usage data and process the response."""
         token_before = read_access_token()
+        log.info('fetch_usage started')
         data = fetch_usage()
 
         if 'error' in data:
@@ -209,9 +219,11 @@ class UsageCache:
                 else:
                     delay = min(POLL_INTERVAL * (2 ** max(self._consecutive_errors - 1, 0)), MAX_BACKOFF)
                 self._rate_limit_until = time.time() + delay
+                log.warning('fetch_usage -> rate limited, backoff %.0fs', delay)
 
             token_refresh = None
             if data.get('auth_error'):
+                log.warning('fetch_usage -> auth error, attempting token refresh')
                 token_refresh = self._try_token_refresh(token_before)
                 if token_refresh is not None and self._last_error is None:
                     # Token refresh succeeded and retry was successful
@@ -219,12 +231,17 @@ class UsageCache:
                 if token_refresh is None:
                     # Refresh failed or token unchanged - block this token
                     self._last_failed_token = token_before
+            elif not data.get('rate_limited'):
+                log.warning('fetch_usage -> error: %s', data['error'])
 
             with self._state_lock:
                 self._refreshing = False
                 self._version += 1
             return UpdateResult(data=data, token_refresh=token_refresh)
 
+        pct_5h = data.get('five_hour', {}).get('utilization')
+        pct_7d = data.get('seven_day', {}).get('utilization')
+        log.info('fetch_usage -> OK (5h: %s%%, 7d: %s%%)', f'{pct_5h:.0f}' if pct_5h is not None else '?', f'{pct_7d:.0f}' if pct_7d is not None else '?')
         self._record_success(data)
         return UpdateResult(data=data)
 
@@ -268,17 +285,22 @@ class UsageCache:
         """
         result = refresh_token()
         if not result.success:
+            log.info('token refresh failed: %s', result.error)
             return None
 
         if read_access_token() == token_before:
+            log.info('token refresh succeeded but token unchanged')
             return None
 
         # Token changed - retry the API call
+        log.info('token changed, retrying fetch_usage')
         data = fetch_usage()
         if 'error' not in data:
+            log.info('retry -> OK')
             self._record_success(data)
             return result
 
+        log.warning('retry -> error: %s', data['error'])
         # Retry failed - update error message with retry details
         # but do not increment _consecutive_errors again (the caller
         # already counted this update cycle as one error).
