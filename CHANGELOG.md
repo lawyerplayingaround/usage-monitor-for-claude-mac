@@ -9,11 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Idle and lock detection - polling pauses when the computer is idle (default: 300 seconds of no keyboard/mouse input) or locked, and resumes immediately when activity returns. Configurable via the `idle_pause` setting (set to `0` to disable)
 - Automatic token refresh - when the OAuth session expires, the app runs `claude update` in the background to renew the token without user intervention
 - Claude Code version display in the detail popup showing installed versions for CLI, VS Code, Cursor, and Windsurf
 - Notification when `claude update` installs a newer CLI version
 - User-configurable `max_backoff` setting to cap rate-limit backoff duration (default 15 minutes)
 - Terminal logging when running via `python -m usage_monitor_for_claude` - shows API calls, skip reasons, and results (silent in EXE builds)
+
+### Changed
+
+- Numeric settings (`poll_interval`, `poll_fast`, etc.) now require integer values - fractional numbers like `120.5` are no longer accepted
 
 ### Fixed
 

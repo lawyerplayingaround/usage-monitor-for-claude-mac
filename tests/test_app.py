@@ -849,5 +849,101 @@ class TestMenuActions(unittest.TestCase):
         self.app.icon.stop.assert_called_once()
 
 
+# ---------------------------------------------------------------------------
+# _is_user_away (idle/lock detection)
+# ---------------------------------------------------------------------------
+
+class TestIsUserAway(unittest.TestCase):
+    """Tests for _is_user_away() idle and lock detection."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=True)
+    def test_locked_is_away(self, _locked):
+        """User is away when workstation is locked."""
+        self.assertTrue(self.app._is_user_away())
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=False)
+    @patch('usage_monitor_for_claude.app.get_idle_seconds', return_value=400.0)
+    @patch('usage_monitor_for_claude.app.IDLE_PAUSE', 300)
+    def test_idle_over_threshold_is_away(self, _idle, _locked):
+        """User is away when idle time exceeds IDLE_PAUSE."""
+        self.assertTrue(self.app._is_user_away())
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=False)
+    @patch('usage_monitor_for_claude.app.get_idle_seconds', return_value=200.0)
+    @patch('usage_monitor_for_claude.app.IDLE_PAUSE', 300)
+    def test_idle_under_threshold_not_away(self, _idle, _locked):
+        """User is not away when idle time is below IDLE_PAUSE."""
+        self.assertFalse(self.app._is_user_away())
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=False)
+    @patch('usage_monitor_for_claude.app.get_idle_seconds', return_value=300.0)
+    @patch('usage_monitor_for_claude.app.IDLE_PAUSE', 300)
+    def test_idle_exactly_at_threshold_is_away(self, _idle, _locked):
+        """User is away when idle time equals IDLE_PAUSE exactly."""
+        self.assertTrue(self.app._is_user_away())
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=False)
+    @patch('usage_monitor_for_claude.app.get_idle_seconds', return_value=9999.0)
+    @patch('usage_monitor_for_claude.app.IDLE_PAUSE', 0)
+    def test_idle_disabled_with_zero(self, _idle, _locked):
+        """Idle detection disabled when IDLE_PAUSE is 0."""
+        self.assertFalse(self.app._is_user_away())
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=True)
+    @patch('usage_monitor_for_claude.app.IDLE_PAUSE', 0)
+    def test_locked_detected_even_when_idle_disabled(self, _locked):
+        """Lock detection works even when idle detection is disabled."""
+        self.assertTrue(self.app._is_user_away())
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=False)
+    @patch('usage_monitor_for_claude.app.get_idle_seconds', return_value=0.0)
+    @patch('usage_monitor_for_claude.app.IDLE_PAUSE', 300)
+    def test_active_user_not_away(self, _idle, _locked):
+        """User is not away when active (0 idle seconds)."""
+        self.assertFalse(self.app._is_user_away())
+
+
+# ---------------------------------------------------------------------------
+# _wait_for_activity
+# ---------------------------------------------------------------------------
+
+class TestWaitForActivity(unittest.TestCase):
+    """Tests for _wait_for_activity() blocking behavior."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    def test_exits_when_activity_resumes(self, mock_sleep):
+        """Stops blocking when _is_user_away returns False."""
+        with patch.object(self.app, '_is_user_away', side_effect=[True, True, False]):
+            self.app._wait_for_activity()
+        self.assertEqual(mock_sleep.call_count, 2)
+
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    def test_exits_when_running_false(self, mock_sleep):
+        """Stops blocking when running is set to False."""
+        self.app.running = False
+        with patch.object(self.app, '_is_user_away', return_value=True):
+            self.app._wait_for_activity()
+        mock_sleep.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    def test_returns_immediately_if_not_away(self, mock_sleep):
+        """Returns immediately when user is not away."""
+        with patch.object(self.app, '_is_user_away', return_value=False):
+            self.app._wait_for_activity()
+        mock_sleep.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

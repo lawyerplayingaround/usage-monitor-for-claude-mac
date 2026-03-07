@@ -20,7 +20,8 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 from .api import api_headers
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .cache import UsageCache
-from .settings import ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds
+from .idle import get_idle_seconds, is_workstation_locked
+from .settings import ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, IDLE_PAUSE, POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_tooltip
 from .i18n import T
 from .popup import UsagePopup
@@ -291,8 +292,24 @@ class UsageMonitorForClaude:
 
         return interval
 
+    def _is_user_away(self) -> bool:
+        """Return True if the user is idle or the workstation is locked."""
+        if is_workstation_locked():
+            return True
+        return IDLE_PAUSE > 0 and get_idle_seconds() >= IDLE_PAUSE
+
+    def _wait_for_activity(self) -> None:
+        """Block until user activity resumes or the app is stopping."""
+        while self.running and self._is_user_away():
+            time.sleep(2)
+
     def poll_loop(self) -> None:
-        """Poll the API in a loop with adaptive intervals."""
+        """Poll the API in a loop with adaptive intervals.
+
+        Pauses polling when the user is idle or the workstation is
+        locked.  On resume, polls immediately if the regular interval
+        has elapsed since the last successful fetch.
+        """
         self.cache.ensure_profile()
         while self.running:
             self.update()
@@ -307,6 +324,15 @@ class UsageMonitorForClaude:
                 lst = self.cache.last_success_time
                 if lst is not None:
                     target = max(target, lst + interval)
+
+                # Pause polling while the user is away
+                if self._is_user_away():
+                    self._wait_for_activity()
+                    # After resuming: poll immediately if interval has
+                    # elapsed, otherwise let the loop re-evaluate
+                    lst = self.cache.last_success_time
+                    if lst is not None and time.time() - lst >= interval:
+                        break
 
     # ── Lifecycle ─────────────────────────────────────────────
 

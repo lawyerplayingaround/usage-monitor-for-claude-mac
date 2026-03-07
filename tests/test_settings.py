@@ -250,11 +250,11 @@ class TestSettingsValidation(unittest.TestCase):
         result, _ = self._run_validate({'poll_interval': 0})
         self.assertNotIn('poll_interval', result)
 
-    def test_float_numeric_value_valid(self):
-        """Float values are valid for numeric keys."""
+    def test_float_numeric_value_dropped(self):
+        """Float values are dropped for numeric keys (integers only)."""
         result, mock = self._run_validate({'poll_interval': 120.5})
-        self.assertEqual(result['poll_interval'], 120.5)
-        mock.windll.user32.MessageBoxW.assert_not_called()
+        self.assertNotIn('poll_interval', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
 
     def test_non_string_color(self):
         """Non-string value for color key is dropped."""
@@ -316,6 +316,43 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertNotIn('poll_interval', result)
         self.assertEqual(result['poll_fast'], 60)
         self.assertEqual(result['bg'], '#000')
+
+    # ── Non-negative numeric validation ─────────────────────────
+
+    def test_idle_pause_zero_valid(self):
+        """Value 0 for idle_pause is valid (disables idle detection)."""
+        result, mock = self._run_validate({'idle_pause': 0})
+        self.assertEqual(result['idle_pause'], 0)
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_idle_pause_positive_valid(self):
+        """Positive value for idle_pause is valid."""
+        result, mock = self._run_validate({'idle_pause': 600})
+        self.assertEqual(result['idle_pause'], 600)
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_idle_pause_negative_dropped(self):
+        """Negative value for idle_pause is dropped."""
+        result, mock = self._run_validate({'idle_pause': -1})
+        self.assertNotIn('idle_pause', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_idle_pause_string_dropped(self):
+        """String value for idle_pause is dropped."""
+        result, mock = self._run_validate({'idle_pause': 'five'})
+        self.assertNotIn('idle_pause', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_idle_pause_bool_dropped(self):
+        """Boolean for idle_pause is dropped."""
+        result, _ = self._run_validate({'idle_pause': True})
+        self.assertNotIn('idle_pause', result)
+
+    def test_idle_pause_float_dropped(self):
+        """Float value for idle_pause is dropped (integers only)."""
+        result, mock = self._run_validate({'idle_pause': 120.5})
+        self.assertNotIn('idle_pause', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
 
     # ── Threshold array validation ─────────────────────────────
 

@@ -16,7 +16,7 @@ A native Windows tray app that shows your Claude usage at a glance - lightweight
 - **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
 - **Automatic token refresh** - when the OAuth session expires, runs `claude update` in the background to renew the token without user intervention. If a CLI update is installed, shows a notification
 - **Claude Code versions** - the popup shows installed Claude Code versions (native CLI, VS Code, Cursor, Windsurf) so you always know which version each environment uses
-- **Adaptive polling** - speeds up during active usage, slows down when idle, aligns to imminent quota resets, and backs off on rate-limit errors
+- **Adaptive polling** - speeds up during active usage, pauses when the computer is idle or locked, aligns to imminent quota resets, and backs off on rate-limit errors
 - **12 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - auto-detected from your Windows display language
 - **Customizable** - optionally override polling intervals, colors, alert thresholds, and more via a [JSON settings file](#configuration)
 
@@ -121,6 +121,7 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | `poll_fast_extra` | `2` | Extra fast polls after usage stops increasing |
 | `poll_error` | `30` | Seconds after a transient error (5xx, network). Rate-limit errors (429) use exponential backoff instead |
 | `max_backoff` | `900` | Maximum backoff in seconds for rate-limit errors (15 min) |
+| `idle_pause` | `300` | Seconds of inactivity before polling pauses (0 = disable). Polling also pauses when the workstation is locked |
 
 ### Currency
 

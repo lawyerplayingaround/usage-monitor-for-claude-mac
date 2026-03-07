@@ -23,7 +23,14 @@ from pathlib import Path
 
 SETTINGS_FILENAME = 'usage-monitor-settings.json'
 
-_NUMERIC_KEYS = frozenset({'poll_interval', 'poll_fast', 'poll_fast_extra', 'poll_error', 'max_backoff'})
+_NUMERIC_BOUNDS: dict[str, int] = {
+    'poll_interval': 1,
+    'poll_fast': 1,
+    'poll_fast_extra': 1,
+    'poll_error': 1,
+    'max_backoff': 1,
+    'idle_pause': 0,
+}
 _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg', 'bar_fg_high'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day'})
@@ -75,12 +82,13 @@ def _validate(data: dict, path: Path) -> dict:
     drop: list[str] = []
 
     for key, value in data.items():
-        if key in _NUMERIC_KEYS:
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                errors.append(f'  {key}: expected a number, got {type(value).__name__}')
+        if key in _NUMERIC_BOUNDS:
+            min_val = _NUMERIC_BOUNDS[key]
+            if isinstance(value, bool) or not isinstance(value, int):
+                errors.append(f'  {key}: expected an integer, got {type(value).__name__}')
                 drop.append(key)
-            elif value <= 0:
-                errors.append(f'  {key}: must be > 0, got {value}')
+            elif value < min_val:
+                errors.append(f'  {key}: must be >= {min_val}, got {value}')
                 drop.append(key)
 
         elif key in _COLOR_KEYS:
@@ -154,6 +162,7 @@ POLL_FAST = _S.get('poll_fast', 60)
 POLL_FAST_EXTRA = _S.get('poll_fast_extra', 2)
 POLL_ERROR = _S.get('poll_error', 30)
 MAX_BACKOFF = _S.get('max_backoff', 900)
+IDLE_PAUSE = _S.get('idle_pause', 300)
 
 # ── Popup theme ───────────────────────────────────────────────
 BG = _S.get('bg', '#1e1e1e')
