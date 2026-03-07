@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Increased default polling intervals to reduce API rate-limit errors (`poll_interval`: 120 to 180 seconds, `poll_fast`: 60 to 120 seconds)
+
 - Numeric settings (`poll_interval`, `poll_fast`, etc.) now require integer values - fractional numbers like `120.5` are no longer accepted
 
 ### Fixed

@@ -650,14 +650,14 @@ class TestCalculatePollInterval(unittest.TestCase):
         """Normal state returns POLL_INTERVAL."""
         self.app._last_response = {'five_hour': {'utilization': 50.0}}
         interval = self.app._calculate_poll_interval()
-        self.assertEqual(interval, 120)
+        self.assertEqual(interval, 180)
 
     def test_fast_polling_interval(self):
         """When fast polling is active, returns POLL_FAST."""
         self.app._last_response = {'five_hour': {'utilization': 50.0}}
         self.app._fast_polls_remaining = 3
         interval = self.app._calculate_poll_interval()
-        self.assertEqual(interval, 60)
+        self.assertEqual(interval, 120)
 
     def test_error_interval(self):
         """Transient error returns POLL_ERROR."""
@@ -679,7 +679,7 @@ class TestCalculatePollInterval(unittest.TestCase):
         self.app.cache = MagicMock()
         self.app.cache.rate_limit_remaining = 10.0
         interval = self.app._calculate_poll_interval()
-        self.assertEqual(interval, 120)
+        self.assertEqual(interval, 180)
 
     def test_rate_limited_with_large_remaining(self):
         """Rate-limited with large remaining uses that value."""
@@ -703,13 +703,13 @@ class TestCalculatePollInterval(unittest.TestCase):
         self.app.cache = MagicMock()
         self.app.cache.rate_limit_remaining = 0.0
         interval = self.app._calculate_poll_interval()
-        self.assertEqual(interval, 120)
+        self.assertEqual(interval, 180)
 
     def test_empty_response_returns_normal_interval(self):
         """Empty _last_response (initial state) returns POLL_INTERVAL."""
         self.app._last_response = {}
         interval = self.app._calculate_poll_interval()
-        self.assertEqual(interval, 120)
+        self.assertEqual(interval, 180)
 
 
 # ---------------------------------------------------------------------------
@@ -781,11 +781,12 @@ class TestResetAlignment(unittest.TestCase):
     def test_imminent_reset_aligns_poll(self):
         """When reset is imminent, interval aligns to reset time."""
         self.app._last_response = {'five_hour': {'utilization': 50.0}}
-        with patch.object(self.app, '_seconds_until_next_reset', return_value=100.0):
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=160.0):
             interval = self.app._calculate_poll_interval()
 
-        # next_reset(100) + 5 = 105 <= interval(120) * 1.5 = 180, so aligned
-        self.assertEqual(interval, 105)
+        # next_reset(160) + 5 = 165 <= interval(180) * 1.5 = 270, so aligned
+        # max(165, POLL_FAST=120) = 165
+        self.assertEqual(interval, 165)
 
     def test_distant_reset_no_alignment(self):
         """When reset is far away, normal interval is used."""
@@ -793,8 +794,8 @@ class TestResetAlignment(unittest.TestCase):
         with patch.object(self.app, '_seconds_until_next_reset', return_value=500.0):
             interval = self.app._calculate_poll_interval()
 
-        # next_reset(500) + 5 = 505 > interval(120) * 1.5 = 180, no alignment
-        self.assertEqual(interval, 120)
+        # next_reset(500) + 5 = 505 > interval(180) * 1.5 = 270, no alignment
+        self.assertEqual(interval, 180)
 
     def test_reset_alignment_sets_fast_polls(self):
         """Reset alignment sets fast_polls_remaining for post-reset follow-up."""

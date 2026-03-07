@@ -157,8 +157,8 @@ def _icon_colors(key: str, defaults: dict[str, tuple]) -> dict[str, tuple]:
 _S = _load_settings()
 
 # ── Polling intervals (seconds) ───────────────────────────────
-POLL_INTERVAL = _S.get('poll_interval', 120)
-POLL_FAST = _S.get('poll_fast', 60)
+POLL_INTERVAL = _S.get('poll_interval', 180)
+POLL_FAST = _S.get('poll_fast', 120)
 POLL_FAST_EXTRA = _S.get('poll_fast_extra', 2)
 POLL_ERROR = _S.get('poll_error', 30)
 MAX_BACKOFF = _S.get('max_backoff', 900)

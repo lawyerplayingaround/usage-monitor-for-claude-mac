@@ -142,7 +142,7 @@ class TestCooldownBehavior(unittest.TestCase):
         cache.update()
         mock_fetch.reset_mock()
 
-        mock_time.time.return_value = 1000.0 + 61  # > POLL_FAST (60s)
+        mock_time.time.return_value = 1000.0 + 121  # > POLL_FAST (120s)
         result = cache.update()
         self.assertIsNotNone(result.data)
 
@@ -462,19 +462,19 @@ class TestRateLimitGuard(unittest.TestCase):
         mock_fetch.return_value = {'error': 'HTTP 429', 'rate_limited': True}
         cache = _make_cache()
 
-        # First 429: backoff = POLL_INTERVAL (120s)
+        # First 429: backoff = POLL_INTERVAL (180s)
         mock_time.time.return_value = 1000.0
         cache.update()
         self.assertEqual(cache.consecutive_errors, 1)
 
-        # At 130s: past first backoff - proceed to second 429
-        mock_time.time.return_value = 1130.0
+        # At 190s: past first backoff (180s) - proceed to second 429
+        mock_time.time.return_value = 1190.0
         cache.update()
         self.assertEqual(cache.consecutive_errors, 2)
 
         mock_fetch.reset_mock()
-        # At 180s: within second backoff (240s from 1130)
-        mock_time.time.return_value = 1310.0
+        # At 250s: within second backoff (360s from 1190)
+        mock_time.time.return_value = 1440.0
         result = cache.update()
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
@@ -495,7 +495,7 @@ class TestRateLimitGuard(unittest.TestCase):
 
         mock_fetch.reset_mock()
         # Non-forced call should proceed (rate limit cleared, but cooldown applies)
-        mock_time.time.return_value = 1010.0 + 61
+        mock_time.time.return_value = 1010.0 + 121
         result = cache.update()
         self.assertIsNotNone(result.data)
 
