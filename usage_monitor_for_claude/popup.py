@@ -18,6 +18,7 @@ from .i18n import T
 
 if TYPE_CHECKING:
     from .app import UsageMonitorForClaude
+    from .cache import CacheSnapshot
 
 
 class UsagePopup:
@@ -34,7 +35,7 @@ class UsagePopup:
         Parameters
         ----------
         app : UsageMonitorForClaude
-            Parent application providing ``usage_data`` and ``profile_data``.
+            Parent application providing ``cache`` for data access.
         """
         self.app = app
         self.root = tk.Tk()
@@ -55,8 +56,9 @@ class UsagePopup:
         self._status_label: tk.Label | None = None
         self._status_text = ''
         self._status_fg = ''
-        self._last_version = self.app._data_version
-        self._build_content()
+        snap = self.app.cache.snapshot
+        self._last_version = snap.version
+        self._build_content(snap)
 
         self._position_near_tray()
         self._schedule_check()
@@ -81,10 +83,11 @@ class UsagePopup:
 
     def _check_for_update(self) -> None:
         try:
-            if self.app._data_version != self._last_version:
-                self._last_version = self.app._data_version
-                self._update_usage_section()
-                self._update_extra_usage_section()
+            snap = self.app.cache.snapshot
+            if snap.version != self._last_version:
+                self._last_version = snap.version
+                self._update_usage_section(snap.usage)
+                self._update_extra_usage_section(snap.usage)
                 self._position_near_tray()
             self._update_status_line()
             self._schedule_check()
@@ -121,7 +124,7 @@ class UsagePopup:
 
         self.win.geometry(f'+{x}+{y}')
 
-    def _build_content(self) -> None:
+    def _build_content(self, snap: CacheSnapshot) -> None:
         """Build the popup layout: title bar, account info, and usage section."""
         pad = 16
         self._main_frame = tk.Frame(self.win, bg=BG, padx=pad)
@@ -136,7 +139,7 @@ class UsagePopup:
         close_btn.bind('<Button-1>', lambda e: self._close())
 
         # ── Account section ──
-        profile = self.app.profile_data
+        profile = snap.profile
         if profile:
             self._section_heading(self._main_frame, T['account'])
             account = profile.get('account', {})
@@ -150,10 +153,10 @@ class UsagePopup:
             tk.Frame(self._main_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
 
         # ── Usage section (rebuilt on refresh) ──
-        self._build_usage_section()
+        self._build_usage_section(snap.usage)
 
         # ── Extra usage section ──
-        self._build_extra_usage_section()
+        self._build_extra_usage_section(snap.usage)
 
         # ── Claude Code installations ──
         self._build_installations_section()
@@ -161,9 +164,8 @@ class UsagePopup:
         # ── Status line ──
         self._build_status_line()
 
-    def _usage_entries(self) -> list[tuple[str, dict[str, Any] | None, int]]:
-        """Return the list of usage entry tuples from cached data."""
-        usage = self.app._cached_usage
+    def _usage_entries(self, usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None, int]]:
+        """Return the list of usage entry tuples from the given usage data."""
         return [
             (T['session'], usage.get('five_hour'), PERIOD_5H),
             (T['weekly'], usage.get('seven_day'), PERIOD_7D),
@@ -171,18 +173,18 @@ class UsagePopup:
             (T['weekly_opus'], usage.get('seven_day_opus'), PERIOD_7D),
         ]
 
-    def _visible_entries(self) -> list[tuple[str, dict[str, Any], int]]:
+    def _visible_entries(self, usage: dict[str, Any]) -> list[tuple[str, dict[str, Any], int]]:
         """Return only entries that have utilization data."""
-        return [(label, entry, period) for label, entry, period in self._usage_entries() if entry and entry.get('utilization') is not None]
+        return [(label, entry, period) for label, entry, period in self._usage_entries(usage) if entry and entry.get('utilization') is not None]
 
-    def _build_usage_section(self) -> None:
+    def _build_usage_section(self, usage: dict[str, Any]) -> None:
         """Build the usage bars section from scratch, replacing any previous content."""
         if self._usage_frame:
             self._usage_frame.destroy()
             self._usage_frame = None
         self._usage_bars = []
 
-        if not self.app._cached_usage:
+        if not usage:
             return
 
         self._usage_frame = tk.Frame(self._main_frame, bg=BG)
@@ -191,27 +193,27 @@ class UsagePopup:
         self._section_heading(self._usage_frame, T['usage'])
 
         first = True
-        for label, entry, period in self._visible_entries():
+        for label, entry, period in self._visible_entries(usage):
             widgets = self._create_usage_bar(self._usage_frame, label, entry, period, first=first)
             self._usage_bars.append(widgets)
             first = False
 
-    def _update_usage_section(self) -> None:
+    def _update_usage_section(self, usage: dict[str, Any]) -> None:
         """Update usage bars in-place, falling back to full rebuild if structure changed."""
-        visible = self._visible_entries()
+        visible = self._visible_entries(usage)
 
         if len(visible) == len(self._usage_bars):
             for (_label, entry, period), widgets in zip(visible, self._usage_bars):
                 self._update_usage_bar(widgets, entry, period)
             return
 
-        self._build_usage_section()
-        self._build_extra_usage_section()
+        self._build_usage_section(usage)
+        self._build_extra_usage_section(usage)
         self._repack_status_line()
 
-    def _extra_usage_data(self) -> tuple[float, float, float] | None:
+    def _extra_usage_data(self, usage: dict[str, Any]) -> tuple[float, float, float] | None:
         """Return extra usage (pct, used_cents, limit_cents), or None if not enabled."""
-        extra = self.app._cached_usage.get('extra_usage')
+        extra = usage.get('extra_usage')
         if not extra or not extra.get('is_enabled'):
             return None
 
@@ -222,14 +224,14 @@ class UsagePopup:
         used = extra.get('used_credits', 0) or 0
         return (used / limit * 100, used, limit)
 
-    def _build_extra_usage_section(self) -> None:
+    def _build_extra_usage_section(self, usage: dict[str, Any]) -> None:
         """Build the extra usage section from scratch."""
         if self._extra_frame:
             self._extra_frame.destroy()
         self._extra_frame = None
         self._extra_widgets = None
 
-        data = self._extra_usage_data()
+        data = self._extra_usage_data(usage)
         if data is None:
             return
 
@@ -266,13 +268,13 @@ class UsagePopup:
             'fill_frame': fill_frame, 'spent_label': spent_label,
         }
 
-    def _update_extra_usage_section(self) -> None:
+    def _update_extra_usage_section(self, usage: dict[str, Any]) -> None:
         """Update extra usage bar in-place, or rebuild if visibility changed."""
-        data = self._extra_usage_data()
+        data = self._extra_usage_data(usage)
         had_section = self._extra_widgets is not None
 
         if (data is None) != (not had_section):
-            self._build_extra_usage_section()
+            self._build_extra_usage_section(usage)
             self._repack_status_line()
             return
 
@@ -340,13 +342,14 @@ class UsagePopup:
         if not self._status_label:
             return
 
-        if not self.app._cached_usage:
-            if self.app._last_error:
-                text, fg = self.app._last_error[:120], '#e05050'
+        snap = self.app.cache.snapshot
+        if not snap.usage:
+            if snap.last_error:
+                text, fg = snap.last_error[:120], '#e05050'
             else:
                 text, fg = T['status_refreshing'], FG_DIM
         else:
-            status_text, has_error = format_status(self.app._last_success_time, self.app._refreshing, self.app._last_error)
+            status_text, has_error = format_status(snap.last_success_time, snap.refreshing, snap.last_error)
             text, fg = status_text, '#e05050' if has_error else FG_DIM
 
         if text != self._status_text or fg != self._status_fg:

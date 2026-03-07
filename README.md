@@ -120,6 +120,7 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | `poll_fast` | `60` | Seconds when usage is actively increasing |
 | `poll_fast_extra` | `2` | Extra fast polls after usage stops increasing |
 | `poll_error` | `30` | Seconds after a transient error (5xx, network). Rate-limit errors (429) use exponential backoff instead |
+| `max_backoff` | `900` | Maximum backoff in seconds for rate-limit errors (15 min) |
 
 ### Currency
 

@@ -2,14 +2,18 @@
 Application Tests
 ===================
 
-Unit tests for threshold alert logic in the application module.
+Unit tests for the application module: threshold alerts, update orchestration,
+tray rendering, polling interval, and reset notifications.
 """
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.app import UsageMonitorForClaude
+from usage_monitor_for_claude.cache import UpdateResult
+from usage_monitor_for_claude.claude_cli import RefreshResult
 
 
 def _make_app(thresholds: list[float] | None = None) -> UsageMonitorForClaude:
@@ -37,6 +41,10 @@ def _cleanup(app: UsageMonitorForClaude) -> None:
     app._thresholds_patch.stop()
 
 
+# ---------------------------------------------------------------------------
+# _check_threshold_alerts
+# ---------------------------------------------------------------------------
+
 class TestCheckThresholdAlerts(unittest.TestCase):
     """Tests for _check_threshold_alerts() notification logic."""
 
@@ -48,8 +56,7 @@ class TestCheckThresholdAlerts(unittest.TestCase):
 
     def test_notification_on_first_crossing(self):
         """Notification fires when usage crosses a threshold for the first time."""
-        self.app.usage_data = {'five_hour': {'utilization': 82}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 82}})
 
         self.app.icon.notify.assert_called_once()
         args = self.app.icon.notify.call_args
@@ -57,23 +64,19 @@ class TestCheckThresholdAlerts(unittest.TestCase):
 
     def test_no_duplicate_notification(self):
         """No notification if threshold was already notified."""
-        self.app.usage_data = {'five_hour': {'utilization': 82}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 82}})
         self.app.icon.notify.reset_mock()
 
-        self.app.usage_data = {'five_hour': {'utilization': 85}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 85}})
 
         self.app.icon.notify.assert_not_called()
 
     def test_higher_threshold_triggers_new_notification(self):
         """Crossing a higher threshold triggers a new notification."""
-        self.app.usage_data = {'five_hour': {'utilization': 82}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 82}})
         self.app.icon.notify.reset_mock()
 
-        self.app.usage_data = {'five_hour': {'utilization': 97}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 97}})
 
         self.app.icon.notify.assert_called_once()
         args = self.app.icon.notify.call_args
@@ -81,34 +84,29 @@ class TestCheckThresholdAlerts(unittest.TestCase):
 
     def test_jump_past_multiple_thresholds_single_notification(self):
         """Jumping from below all thresholds to above multiple shows only one notification."""
-        self.app.usage_data = {'five_hour': {'utilization': 97}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 97}})
 
         self.app.icon.notify.assert_called_once()
         self.assertEqual(self.app._notified_thresholds.get('five_hour'), 95)
 
     def test_notification_shows_current_pct_not_threshold(self):
         """Notification message contains the actual usage %, not the threshold value."""
-        self.app.usage_data = {'five_hour': {'utilization': 83.7}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 83.7}})
 
         args = self.app.icon.notify.call_args
         self.assertIn('84%', args[0][0])
 
     def test_re_notification_after_usage_drops(self):
         """After usage drops below a threshold, it can re-trigger."""
-        self.app.usage_data = {'five_hour': {'utilization': 82}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 82}})
         self.app.icon.notify.reset_mock()
 
         # Usage drops below 80 (e.g. after reset)
-        self.app.usage_data = {'five_hour': {'utilization': 30}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 30}})
         self.app.icon.notify.assert_not_called()
 
         # Usage rises above 80 again
-        self.app.usage_data = {'five_hour': {'utilization': 81}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 81}})
         self.app.icon.notify.assert_called_once()
 
     def test_no_notification_when_thresholds_empty(self):
@@ -116,25 +114,22 @@ class TestCheckThresholdAlerts(unittest.TestCase):
         _cleanup(self.app)
         self.app = _make_app(thresholds=[])
 
-        self.app.usage_data = {'five_hour': {'utilization': 99}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 99}})
 
         self.app.icon.notify.assert_not_called()
 
     def test_on_startup_above_threshold(self):
         """On startup (no prior state), notification fires if already above threshold."""
-        self.app.usage_data = {'five_hour': {'utilization': 90}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 90}})
 
         self.app.icon.notify.assert_called_once()
 
     def test_each_variant_tracked_independently(self):
         """Different variants are tracked independently."""
-        self.app.usage_data = {
+        self.app._check_threshold_alerts({
             'five_hour': {'utilization': 82},
             'seven_day': {'utilization': 50},
-        }
-        self.app._check_threshold_alerts()
+        })
 
         self.app.icon.notify.assert_called_once()
         self.assertEqual(self.app._notified_thresholds.get('five_hour'), 80)
@@ -142,42 +137,41 @@ class TestCheckThresholdAlerts(unittest.TestCase):
 
     def test_multiple_variants_crossing_simultaneously(self):
         """Multiple variants crossing thresholds each get their own notification."""
-        self.app.usage_data = {
+        self.app._check_threshold_alerts({
             'five_hour': {'utilization': 82},
             'seven_day': {'utilization': 96},
-        }
-        self.app._check_threshold_alerts()
+        })
 
         self.assertEqual(self.app.icon.notify.call_count, 2)
 
     def test_variant_with_no_utilization_skipped(self):
         """Variants with None utilization are skipped."""
-        self.app.usage_data = {'five_hour': {'utilization': None}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': None}})
 
         self.app.icon.notify.assert_not_called()
 
     def test_missing_variant_skipped(self):
-        """Missing variants in usage_data are skipped."""
-        self.app.usage_data = {}
-        self.app._check_threshold_alerts()
+        """Missing variants in data are skipped."""
+        self.app._check_threshold_alerts({})
 
         self.app.icon.notify.assert_not_called()
 
     def test_usage_exactly_at_threshold(self):
         """Usage exactly at threshold value triggers notification."""
-        self.app.usage_data = {'five_hour': {'utilization': 80}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 80}})
 
         self.app.icon.notify.assert_called_once()
 
     def test_usage_just_below_threshold(self):
         """Usage just below threshold does not trigger notification."""
-        self.app.usage_data = {'five_hour': {'utilization': 79.9}}
-        self.app._check_threshold_alerts()
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 79.9}})
 
         self.app.icon.notify.assert_not_called()
 
+
+# ---------------------------------------------------------------------------
+# Time-aware alerts
+# ---------------------------------------------------------------------------
 
 class TestTimeAwareAlerts(unittest.TestCase):
     """Tests for time-aware threshold alert suppression."""
@@ -196,46 +190,40 @@ class TestTimeAwareAlerts(unittest.TestCase):
 
     def test_alert_suppressed_when_usage_behind_time(self):
         """No notification when usage (82%) <= elapsed time (90%)."""
-        self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
 
         self.app.icon.notify.assert_not_called()
 
     def test_alert_shown_when_usage_ahead_of_time(self):
         """Notification fires when usage (82%) > elapsed time (50%)."""
-        self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=50.0):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
 
         self.app.icon.notify.assert_called_once()
 
     def test_fallback_when_elapsed_pct_none(self):
         """Notification fires normally when elapsed_pct returns None (no resets_at)."""
-        self.app.usage_data = {'five_hour': {'utilization': 82}}
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=None):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82}})
 
         self.app.icon.notify.assert_called_once()
 
     def test_tracking_updated_when_suppressed(self):
         """Notified threshold tracking is updated even when alert is suppressed."""
-        self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
 
         self.assertEqual(self.app._notified_thresholds.get('five_hour'), 80)
 
     def test_no_re_notification_after_suppression(self):
         """After suppression, the same threshold does not re-trigger."""
-        self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
 
-        # Now time catches up less — usage is ahead, but threshold already tracked
-        self.app.usage_data = {'five_hour': {'utilization': 84, 'resets_at': '2025-01-15T14:30:00+00:00'}}
+        # Now time catches up less - usage is ahead, but threshold already tracked
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=50.0):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 84, 'resets_at': '2025-01-15T14:30:00+00:00'}})
 
         self.app.icon.notify.assert_not_called()
 
@@ -243,18 +231,16 @@ class TestTimeAwareAlerts(unittest.TestCase):
         """With ALERT_TIME_AWARE=False, alerts fire regardless of time."""
         self._time_aware_patch.stop()
         with patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', False):
-            self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
             with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
-                self.app._check_threshold_alerts()
+                self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
         self._time_aware_patch.start()
 
         self.app.icon.notify.assert_called_once()
 
     def test_usage_equal_to_time_suppressed(self):
         """Notification suppressed when usage exactly equals elapsed time."""
-        self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
         with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=82.0):
-            self.app._check_threshold_alerts()
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
 
         self.app.icon.notify.assert_not_called()
 
@@ -263,9 +249,8 @@ class TestTimeAwareAlerts(unittest.TestCase):
         self._below_patch.stop()
         with patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE_BELOW', 90):
             # Thresholds are [80, 95]. Usage crosses 95 which is >= 90 cutoff.
-            self.app.usage_data = {'five_hour': {'utilization': 97, 'resets_at': '2025-01-15T14:30:00+00:00'}}
             with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=98.0):
-                self.app._check_threshold_alerts()
+                self.app._check_threshold_alerts({'five_hour': {'utilization': 97, 'resets_at': '2025-01-15T14:30:00+00:00'}})
         self._below_patch.start()
 
         self.app.icon.notify.assert_called_once()
@@ -275,9 +260,8 @@ class TestTimeAwareAlerts(unittest.TestCase):
         self._below_patch.stop()
         with patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE_BELOW', 90):
             # Thresholds are [80, 95]. Usage crosses 80 which is < 90 cutoff.
-            self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
             with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
-                self.app._check_threshold_alerts()
+                self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
         self._below_patch.start()
 
         self.app.icon.notify.assert_not_called()
@@ -286,16 +270,19 @@ class TestTimeAwareAlerts(unittest.TestCase):
         """Threshold exactly at alert_time_aware_below fires regardless of time."""
         self._below_patch.stop()
         with patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE_BELOW', 80):
-            self.app.usage_data = {'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}}
             with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
-                self.app._check_threshold_alerts()
+                self.app._check_threshold_alerts({'five_hour': {'utilization': 82, 'resets_at': '2025-01-15T14:30:00+00:00'}})
         self._below_patch.start()
 
         self.app.icon.notify.assert_called_once()
 
 
-class TestConsecutiveErrors(unittest.TestCase):
-    """Tests for _consecutive_errors tracking."""
+# ---------------------------------------------------------------------------
+# update() orchestration
+# ---------------------------------------------------------------------------
+
+class TestUpdateOrchestration(unittest.TestCase):
+    """Tests for update() delegating to cache and processing results."""
 
     def setUp(self):
         self.app = _make_app()
@@ -303,222 +290,115 @@ class TestConsecutiveErrors(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
+    def test_skipped_update_does_nothing(self):
+        """When cache.update() returns None data, update() returns early."""
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=None)
+
+        self.app.update()
+
+        self.assertEqual(self.app._last_response, {})
+
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_error_increments_counter(self, _tooltip, _status, mock_fetch):
-        """Each error increments _consecutive_errors."""
-        mock_fetch.return_value = {'error': 'fail'}
-
-        self.app.update()
-        self.assertEqual(self.app._consecutive_errors, 1)
-
-        self.app.update()
-        self.assertEqual(self.app._consecutive_errors, 2)
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
     @patch('usage_monitor_for_claude.app.create_icon_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_success_resets_counter(self, _tooltip, _icon, mock_fetch):
-        """Successful fetch resets _consecutive_errors to 0."""
-        self.app._consecutive_errors = 5
-        mock_fetch.return_value = {'five_hour': {'utilization': 10.0}}
-
-        self.app.update()
-
-        self.assertEqual(self.app._consecutive_errors, 0)
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_server_message_appended_to_last_error(self, _tooltip, _status, mock_fetch):
-        """Server message is appended to _last_error with newline."""
-        mock_fetch.return_value = {'error': 'HTTP 429', 'server_message': 'Rate limited.'}
-
-        self.app.update()
-
-        self.assertEqual(self.app._last_error, 'HTTP 429\nRate limited.')
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_no_server_message_leaves_error_unchanged(self, _tooltip, _status, mock_fetch):
-        """Without server_message, _last_error is just the error string."""
-        mock_fetch.return_value = {'error': 'HTTP 500'}
-
-        self.app.update()
-
-        self.assertEqual(self.app._last_error, 'HTTP 500')
-
-
-class TestCachedUsageOnError(unittest.TestCase):
-    """Tests for cached usage preservation during API errors."""
-
-    def setUp(self):
-        self.app = _make_app()
-
-    def tearDown(self):
-        _cleanup(self.app)
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_icon_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_successful_fetch_caches_data(self, _tooltip, _icon, mock_fetch):
-        """Successful API response is stored in _cached_usage."""
+    def test_success_updates_last_response(self, _icon, _tooltip):
+        """Successful update stores response in _last_response."""
         data = {'five_hour': {'utilization': 42.0}}
-        mock_fetch.return_value = data
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
 
         self.app.update()
 
-        self.assertEqual(self.app._cached_usage, data)
-        self.assertIsNotNone(self.app._last_success_time)
-        self.assertIsNone(self.app._last_error)
+        self.assertEqual(self.app._last_response, data)
 
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_error_preserves_cached_data(self, _tooltip, _status, mock_fetch):
-        """API error does not overwrite previously cached successful data."""
-        self.app._cached_usage = {'five_hour': {'utilization': 42.0}}
-        mock_fetch.return_value = {'error': 'server down'}
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    def test_error_updates_last_response(self, _status, _tooltip):
+        """Error update stores error response in _last_response."""
+        data = {'error': 'server down'}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
 
         self.app.update()
 
-        self.assertEqual(self.app._cached_usage, {'five_hour': {'utilization': 42.0}})
-        self.assertEqual(self.app._last_error, 'server down')
+        self.assertEqual(self.app._last_response, data)
 
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_error_clears_on_success(self, _tooltip, _status, mock_fetch):
-        """Successful fetch after error clears _last_error."""
-        self.app._last_error = 'previous error'
-
-        with patch('usage_monitor_for_claude.app.create_icon_image'):
-            mock_fetch.return_value = {'five_hour': {'utilization': 50.0}}
-            self.app.update()
-
-        self.assertIsNone(self.app._last_error)
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_refreshing_flag_set_during_update(self, _tooltip, _status, mock_fetch):
-        """_refreshing is True during the API call and False after."""
-        observed_refreshing = []
-
-        def capture_refreshing():
-            observed_refreshing.append(self.app._refreshing)
-            return {'five_hour': {'utilization': 10.0}}
-
-        mock_fetch.side_effect = capture_refreshing
-
-        with patch('usage_monitor_for_claude.app.create_icon_image'):
-            self.app.update()
-
-        self.assertTrue(observed_refreshing[0])
-        self.assertFalse(self.app._refreshing)
-
-
-class TestTryTokenRefresh(unittest.TestCase):
-    """Tests for _try_token_refresh() automatic token renewal."""
-
-    def setUp(self):
-        self.app = _make_app()
-
-    def tearDown(self):
-        _cleanup(self.app)
-
-    @patch('usage_monitor_for_claude.app.refresh_token')
-    def test_refresh_failure_returns_false(self, mock_refresh):
-        """When refresh_token() fails, returns False (caller continues error path)."""
-        from usage_monitor_for_claude.claude_cli import RefreshResult
-        mock_refresh.return_value = RefreshResult(success=False, updated=False, old_version='', new_version='', error='CLI not found')
-
-        self.assertFalse(self.app._try_token_refresh())
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.read_access_token')
-    @patch('usage_monitor_for_claude.app.refresh_token')
     @patch('usage_monitor_for_claude.app.create_icon_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_refresh_success_with_new_token_retries(self, _tooltip, _icon, mock_refresh, mock_token, mock_fetch):
-        """When token changes after refresh, retries API and returns True on success."""
-        from usage_monitor_for_claude.claude_cli import RefreshResult
-        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
-        mock_token.return_value = 'new-token'
-        self.app._last_failed_token = 'old-token'
-        mock_fetch.return_value = {'five_hour': {'utilization': 42.0}}
+    def test_token_refresh_notification(self, _icon, _tooltip):
+        """Shows notification when token refresh updated CLI version."""
+        data = {'five_hour': {'utilization': 10.0}}
+        refresh = RefreshResult(success=True, updated=True, old_version='2.1.38', new_version='2.1.69', error='')
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data, token_refresh=refresh)
 
-        result = self.app._try_token_refresh()
-
-        self.assertTrue(result)
-        self.assertEqual(self.app._cached_usage, {'five_hour': {'utilization': 42.0}})
-        self.assertIsNone(self.app._last_error)
-        self.assertEqual(self.app._consecutive_errors, 0)
-
-    @patch('usage_monitor_for_claude.app.read_access_token')
-    @patch('usage_monitor_for_claude.app.refresh_token')
-    def test_refresh_success_but_token_unchanged(self, mock_refresh, mock_token):
-        """When token doesn't change after refresh, returns False."""
-        from usage_monitor_for_claude.claude_cli import RefreshResult
-        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
-        mock_token.return_value = 'same-token'
-        self.app._last_failed_token = 'same-token'
-
-        self.assertFalse(self.app._try_token_refresh())
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.read_access_token')
-    @patch('usage_monitor_for_claude.app.refresh_token')
-    @patch('usage_monitor_for_claude.app.create_status_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_refresh_success_but_retry_fails(self, _tooltip, _status, mock_refresh, mock_token, mock_fetch):
-        """When token changes but retry still fails, returns False."""
-        from usage_monitor_for_claude.claude_cli import RefreshResult
-        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
-        mock_token.return_value = 'new-token'
-        self.app._last_failed_token = 'old-token'
-        mock_fetch.return_value = {'error': 'still broken', 'auth_error': True}
-
-        self.assertFalse(self.app._try_token_refresh())
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.read_access_token')
-    @patch('usage_monitor_for_claude.app.refresh_token')
-    @patch('usage_monitor_for_claude.app.create_icon_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_update_notification_on_cli_update(self, _tooltip, _icon, mock_refresh, mock_token, mock_fetch):
-        """Shows notification when claude update installs a new version."""
-        from usage_monitor_for_claude.claude_cli import RefreshResult
-        mock_refresh.return_value = RefreshResult(success=True, updated=True, old_version='2.1.38', new_version='2.1.69', error='')
-        mock_token.return_value = 'new-token'
-        self.app._last_failed_token = 'old-token'
-        mock_fetch.return_value = {'five_hour': {'utilization': 10.0}}
-
-        self.app._try_token_refresh()
+        self.app.update()
 
         self.app.icon.notify.assert_called_once()
         args = self.app.icon.notify.call_args[0]
         self.assertIn('2.1.38', args[0])
         self.assertIn('2.1.69', args[0])
 
-    @patch('usage_monitor_for_claude.app.read_access_token')
-    @patch('usage_monitor_for_claude.app.refresh_token')
-    def test_no_notification_when_no_update(self, mock_refresh, mock_token):
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_notification_when_no_cli_update(self, _icon, _tooltip):
         """No notification when token refreshed but no CLI update."""
-        from usage_monitor_for_claude.claude_cli import RefreshResult
-        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
-        mock_token.return_value = 'same-token'
-        self.app._last_failed_token = 'same-token'
+        data = {'five_hour': {'utilization': 10.0}}
+        refresh = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data, token_refresh=refresh)
 
-        self.app._try_token_refresh()
+        self.app.update()
 
         self.app.icon.notify.assert_not_called()
 
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    def test_error_returns_before_threshold_checks(self, _status, _tooltip):
+        """Error response returns early without threshold checks."""
+        data = {'error': 'fail'}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
 
-class TestUpdateCallsTokenRefresh(unittest.TestCase):
-    """Tests that update() calls _try_token_refresh on auth errors."""
+        with patch.object(self.app, '_check_threshold_alerts') as mock_check:
+            self.app.update()
+            mock_check.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_update_tracks_previous_values(self, _icon, _tooltip):
+        """update() stores current pct values for next comparison."""
+        data = {'five_hour': {'utilization': 42.0}, 'seven_day': {'utilization': 15.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._prev_5h, 42.0)
+        self.assertEqual(self.app._prev_7d, 15.0)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    def test_error_does_not_update_previous_values(self, _status, _tooltip):
+        """Error response does not change tracked previous values."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 20.0
+        data = {'error': 'fail'}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._prev_5h, 50.0)
+        self.assertEqual(self.app._prev_7d, 20.0)
+
+
+# ---------------------------------------------------------------------------
+# Reset notifications
+# ---------------------------------------------------------------------------
+
+class TestResetNotifications(unittest.TestCase):
+    """Tests for quota reset notifications in update()."""
 
     def setUp(self):
         self.app = _make_app()
@@ -526,41 +406,446 @@ class TestUpdateCallsTokenRefresh(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_auth_error_triggers_refresh(self, _tooltip, _status, mock_fetch):
-        """update() calls _try_token_refresh on 401 auth error."""
-        mock_fetch.return_value = {'error': 'expired', 'auth_error': True}
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_5h_reset_notification(self, _icon, _tooltip):
+        """Notification fires when 5h usage drops from >95% with 7d not blocking."""
+        self.app._prev_5h = 97.0
+        self.app._prev_7d = 50.0
+        data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
 
-        with patch.object(self.app, '_try_token_refresh', return_value=False) as mock_try:
-            self.app.update()
-            mock_try.assert_called_once()
+        self.app.update()
 
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
+        self.app.icon.notify.assert_called_once()
+
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    def test_non_auth_error_skips_refresh(self, _tooltip, _status, mock_fetch):
-        """update() does not call _try_token_refresh on non-auth errors."""
-        mock_fetch.return_value = {'error': 'server down'}
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_5h_reset_suppressed_when_7d_blocking(self, _icon, _tooltip):
+        """No 5h reset notification when 7d is at 99%+."""
+        self.app._prev_5h = 97.0
+        self.app._prev_7d = 50.0
+        data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 99.5}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
 
-        with patch.object(self.app, '_try_token_refresh') as mock_try:
-            self.app.update()
-            mock_try.assert_not_called()
-
-    @patch('usage_monitor_for_claude.app.fetch_usage')
-    @patch('usage_monitor_for_claude.app.create_status_image')
-    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
-    @patch('usage_monitor_for_claude.app.read_access_token', return_value='token-123')
-    def test_auth_error_with_successful_refresh_skips_error_path(self, _token, _tooltip, _status, mock_fetch):
-        """When _try_token_refresh succeeds, update() returns early without setting error icon."""
-        mock_fetch.return_value = {'error': 'expired', 'auth_error': True}
-
-        with patch.object(self.app, '_try_token_refresh', return_value=True):
+        with patch.object(self.app, '_check_threshold_alerts'):
             self.app.update()
 
-        # Should NOT have set error icon since refresh succeeded
-        _status.assert_not_called()
+        self.app.icon.notify.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_7d_reset_notification(self, _icon, _tooltip):
+        """Notification fires when 7d usage drops from >98% with 5h not blocking."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 99.0
+        data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_called_once()
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_reset_notification_on_first_update(self, _icon, _tooltip):
+        """No reset notification on first update (no previous values)."""
+        data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_7d_reset_suppressed_when_5h_blocking(self, _icon, _tooltip):
+        """No 7d reset notification when 5h is at 99%+."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 99.0
+        data = {'five_hour': {'utilization': 99.5}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        with patch.object(self.app, '_check_threshold_alerts'):
+            self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Fast polling (adaptive)
+# ---------------------------------------------------------------------------
+
+class TestFastPolling(unittest.TestCase):
+    """Tests for adaptive fast polling when session usage is increasing."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_fast_polling_starts_on_usage_increase(self, _icon, _tooltip):
+        """Fast polls start when 5h usage is increasing."""
+        self.app._prev_5h = 40.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 45.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertGreater(self.app._fast_polls_remaining, 0)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_fast_polling_decrements(self, _icon, _tooltip):
+        """Fast poll counter decrements when usage is stable."""
+        self.app._prev_5h = 40.0
+        self.app._prev_7d = 10.0
+        self.app._fast_polls_remaining = 2
+        data = {'five_hour': {'utilization': 40.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._fast_polls_remaining, 1)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_fast_polling_not_below_zero(self, _icon, _tooltip):
+        """Fast poll counter does not go below zero."""
+        self.app._prev_5h = 40.0
+        self.app._prev_7d = 10.0
+        self.app._fast_polls_remaining = 0
+        data = {'five_hour': {'utilization': 40.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._fast_polls_remaining, 0)
+
+
+# ---------------------------------------------------------------------------
+# _render_tray
+# ---------------------------------------------------------------------------
+
+class TestRenderTray(unittest.TestCase):
+    """Tests for _render_tray() icon and tooltip rendering."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='Usage: 42%')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_success_renders_icon(self, mock_icon, _tooltip):
+        """Successful data renders usage icon."""
+        self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day': {'utilization': 10.0}}
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(42.0, 10.0, False)
+        self.assertEqual(self.app.icon.title, 'Usage: 42%')
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='Error')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    def test_error_renders_exclamation(self, mock_status, _tooltip):
+        """Error data renders '!' status icon."""
+        self.app._last_response = {'error': 'server down'}
+        self.app._render_tray()
+
+        mock_status.assert_called_once_with('!', False)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='Auth Error')
+    @patch('usage_monitor_for_claude.app.create_status_image')
+    def test_auth_error_renders_c_exclamation(self, mock_status, _tooltip):
+        """Auth error data renders 'C!' status icon."""
+        self.app._last_response = {'error': 'expired', 'auth_error': True}
+        self.app._render_tray()
+
+        mock_status.assert_called_once_with('C!', False)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_missing_utilization_defaults_to_zero(self, mock_icon, _tooltip):
+        """Missing utilization values default to 0."""
+        self.app._last_response = {'five_hour': {}, 'seven_day': {'utilization': None}}
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(0, 0, False)
+
+
+# ---------------------------------------------------------------------------
+# _on_theme_changed
+# ---------------------------------------------------------------------------
+
+class TestOnThemeChanged(unittest.TestCase):
+    """Tests for _on_theme_changed() theme switch handling."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=True)
+    def test_theme_change_re_renders(self, _theme, mock_icon, _tooltip):
+        """Theme change re-renders the tray icon."""
+        self.app._light_taskbar = False
+        self.app._last_response = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 20.0}}
+
+        self.app._on_theme_changed()
+
+        self.assertTrue(self.app._light_taskbar)
+        mock_icon.assert_called_once_with(50.0, 20.0, True)
+
+    @patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=False)
+    def test_same_theme_no_render(self, _theme):
+        """No re-render when theme hasn't changed."""
+        self.app._light_taskbar = False
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+
+        with patch.object(self.app, '_render_tray') as mock_render:
+            self.app._on_theme_changed()
+            mock_render.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=True)
+    def test_theme_change_without_data_no_render(self, _theme):
+        """Theme change without any data does not render."""
+        self.app._light_taskbar = False
+        self.app._last_response = {}
+
+        with patch.object(self.app, '_render_tray') as mock_render:
+            self.app._on_theme_changed()
+            mock_render.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _calculate_poll_interval
+# ---------------------------------------------------------------------------
+
+class TestCalculatePollInterval(unittest.TestCase):
+    """Tests for _calculate_poll_interval() adaptive interval logic."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_normal_interval(self):
+        """Normal state returns POLL_INTERVAL."""
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 120)
+
+    def test_fast_polling_interval(self):
+        """When fast polling is active, returns POLL_FAST."""
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+        self.app._fast_polls_remaining = 3
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 60)
+
+    def test_error_interval(self):
+        """Transient error returns POLL_ERROR."""
+        self.app._last_response = {'error': 'server down'}
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 30)
+
+    def test_rate_limited_with_high_remaining(self):
+        """Rate-limited uses cache.rate_limit_remaining for the interval."""
+        self.app._last_response = {'error': 'rate limited', 'rate_limited': True}
+        self.app.cache = MagicMock()
+        self.app.cache.rate_limit_remaining = 300.0
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 300)
+
+    def test_rate_limited_with_low_remaining(self):
+        """Rate-limited with low remaining uses POLL_INTERVAL as minimum."""
+        self.app._last_response = {'error': 'rate limited', 'rate_limited': True}
+        self.app.cache = MagicMock()
+        self.app.cache.rate_limit_remaining = 10.0
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 120)
+
+    def test_rate_limited_with_large_remaining(self):
+        """Rate-limited with large remaining uses that value."""
+        self.app._last_response = {'error': 'rate limited', 'rate_limited': True}
+        self.app.cache = MagicMock()
+        self.app.cache.rate_limit_remaining = 480.0
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 480)
+
+    def test_rate_limited_remaining_capped_by_cache(self):
+        """Rate-limited remaining reflects cache's capped backoff (MAX_BACKOFF=900)."""
+        self.app._last_response = {'error': 'rate limited', 'rate_limited': True}
+        self.app.cache = MagicMock()
+        self.app.cache.rate_limit_remaining = 900.0
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 900)
+
+    def test_rate_limited_expired(self):
+        """Rate-limited with expired backoff uses POLL_INTERVAL."""
+        self.app._last_response = {'error': 'rate limited', 'rate_limited': True}
+        self.app.cache = MagicMock()
+        self.app.cache.rate_limit_remaining = 0.0
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 120)
+
+    def test_empty_response_returns_normal_interval(self):
+        """Empty _last_response (initial state) returns POLL_INTERVAL."""
+        self.app._last_response = {}
+        interval = self.app._calculate_poll_interval()
+        self.assertEqual(interval, 120)
+
+
+# ---------------------------------------------------------------------------
+# _seconds_until_next_reset
+# ---------------------------------------------------------------------------
+
+class TestSecondsUntilNextReset(unittest.TestCase):
+    """Tests for _seconds_until_next_reset() calculation."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_no_data_returns_none(self):
+        """No response data returns None."""
+        self.app._last_response = {}
+        self.assertIsNone(self.app._seconds_until_next_reset())
+
+    def test_no_resets_at_returns_none(self):
+        """Entry without resets_at returns None."""
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+        self.assertIsNone(self.app._seconds_until_next_reset())
+
+    @patch('usage_monitor_for_claude.app.datetime')
+    def test_returns_seconds_to_nearest_reset(self, mock_dt):
+        """Returns seconds to the nearest future reset."""
+        now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mock_dt.now.return_value = now
+        mock_dt.fromisoformat = datetime.fromisoformat
+
+        self.app._last_response = {
+            'five_hour': {'utilization': 50.0, 'resets_at': '2025-01-15T12:30:00+00:00'},
+            'seven_day': {'utilization': 30.0, 'resets_at': '2025-01-15T14:00:00+00:00'},
+        }
+
+        result = self.app._seconds_until_next_reset()
+        self.assertAlmostEqual(result, 1800.0, places=0)  # 30 minutes
+
+    @patch('usage_monitor_for_claude.app.datetime')
+    def test_past_reset_ignored(self, mock_dt):
+        """Past reset times are ignored."""
+        now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        mock_dt.now.return_value = now
+        mock_dt.fromisoformat = datetime.fromisoformat
+
+        self.app._last_response = {
+            'five_hour': {'utilization': 50.0, 'resets_at': '2025-01-15T11:00:00+00:00'},
+        }
+
+        self.assertIsNone(self.app._seconds_until_next_reset())
+
+
+# ---------------------------------------------------------------------------
+# Poll interval reset alignment
+# ---------------------------------------------------------------------------
+
+class TestResetAlignment(unittest.TestCase):
+    """Tests for poll interval alignment with imminent reset."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_imminent_reset_aligns_poll(self):
+        """When reset is imminent, interval aligns to reset time."""
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=100.0):
+            interval = self.app._calculate_poll_interval()
+
+        # next_reset(100) + 5 = 105 <= interval(120) * 1.5 = 180, so aligned
+        self.assertEqual(interval, 105)
+
+    def test_distant_reset_no_alignment(self):
+        """When reset is far away, normal interval is used."""
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=500.0):
+            interval = self.app._calculate_poll_interval()
+
+        # next_reset(500) + 5 = 505 > interval(120) * 1.5 = 180, no alignment
+        self.assertEqual(interval, 120)
+
+    def test_reset_alignment_sets_fast_polls(self):
+        """Reset alignment sets fast_polls_remaining for post-reset follow-up."""
+        self.app._last_response = {'five_hour': {'utilization': 50.0}}
+        self.app._fast_polls_remaining = 0
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=100.0):
+            self.app._calculate_poll_interval()
+
+        self.assertGreaterEqual(self.app._fast_polls_remaining, 2)
+
+
+# ---------------------------------------------------------------------------
+# Menu actions
+# ---------------------------------------------------------------------------
+
+class TestMenuActions(unittest.TestCase):
+    """Tests for menu action methods."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_on_refresh_clears_failed_token(self):
+        """on_refresh() clears the failed token guard before starting update."""
+        self.app.cache = MagicMock()
+        with patch('usage_monitor_for_claude.app.threading'):
+            self.app.on_refresh()
+        self.app.cache.clear_failed_token.assert_called_once()
+
+    def test_on_refresh_starts_force_update_thread(self):
+        """on_refresh() starts a thread with force=True."""
+        self.app.cache = MagicMock()
+        with patch('usage_monitor_for_claude.app.threading.Thread') as mock_thread:
+            self.app.on_refresh()
+            mock_thread.assert_called_once()
+            call_kwargs = mock_thread.call_args[1]
+            self.assertEqual(call_kwargs['kwargs'], {'force': True})
+
+    def test_on_show_popup_guards_against_double_open(self):
+        """on_show_popup() does nothing when popup is already open."""
+        self.app._popup_open = True
+        with patch('usage_monitor_for_claude.app.threading.Thread') as mock_thread:
+            self.app.on_show_popup()
+            mock_thread.assert_not_called()
+
+    def test_on_quit_stops_running(self):
+        """on_quit() sets running to False and stops the icon."""
+        self.app.on_quit()
+        self.assertFalse(self.app.running)
+        self.app.icon.stop.assert_called_once()
 
 
 if __name__ == '__main__':

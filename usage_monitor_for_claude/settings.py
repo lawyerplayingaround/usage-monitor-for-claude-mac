@@ -23,7 +23,7 @@ from pathlib import Path
 
 SETTINGS_FILENAME = 'usage-monitor-settings.json'
 
-_NUMERIC_KEYS = frozenset({'poll_interval', 'poll_fast', 'poll_fast_extra', 'poll_error'})
+_NUMERIC_KEYS = frozenset({'poll_interval', 'poll_fast', 'poll_fast_extra', 'poll_error', 'max_backoff'})
 _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg', 'bar_fg_high'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day'})
@@ -153,6 +153,7 @@ POLL_INTERVAL = _S.get('poll_interval', 120)
 POLL_FAST = _S.get('poll_fast', 60)
 POLL_FAST_EXTRA = _S.get('poll_fast_extra', 2)
 POLL_ERROR = _S.get('poll_error', 30)
+MAX_BACKOFF = _S.get('max_backoff', 900)
 
 # ── Popup theme ───────────────────────────────────────────────
 BG = _S.get('bg', '#1e1e1e')

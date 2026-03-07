@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic token refresh - when the OAuth session expires, the app runs `claude update` in the background to renew the token without user intervention
 - Claude Code version display in the detail popup showing installed versions for CLI, VS Code, Cursor, and Windsurf
 - Notification when `claude update` installs a newer CLI version
+- User-configurable `max_backoff` setting to cap rate-limit backoff duration (default 15 minutes)
+
+### Fixed
+
+- Eliminated race condition where opening the popup could trigger a redundant API call alongside the poll loop, causing HTTP 429 rate-limit errors
+- Opening the popup during an active rate-limit backoff no longer triggers an additional API call - the popup shows cached data instead
+- Prevented duplicate profile fetches when multiple threads check the account profile simultaneously
+- A successful token refresh followed by a transient API error (e.g. HTTP 500) no longer permanently blocks the new token from being used
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.4.0...HEAD)
 
