@@ -19,17 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Increased default polling intervals to reduce API rate-limit errors (`poll_interval`: 120 to 180 seconds, `poll_fast`: 60 to 120 seconds)
-
 - Numeric settings (`poll_interval`, `poll_fast`, etc.) now require integer values - fractional numbers like `120.5` are no longer accepted
 
 ### Fixed
 
-- Fixed double separator line in the popup when usage data is unavailable (e.g. API error on startup)
+- A successful token refresh followed by a transient API error (e.g. HTTP 500) no longer permanently blocks the new token from being used
 - Eliminated race condition where opening the popup could trigger a redundant API call alongside the poll loop, causing HTTP 429 rate-limit errors
-- Clicking the tray icon while the popup is open no longer causes the popup to briefly close and immediately reopen
 - Opening the popup during an active rate-limit backoff no longer triggers an additional API call - the popup shows cached data instead
 - Prevented duplicate profile fetches when multiple threads check the account profile simultaneously
-- A successful token refresh followed by a transient API error (e.g. HTTP 500) no longer permanently blocks the new token from being used
+- Clicking the tray icon while the popup is open no longer causes the popup to briefly close and immediately reopen
+- Fixed double separator line in the popup when usage data is unavailable (e.g. API error on startup)
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.4.0...HEAD)
 
