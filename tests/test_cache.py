@@ -350,7 +350,7 @@ class TestRateLimitGuard(unittest.TestCase):
         cache.update()
 
         mock_fetch.return_value = _SUCCESS_DATA
-        mock_time.time.return_value = 1000.0 + 200  # Well past POLL_INTERVAL (120s)
+        mock_time.time.return_value = 1000.0 + 190  # Well past POLL_INTERVAL (180s)
         result = cache.update()
         self.assertIsNotNone(result.data)
 
