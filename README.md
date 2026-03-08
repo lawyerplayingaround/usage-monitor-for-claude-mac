@@ -17,7 +17,7 @@ A native Windows tray app that shows your Claude usage at a glance - lightweight
 - **Automatic token refresh** - when the OAuth session expires, runs `claude update` in the background to renew the token without user intervention. If a CLI update is installed, shows a notification
 - **Claude Code versions** - the popup shows installed Claude Code versions (native CLI, VS Code, Cursor, Windsurf) so you always know which version each environment uses
 - **Adaptive polling** - speeds up during active usage, pauses when the computer is idle or locked, aligns to imminent quota resets, and backs off on rate-limit errors
-- **12 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - auto-detected from your Windows display language
+- **12 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional) - auto-detected from your Windows display language, with optional manual override via the `language` setting
 - **Customizable** - optionally override polling intervals, colors, alert thresholds, and more via a [JSON settings file](#configuration)
 
 ---
@@ -122,6 +122,12 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | `poll_error` | `30` | Seconds after a transient error (5xx, network). Rate-limit errors (429) use exponential backoff instead |
 | `max_backoff` | `900` | Maximum backoff in seconds for rate-limit errors (15 min) |
 | `idle_pause` | `300` | Seconds of inactivity before polling pauses (0 = disable). Polling also pauses when the workstation is locked |
+
+### Language
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `language` | *(auto-detected)* | Override the UI language with a language code. Available: `de`, `en`, `es`, `fr`, `hi`, `id`, `it`, `ja`, `ko`, `pt-BR`, `zh-CN`, `zh-TW` |
 
 ### Currency
 

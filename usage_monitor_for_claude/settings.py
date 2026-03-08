@@ -35,7 +35,7 @@ _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg',
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
-_STRING_KEYS = frozenset({'currency_symbol'})
+_STRING_KEYS = frozenset({'currency_symbol', 'language'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 
 
@@ -204,6 +204,9 @@ def _detect_currency_symbol() -> str:
 
 _SYSTEM_CURRENCY_SYMBOL = _detect_currency_symbol()
 CURRENCY_SYMBOL: str = _S.get('currency_symbol', _SYSTEM_CURRENCY_SYMBOL)
+
+# ── Language override ──────────────────────────────────────
+LANGUAGE: str = _S.get('language', '')
 
 _ALERT_THRESHOLDS = {
     'five_hour': ALERT_THRESHOLDS_FIVE_HOUR,
