@@ -46,5 +46,5 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     icon='usage_monitor.ico',
-    version_info='version_info.py',
+    version='version_info.py',
 )
