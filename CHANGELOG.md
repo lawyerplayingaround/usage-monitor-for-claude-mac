@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.5.0...HEAD)
+
+## [1.5.0] - 2026-03-08
+
 ### Added
 
 - Idle and lock detection - polling pauses when the computer is idle (default: 300 seconds of no keyboard/mouse input) or locked, and resumes immediately when activity returns. Configurable via the `idle_pause` setting (set to `0` to disable)
@@ -35,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Clicking the tray icon while the popup is open no longer causes the popup to briefly close and immediately reopen
 - Fixed double separator line in the popup when usage data is unavailable (e.g. API error on startup)
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.4.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.4.0...v1.5.0)
 
 ## [1.4.0] - 2026-03-05
 
