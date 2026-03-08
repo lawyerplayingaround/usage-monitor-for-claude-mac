@@ -38,10 +38,9 @@ def get_idle_seconds() -> float:
     lii.cbSize = ctypes.sizeof(_LASTINPUTINFO)
     if not ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
         return 0.0
-    millis = ctypes.windll.kernel32.GetTickCount() - lii.dwTime
-    # GetTickCount wraps after ~49 days; treat negative as 0
-    if millis < 0:
-        return 0.0
+    # Simulate unsigned 32-bit subtraction so the result stays correct
+    # when GetTickCount wraps after ~49 days of uptime.
+    millis = (ctypes.windll.kernel32.GetTickCount() - lii.dwTime) & 0xFFFFFFFF
     return millis / 1000.0
 
 

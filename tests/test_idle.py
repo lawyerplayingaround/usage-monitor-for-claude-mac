@@ -55,8 +55,8 @@ class TestGetIdleSeconds(unittest.TestCase):
         self.assertEqual(result, 0.0)
 
     @patch.object(idle_mod.ctypes, 'windll', create=True)
-    def test_tick_count_wraparound_returns_zero(self, mock_windll):
-        """Returns 0.0 when GetTickCount wraps around (negative millis)."""
+    def test_tick_count_wraparound_computes_correct_idle(self, mock_windll):
+        """Computes correct idle time when GetTickCount wraps around (~49 days)."""
         mock_windll.kernel32.GetTickCount.return_value = 100
 
         def fake_get_last_input(byref_arg):
@@ -67,7 +67,8 @@ class TestGetIdleSeconds(unittest.TestCase):
         mock_windll.user32.GetLastInputInfo.side_effect = fake_get_last_input
 
         result = idle_mod.get_idle_seconds()
-        self.assertEqual(result, 0.0)
+        # Unsigned 32-bit: (100 - 4294967000) & 0xFFFFFFFF = 396 ms
+        self.assertAlmostEqual(result, 0.396)
 
 
 class TestIsWorkstationLocked(unittest.TestCase):

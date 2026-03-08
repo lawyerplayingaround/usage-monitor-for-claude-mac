@@ -236,10 +236,19 @@ class UsageCache:
         self._record_success(data)
         return UpdateResult(data=data)
 
-    def _record_error(self, data: dict[str, Any]) -> None:
-        """Apply common state updates after a failed API response."""
+    def _record_error(self, data: dict[str, Any], *, count: bool = True) -> None:
+        """Apply common state updates after a failed API response.
+
+        Parameters
+        ----------
+        data : dict
+            API response containing ``'error'`` and optional ``'server_message'``.
+        count : bool
+            If True (default), increment ``_consecutive_errors``.
+        """
         with self._state_lock:
-            self._consecutive_errors += 1
+            if count:
+                self._consecutive_errors += 1
             error = data['error']
             server_msg = data.get('server_message')
             if server_msg:
@@ -293,14 +302,8 @@ class UsageCache:
             return result
 
         log.warning('retry -> error: %s', data['error'])
-        # Retry failed - update error message with retry details
-        # but do not increment _consecutive_errors again (the caller
-        # already counted this update cycle as one error).
-        with self._state_lock:
-            error = data['error']
-            server_msg = data.get('server_message')
-            if server_msg:
-                error += f'\n{server_msg}'
-            self._last_error = error
+        # Update error message but do not increment _consecutive_errors
+        # again (the caller already counted this update cycle as one error).
+        self._record_error(data, count=False)
 
         return result

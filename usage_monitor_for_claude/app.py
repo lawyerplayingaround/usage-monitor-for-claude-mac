@@ -307,9 +307,9 @@ class UsageMonitorForClaude:
             target = time.time() + interval
             while self.running and time.time() < target:
                 time.sleep(1)
-                # If another thread (manual refresh, popup) fetched
-                # successfully, push the next poll forward to avoid
-                # a redundant fetch right after.
+                # If another thread (popup) fetched successfully,
+                # push the next poll forward to avoid a redundant
+                # fetch right after.
                 lst = self.cache.last_success_time
                 if lst is not None:
                     target = max(target, lst + interval)
