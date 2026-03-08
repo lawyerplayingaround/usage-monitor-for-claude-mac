@@ -196,9 +196,10 @@ Produces `dist/UsageMonitorForClaude.exe` (~20 MB), a single-file executable tha
 2. Update `__version__` in [`usage_monitor_for_claude/__init__.py`](usage_monitor_for_claude/__init__.py) and the version in [`version_info.py`](version_info.py) (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
 3. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [1.x.x] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it
 4. Run the test suite: `python -m unittest discover -s tests`
-5. Manual smoke test: `python -m usage_monitor_for_claude` -verify tray icon, popup, and settings
+5. Smoke test: `python -m usage_monitor_for_claude` - verify tray icon, popup, and settings
 6. Build the EXE with `python build.py`
-7. Commit, tag, push, and publish:
+7. Smoke test: `dist/UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
+8. Commit, tag, push, and publish:
 
    ```bash
    git add -A && git commit -m "Release v1.x.x"
