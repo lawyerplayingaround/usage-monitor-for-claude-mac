@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.6.0...HEAD)
+
+## [1.6.0] - 2026-03-10
+
 ### Added
 
 - `language` setting to manually override the auto-detected UI language (e.g., `"language": "ja"`)
@@ -16,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Popup sections could appear in wrong order when usage data was not yet available at startup
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.5.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.5.0...v1.6.0)
 
 ## [1.5.0] - 2026-03-08
 
