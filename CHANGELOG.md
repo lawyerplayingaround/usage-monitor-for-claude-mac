@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `language` setting to manually override the auto-detected UI language (e.g., `"language": "ja"`)
+- Live countdown for reset times in the popup - timers now tick down between API polls instead of staying frozen
 
 ### Fixed
 

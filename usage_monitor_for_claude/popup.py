@@ -94,6 +94,7 @@ class UsagePopup:
                 self._update_extra_usage_section(snap.usage)
                 self._build_installations_section()
                 self._position_near_tray()
+            self._update_countdowns()
             self._update_status_line()
             self._schedule_check()
         except tk.TclError:
@@ -388,6 +389,24 @@ class UsagePopup:
             self._status_label.configure(text=text, fg=fg)
             self._position_near_tray()
 
+    def _update_countdowns(self) -> None:
+        """Refresh reset countdown texts and elapsed markers between API polls."""
+        for widgets in self._usage_bars:
+            resets_at = widgets.get('resets_at', '')
+            period_seconds = widgets.get('period_seconds', 0)
+
+            reset_text = time_until(resets_at) if resets_at else ''
+            reset_label = widgets['reset_label']
+            if reset_text:
+                reset_label.configure(text=reset_text)
+            elif reset_label.winfo_manager():
+                reset_label.pack_forget()
+
+            time_pct = elapsed_pct(resets_at, period_seconds)
+            if time_pct is not None and widgets['marker_frame']:
+                marker_rel = max(0.0, min(1.0, time_pct / 100))
+                widgets['marker_frame'].place_configure(relx=marker_rel)
+
     def _section_heading(self, parent: tk.Frame, text: str, *, link_text: str = '', link_url: str = '') -> None:
         if not link_text:
             tk.Label(parent, text=text, font=('Segoe UI', 9, 'bold'), fg=FG_DIM, bg=BG).pack(anchor='w', pady=(8, 2))
@@ -445,6 +464,7 @@ class UsagePopup:
         return {
             'pct_label': pct_label, 'bar_frame': bar_frame,
             'fill_frame': fill_frame, 'marker_frame': marker_frame, 'reset_label': reset_label,
+            'resets_at': resets_at, 'period_seconds': period_seconds,
         }
 
     def _update_usage_bar(self, widgets: dict[str, Any], entry: dict[str, Any], period_seconds: int) -> None:
@@ -480,6 +500,9 @@ class UsagePopup:
         elif widgets['marker_frame']:
             widgets['marker_frame'].destroy()
             widgets['marker_frame'] = None
+
+        widgets['resets_at'] = resets_at
+        widgets['period_seconds'] = period_seconds
 
         reset_text = time_until(resets_at) if resets_at else ''
         reset_label = widgets['reset_label']
