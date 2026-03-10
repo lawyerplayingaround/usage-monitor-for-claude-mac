@@ -143,6 +143,7 @@ class UsageCache:
                 profile = fetch_profile()
             with self._state_lock:
                 self._profile = profile
+                self._version += 1
             log.info('fetch_profile -> %s', 'OK' if profile else 'failed')
 
     def update(self) -> UpdateResult:

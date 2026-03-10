@@ -49,10 +49,12 @@ class UsagePopup:
         self.win.resizable(False, False)
 
         self._main_frame: tk.Frame | None = None
+        self._account_frame: tk.Frame | None = None
         self._usage_frame: tk.Frame | None = None
         self._usage_bars: list[dict[str, Any]] = []
         self._extra_frame: tk.Frame | None = None
         self._extra_widgets: dict[str, Any] | None = None
+        self._install_frame: tk.Frame | None = None
         self._status_frame: tk.Frame | None = None
         self._status_label: tk.Label | None = None
         self._status_text = ''
@@ -87,8 +89,10 @@ class UsagePopup:
             snap = self.app.cache.snapshot
             if snap.version != self._last_version:
                 self._last_version = snap.version
+                self._build_account_section(snap.profile)
                 self._update_usage_section(snap.usage)
                 self._update_extra_usage_section(snap.usage)
+                self._build_installations_section()
                 self._position_near_tray()
             self._update_status_line()
             self._schedule_check()
@@ -140,17 +144,7 @@ class UsagePopup:
         close_btn.bind('<Button-1>', lambda e: self._close())
 
         # ── Account section ──
-        profile = snap.profile
-        if profile:
-            self._section_heading(self._main_frame, T['account'])
-            account = profile.get('account', {})
-            org = profile.get('organization', {})
-            plan = org.get('organization_type', '').replace('_', ' ').title()
-            email = account.get('email', '')
-            if email:
-                self._info_row(self._main_frame, T['email'], email)
-            if plan:
-                self._info_row(self._main_frame, T['plan'], plan)
+        self._build_account_section(snap.profile)
 
         # ── Usage section (rebuilt on refresh) ──
         self._build_usage_section(snap.usage)
@@ -163,6 +157,32 @@ class UsagePopup:
 
         # ── Status line ──
         self._build_status_line()
+
+    def _has_content(self, *frames: tk.Frame | None) -> bool:
+        """Return True if at least one of the given frames has visible children."""
+        return any(f and f.winfo_children() for f in frames)
+
+    def _build_account_section(self, profile: dict[str, Any] | None) -> None:
+        """Build the account info section, replacing any previous content."""
+        if self._account_frame:
+            for child in self._account_frame.winfo_children():
+                child.destroy()
+        else:
+            self._account_frame = tk.Frame(self._main_frame, bg=BG)
+            self._account_frame.pack(fill='x')
+
+        if not profile:
+            return
+
+        self._section_heading(self._account_frame, T['account'])
+        account = profile.get('account', {})
+        org = profile.get('organization', {})
+        plan = org.get('organization_type', '').replace('_', ' ').title()
+        email = account.get('email', '')
+        if email:
+            self._info_row(self._account_frame, T['email'], email)
+        if plan:
+            self._info_row(self._account_frame, T['plan'], plan)
 
     def _usage_entries(self, usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None, int]]:
         """Return the list of usage entry tuples from the given usage data."""
@@ -190,7 +210,8 @@ class UsagePopup:
         if not usage:
             return
 
-        tk.Frame(self._usage_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
+        if self._has_content(self._account_frame):
+            tk.Frame(self._usage_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
         self._section_heading(self._usage_frame, T['usage'])
 
         first = True
@@ -242,7 +263,8 @@ class UsagePopup:
         pct, used, limit = data
         high = pct >= 80
 
-        tk.Frame(self._extra_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
+        if self._has_content(self._account_frame, self._usage_frame):
+            tk.Frame(self._extra_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
         self._section_heading(self._extra_frame, T['extra_usage'])
 
         spent_text = T['extra_usage_spent'].format(used=format_credits(used), limit=format_credits(limit))
@@ -305,26 +327,32 @@ class UsagePopup:
 
     def _build_installations_section(self) -> None:
         """Build the Claude Code installations section showing discovered versions."""
+        if self._install_frame:
+            for child in self._install_frame.winfo_children():
+                child.destroy()
+        else:
+            self._install_frame = tk.Frame(self._main_frame, bg=BG)
+            self._install_frame.pack(fill='x')
+
         installations = find_installations()
         if not installations:
             return
 
-        frame = tk.Frame(self._main_frame, bg=BG)
-        frame.pack(fill='x')
+        if self._has_content(self._account_frame, self._usage_frame, self._extra_frame):
+            tk.Frame(self._install_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
 
-        tk.Frame(frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
-
-        self._section_heading(frame, T['claude_code'], link_text=T['changelog'], link_url=CHANGELOG_URL)
+        self._section_heading(self._install_frame, T['claude_code'], link_text=T['changelog'], link_url=CHANGELOG_URL)
 
         for inst in installations:
-            self._info_row(frame, inst.name, inst.version)
+            self._info_row(self._install_frame, inst.name, inst.version)
 
     def _build_status_line(self) -> None:
         """Build the status line at the bottom of the popup."""
         self._status_frame = tk.Frame(self._main_frame, bg=BG)
         self._status_frame.pack(fill='x', side='bottom')
 
-        tk.Frame(self._status_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
+        if self._has_content(self._account_frame, self._usage_frame, self._extra_frame, self._install_frame):
+            tk.Frame(self._status_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
         self._status_label = tk.Label(
             self._status_frame, text='', fg=FG_DIM, bg=BG,
             font=('Segoe UI', 8), wraplength=self.WIDTH - 32, justify='left',
