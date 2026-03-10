@@ -114,6 +114,7 @@ class TestDetectLangCode(unittest.TestCase):
 class TestLoadTranslations(unittest.TestCase):
     """Tests for load_translations()."""
 
+    @patch('usage_monitor_for_claude.settings.LANGUAGE', '')
     @patch('usage_monitor_for_claude.i18n.locale.normalize', side_effect=_mock_normalize)
     @patch('usage_monitor_for_claude.i18n.locale.getlocale', return_value=('de_DE', 'UTF-8'))
     def test_loads_detected_locale(self, _mock_get, _mock_norm):
@@ -128,6 +129,7 @@ class TestLoadTranslations(unittest.TestCase):
 
         self.assertEqual(result['title'], 'Deutsch')
 
+    @patch('usage_monitor_for_claude.settings.LANGUAGE', '')
     @patch('usage_monitor_for_claude.i18n.locale.normalize', side_effect=_mock_normalize)
     @patch('usage_monitor_for_claude.i18n.locale.getlocale', return_value=(None, None))
     def test_none_locale_falls_back_to_english(self, _mock_get, _mock_norm):
@@ -140,6 +142,34 @@ class TestLoadTranslations(unittest.TestCase):
                 result = load_translations()
 
         self.assertEqual(result['title'], 'English')
+
+    def test_language_setting_overrides_locale(self):
+        """LANGUAGE setting bypasses locale detection entirely."""
+        with TemporaryDirectory() as tmp:
+            locale_dir = Path(tmp)
+            (locale_dir / 'en.json').write_text('{"title": "English"}')
+            (locale_dir / 'ja.json').write_text('{"title": "Japanese"}')
+
+            with patch('usage_monitor_for_claude.settings.LANGUAGE', 'ja'), \
+                 patch('usage_monitor_for_claude.i18n.LOCALE_DIR', locale_dir):
+                result = load_translations()
+
+        self.assertEqual(result['title'], 'Japanese')
+
+    @patch('usage_monitor_for_claude.settings.LANGUAGE', 'xx')
+    @patch('usage_monitor_for_claude.i18n.locale.normalize', side_effect=_mock_normalize)
+    @patch('usage_monitor_for_claude.i18n.locale.getlocale', return_value=('de_DE', 'UTF-8'))
+    def test_invalid_language_setting_falls_back_to_locale(self, _mock_get, _mock_norm):
+        """Invalid LANGUAGE setting falls back to locale detection."""
+        with TemporaryDirectory() as tmp:
+            locale_dir = Path(tmp)
+            (locale_dir / 'en.json').write_text('{"title": "English"}')
+            (locale_dir / 'de.json').write_text('{"title": "Deutsch"}')
+
+            with patch('usage_monitor_for_claude.i18n.LOCALE_DIR', locale_dir):
+                result = load_translations()
+
+        self.assertEqual(result['title'], 'Deutsch')
 
 
 # ---------------------------------------------------------------------------
