@@ -180,15 +180,15 @@ class UsagePopup:
     def _build_usage_section(self, usage: dict[str, Any]) -> None:
         """Build the usage bars section from scratch, replacing any previous content."""
         if self._usage_frame:
-            self._usage_frame.destroy()
-            self._usage_frame = None
+            for child in self._usage_frame.winfo_children():
+                child.destroy()
+        else:
+            self._usage_frame = tk.Frame(self._main_frame, bg=BG)
+            self._usage_frame.pack(fill='x')
         self._usage_bars = []
 
         if not usage:
             return
-
-        self._usage_frame = tk.Frame(self._main_frame, bg=BG)
-        self._usage_frame.pack(fill='x')
 
         tk.Frame(self._usage_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
         self._section_heading(self._usage_frame, T['usage'])
@@ -228,8 +228,11 @@ class UsagePopup:
     def _build_extra_usage_section(self, usage: dict[str, Any]) -> None:
         """Build the extra usage section from scratch."""
         if self._extra_frame:
-            self._extra_frame.destroy()
-        self._extra_frame = None
+            for child in self._extra_frame.winfo_children():
+                child.destroy()
+        else:
+            self._extra_frame = tk.Frame(self._main_frame, bg=BG)
+            self._extra_frame.pack(fill='x')
         self._extra_widgets = None
 
         data = self._extra_usage_data(usage)
@@ -238,9 +241,6 @@ class UsagePopup:
 
         pct, used, limit = data
         high = pct >= 80
-
-        self._extra_frame = tk.Frame(self._main_frame, bg=BG)
-        self._extra_frame.pack(fill='x')
 
         tk.Frame(self._extra_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
         self._section_heading(self._extra_frame, T['extra_usage'])
