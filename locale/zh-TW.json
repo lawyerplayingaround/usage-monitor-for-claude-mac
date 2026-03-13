@@ -28,7 +28,7 @@
     "error_label": "Usage Monitor: 錯誤",
     "connection_error": "無法連線到 Anthropic API。",
     "http_error": "API 請求失敗 (HTTP {code})。",
-    "auth_expired": "工作階段已過期 – 請開啟 Claude Code 重新登入，除非您的帳戶或訂閱已變更。",
+    "auth_expired": "工作階段已過期 - 請開啟 Claude Code 重新登入。",
     "auth_expired_label": "Claude 工作階段已過期",
     "auth_expired_short": "請開啟 Claude Code 重新整理工作階段。",
     "no_token": "找不到 OAuth 權杖。請先登入 Claude Code。",
