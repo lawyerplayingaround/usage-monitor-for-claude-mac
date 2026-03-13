@@ -13,7 +13,7 @@ import webbrowser
 from typing import TYPE_CHECKING, Any
 
 from .claude_cli import CHANGELOG_URL, find_installations
-from .settings import BAR_BG, BAR_FG, BAR_FG_HIGH, BG, FG, FG_DIM, FG_HEADING
+from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BG, FG, FG_DIM, FG_HEADING
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, time_until
 from .i18n import T
 
@@ -262,7 +262,6 @@ class UsagePopup:
             return
 
         pct, used, limit = data
-        high = pct >= 80
 
         if self._has_content(self._account_frame, self._usage_frame):
             tk.Frame(self._extra_frame, bg=BAR_BG, height=1).pack(fill='x', pady=(10, 4))
@@ -284,7 +283,7 @@ class UsagePopup:
         fill_pct = max(0.0, min(1.0, pct / 100))
         fill_frame = None
         if fill_pct > 0:
-            fill_frame = tk.Frame(bar_frame, bg=BAR_FG_HIGH if high else BAR_FG)
+            fill_frame = tk.Frame(bar_frame, bg=BAR_FG)
             fill_frame.place(relwidth=fill_pct, relheight=1.0)
 
         self._extra_widgets = {
@@ -306,14 +305,13 @@ class UsagePopup:
             return
 
         pct, used, limit = data
-        high = pct >= 80
         self._extra_widgets['pct_label'].configure(text=f'{pct:.0f}%')
 
         spent_text = T['extra_usage_spent'].format(used=format_credits(used), limit=format_credits(limit))
         self._extra_widgets['spent_label'].configure(text=spent_text)
 
         fill_pct = max(0.0, min(1.0, pct / 100))
-        color = BAR_FG_HIGH if high else BAR_FG
+        color = BAR_FG
         bar_frame = self._extra_widgets['bar_frame']
         if fill_pct > 0:
             if self._extra_widgets['fill_frame']:
@@ -431,7 +429,8 @@ class UsagePopup:
         """Create a usage bar group and return widget references for in-place updates."""
         pct = entry.get('utilization', 0) or 0
         resets_at = entry.get('resets_at', '')
-        high = pct >= 80
+        time_pct = elapsed_pct(resets_at, period_seconds)
+        warn = time_pct is not None and pct > time_pct
 
         row = tk.Frame(parent, bg=BG)
         row.pack(fill='x', pady=(0 if first else 8, 4))
@@ -446,10 +445,8 @@ class UsagePopup:
         fill_pct = max(0.0, min(1.0, pct / 100))
         fill_frame = None
         if fill_pct > 0:
-            fill_frame = tk.Frame(bar_frame, bg=BAR_FG_HIGH if high else BAR_FG)
+            fill_frame = tk.Frame(bar_frame, bg=BAR_FG_WARN if warn else BAR_FG)
             fill_frame.place(relwidth=fill_pct, relheight=1.0)
-
-        time_pct = elapsed_pct(resets_at, period_seconds)
         marker_frame = None
         if time_pct is not None:
             marker_rel = max(0.0, min(1.0, time_pct / 100))
@@ -471,13 +468,14 @@ class UsagePopup:
         """Update an existing usage bar's values in-place."""
         pct = entry.get('utilization', 0) or 0
         resets_at = entry.get('resets_at', '')
-        high = pct >= 80
+        time_pct = elapsed_pct(resets_at, period_seconds)
+        warn = time_pct is not None and pct > time_pct
         bar_frame = widgets['bar_frame']
 
         widgets['pct_label'].configure(text=f'{pct:.0f}%')
 
         fill_pct = max(0.0, min(1.0, pct / 100))
-        color = BAR_FG_HIGH if high else BAR_FG
+        color = BAR_FG_WARN if warn else BAR_FG
         if fill_pct > 0:
             if widgets['fill_frame']:
                 widgets['fill_frame'].place_configure(relwidth=fill_pct)

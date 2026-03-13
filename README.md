@@ -73,8 +73,8 @@ Windows may hide new tray icons by default. To keep the icon always visible:
 
 Each bar in the detail popup has up to three visual elements:
 
-1. **Blue fill** - how much of the limit you have used (turns **red** at 80%+)
-2. **White vertical line** - how much *time* has passed in the current period. If the blue fill is to the left of this line, you are using Claude slower than the rate limit refills. If it is to the right, you are on track to hit the limit before the period resets.
+1. **Blue fill** - how much of the limit you have used
+2. **White vertical line** - how much *time* has passed in the current period. The fill turns **red** when it passes this marker, warning that you may hit the limit before the period resets.
 3. **Reset text** - when the limit resets, shown as a countdown with clock time
 
 ---
@@ -87,7 +87,7 @@ All settings work out of the box - no configuration file is needed. To customize
 {
   "poll_interval": 180,
   "bar_fg": "#00cc66",
-  "bar_fg_high": "#ff6600"
+  "bar_fg_warn": "#ff6600"
 }
 ```
 
@@ -156,7 +156,7 @@ Override individual channels as RGBA arrays `[R, G, B, A]` (0–255). Unspecifie
 | `fg_heading` | `"#ffffff"` | Section headings |
 | `bar_bg` | `"#333333"` | Progress bar background |
 | `bar_fg` | `"#4a9eff"` | Progress bar fill |
-| `bar_fg_high` | `"#e05050"` | Progress bar fill when usage ≥ 80% |
+| `bar_fg_warn` | `"#e05050"` | Progress bar fill when usage outpaces elapsed time |
 
 </details>
 

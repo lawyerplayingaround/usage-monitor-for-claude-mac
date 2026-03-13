@@ -31,7 +31,7 @@ _NUMERIC_BOUNDS: dict[str, int] = {
     'max_backoff': 1,
     'idle_pause': 0,
 }
-_COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg', 'bar_fg_high'})
+_COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg', 'bar_fg_warn'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
@@ -171,7 +171,7 @@ FG_DIM = _S.get('fg_dim', '#888888')
 FG_HEADING = _S.get('fg_heading', '#ffffff')
 BAR_BG = _S.get('bar_bg', '#333333')
 BAR_FG = _S.get('bar_fg', '#4a9eff')
-BAR_FG_HIGH = _S.get('bar_fg_high', '#e05050')
+BAR_FG_WARN = _S.get('bar_fg_warn', '#e05050')
 
 # ── Tray icon colors ─────────────────────────────────────────
 ICON_LIGHT = _icon_colors('icon_light', {

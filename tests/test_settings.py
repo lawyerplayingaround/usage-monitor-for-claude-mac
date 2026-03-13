@@ -205,7 +205,7 @@ class TestSettingsOverrides(unittest.TestCase):
     _DEFAULTS = {
         'POLL_INTERVAL': 120, 'POLL_FAST': 60, 'POLL_FAST_EXTRA': 2, 'POLL_ERROR': 30,
         'BG': '#1e1e1e', 'FG': '#cccccc', 'FG_DIM': '#888888', 'FG_HEADING': '#ffffff',
-        'BAR_BG': '#333333', 'BAR_FG': '#4a9eff', 'BAR_FG_HIGH': '#e05050',
+        'BAR_BG': '#333333', 'BAR_FG': '#4a9eff', 'BAR_FG_WARN': '#e05050',
     }
 
     def _assert_overrides(self, settings: dict, expected: list[tuple[str, object]]) -> None:
