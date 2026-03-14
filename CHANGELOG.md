@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `on_reset_command` and `on_threshold_command` settings to run shell commands when usage events occur (e.g. push notifications, agent orchestration), with event details passed as environment variables. The reset command fires on any usage drop and includes the previous utilization so your script can decide when to act
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.7.0...HEAD)
 
 ## [1.7.0] - 2026-03-14

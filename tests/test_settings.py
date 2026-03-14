@@ -495,6 +495,32 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertNotIn('alert_time_aware', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
+    # ── String command validation ────────────────────────────────
+
+    def test_on_reset_command_string_valid(self):
+        """String value for on_reset_command passes through."""
+        result, mock = self._run_validate({'on_reset_command': 'echo hello'})
+        self.assertEqual(result['on_reset_command'], 'echo hello')
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_on_reset_command_non_string_dropped(self):
+        """Non-string value for on_reset_command is dropped."""
+        result, mock = self._run_validate({'on_reset_command': 42})
+        self.assertNotIn('on_reset_command', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_on_threshold_command_string_valid(self):
+        """String value for on_threshold_command passes through."""
+        result, mock = self._run_validate({'on_threshold_command': 'powershell -File notify.ps1'})
+        self.assertEqual(result['on_threshold_command'], 'powershell -File notify.ps1')
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_on_threshold_command_non_string_dropped(self):
+        """Non-string value for on_threshold_command is dropped."""
+        result, mock = self._run_validate({'on_threshold_command': True})
+        self.assertNotIn('on_threshold_command', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
     def _run_validate(self, data: dict) -> tuple[dict, MagicMock]:
         """Run _validate with mocked ctypes and return (result, mock_ctypes)."""
         mock_ctypes = MagicMock()

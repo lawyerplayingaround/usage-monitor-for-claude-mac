@@ -1042,5 +1042,313 @@ class TestWaitForActivity(unittest.TestCase):
         mock_sleep.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# Event command integration
+# ---------------------------------------------------------------------------
+
+class TestResetCommand(unittest.TestCase):
+    """Tests for on_reset_command execution during quota reset."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_reset_command_fires_on_5h_drop(self, _icon, _tooltip, mock_cmd):
+        """Reset command fires when 5h usage drops."""
+        self.app._prev_5h = 98.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 20.0, 'resets_at': '2025-01-15T18:00:00Z'}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, 'echo reset')
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '20')
+        self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '98')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '20')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '10')
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], '2025-01-15T18:00:00Z')
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_reset_command_fires_on_7d_drop(self, _icon, _tooltip, mock_cmd):
+        """Reset command fires when 7d usage drops."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 60.0
+        data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0, 'resets_at': '2025-01-20T00:00:00Z'}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'seven_day')
+        self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '60')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '50')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '10')
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_reset_command_fires_on_any_drop_not_just_exhausted(self, _icon, _tooltip, mock_cmd):
+        """Reset command fires on any usage drop, not just from near-exhaustion."""
+        self.app._prev_5h = 30.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '30')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '5')
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_reset_command_missing_resets_at(self, _icon, _tooltip, mock_cmd):
+        """USAGE_MONITOR_RESETS_AT is empty string when resets_at is absent from data."""
+        self.app._prev_5h = 80.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], '')
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_command_when_setting_empty(self, _icon, _tooltip, mock_cmd):
+        """No command executed when on_reset_command is empty."""
+        self.app._prev_5h = 98.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 20.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_command_when_usage_increases(self, _icon, _tooltip, mock_cmd):
+        """No command when usage is increasing."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 55.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_both_quotas_drop_fires_two_commands(self, _icon, _tooltip, mock_cmd):
+        """Two commands fire when both 5h and 7d usage drop simultaneously."""
+        self.app._prev_5h = 95.0
+        self.app._prev_7d = 80.0
+        data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 20.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(mock_cmd.call_count, 2)
+        variants = {call[0][1]['USAGE_MONITOR_VARIANT'] for call in mock_cmd.call_args_list}
+        self.assertEqual(variants, {'five_hour', 'seven_day'})
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_command_on_first_update(self, _icon, _tooltip, mock_cmd):
+        """No reset command on first update (no previous values)."""
+        data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_command_when_usage_stable(self, _icon, _tooltip, mock_cmd):
+        """No command when usage stays the same."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_not_called()
+
+
+class TestThresholdCommand(unittest.TestCase):
+    """Tests for on_threshold_command execution during threshold alerts."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app._prev_5h = 0.0  # simulate past first update so commands are not suppressed
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', False)
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_threshold_command_fires_on_crossing(self, mock_cmd):
+        """Threshold command fires when usage crosses a configured threshold."""
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 85.0, 'resets_at': '2025-01-15T18:00:00Z'}})
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, 'notify.bat')
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'threshold')
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '85')
+        self.assertEqual(env['USAGE_MONITOR_THRESHOLD'], '80')
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], '2025-01-15T18:00:00Z')
+        self.assertIn('USAGE_MONITOR_TITLE', env)
+        self.assertIn('USAGE_MONITOR_MESSAGE', env)
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_no_command_when_setting_empty(self, mock_cmd):
+        """No command executed when on_threshold_command is empty."""
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 85.0}})
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_no_command_below_threshold(self, mock_cmd):
+        """No command when usage is below all thresholds."""
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 50.0}})
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_no_duplicate_command(self, mock_cmd):
+        """No duplicate command for same threshold."""
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 85.0}})
+        mock_cmd.reset_mock()
+
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 88.0}})
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_command_for_higher_threshold(self, mock_cmd):
+        """Command fires again when usage crosses the next higher threshold."""
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 85.0}})
+        mock_cmd.reset_mock()
+
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 97.0}})
+
+        mock_cmd.assert_called_once()
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_THRESHOLD'], '95')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '97')
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', True)
+    @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE_BELOW', 90)
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_time_aware_suppression_suppresses_command(self, mock_cmd):
+        """Time-aware suppression also suppresses the command."""
+        with patch('usage_monitor_for_claude.app.elapsed_pct', return_value=90.0):
+            self.app._check_threshold_alerts({'five_hour': {'utilization': 82.0, 'resets_at': '2025-01-15T18:00:00Z'}})
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', False)
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_no_command_on_first_update(self, mock_cmd):
+        """Threshold command is suppressed on first update (notification still fires)."""
+        self.app._prev_5h = None  # first update - no previous values yet
+
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 85.0, 'resets_at': '2025-01-15T18:00:00Z'}})
+
+        # Notification fires (threshold was exceeded), but command does not
+        self.app.icon.notify.assert_called_once()
+        mock_cmd.assert_not_called()
+
+
+class TestExtraUsageCommand(unittest.TestCase):
+    """Tests for on_threshold_command with extra usage events."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app._prev_5h = 0.0  # simulate past first update so commands are not suppressed
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_extra_usage_command_includes_amounts(self, mock_cmd):
+        """Extra usage threshold command includes used and limit amounts."""
+        data = {
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 850},
+        }
+        self.app._check_threshold_alerts(data)
+
+        mock_cmd.assert_called_once()
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'extra_usage')
+        self.assertIn('USAGE_MONITOR_EXTRA_USED', env)
+        self.assertIn('USAGE_MONITOR_EXTRA_LIMIT', env)
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_extra_usage_no_command_when_empty(self, mock_cmd):
+        """No command for extra usage when setting is empty."""
+        data = {
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 850},
+        }
+        self.app._check_threshold_alerts(data)
+
+        mock_cmd.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

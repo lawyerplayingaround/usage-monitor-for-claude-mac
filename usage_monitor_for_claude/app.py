@@ -20,8 +20,12 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 from .api import api_headers
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .cache import UsageCache
+from .command import run_event_command
 from .idle import get_idle_seconds, is_workstation_locked
-from .settings import ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, IDLE_PAUSE, POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds
+from .settings import (
+    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, IDLE_PAUSE, ON_RESET_COMMAND, ON_THRESHOLD_COMMAND,
+    POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds,
+)
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip
 from .i18n import T
 from .popup import UsagePopup
@@ -180,6 +184,12 @@ class UsageMonitorForClaude:
         if self._prev_7d is not None and self._prev_7d > 98 and pct_7d < self._prev_7d and pct_5h < 99:
             self.icon.notify(T['notify_reset'], T['notify_reset_title'])
 
+        # Run reset command on any detected usage drop (independent of notification threshold)
+        if self._prev_5h is not None and pct_5h < self._prev_5h:
+            self._run_reset_command('five_hour', pct_5h, self._prev_5h, pct_5h=pct_5h, pct_7d=pct_7d, entry=result.data.get('five_hour', {}))
+        if self._prev_7d is not None and pct_7d < self._prev_7d:
+            self._run_reset_command('seven_day', pct_7d, self._prev_7d, pct_5h=pct_5h, pct_7d=pct_7d, entry=result.data.get('seven_day', {}))
+
         self._check_threshold_alerts(result.data)
 
         # Adaptive polling: speed up when session usage is increasing
@@ -222,10 +232,10 @@ class UsageMonitorForClaude:
                     continue
 
             if highest_exceeded > last_notified:
-                self.icon.notify(
-                    T[notify_key].format(pct=f'{pct:.0f}'),
-                    T['notify_threshold_title'],
-                )
+                title = T['notify_threshold_title']
+                message = T[notify_key].format(pct=f'{pct:.0f}')
+                self.icon.notify(message, title)
+                self._run_threshold_command(variant_key, pct, highest_exceeded, entry, title, message)
                 self._notified_thresholds[variant_key] = highest_exceeded
             elif highest_exceeded < last_notified:
                 self._notified_thresholds[variant_key] = highest_exceeded
@@ -259,15 +269,69 @@ class UsageMonitorForClaude:
         last_notified = self._notified_thresholds.get('extra_usage', 0)
 
         if highest_exceeded > last_notified:
-            self.icon.notify(
-                T['notify_threshold_extra_usage'].format(
-                    pct=f'{pct:.0f}', used=format_credits(used), limit=format_credits(limit),
-                ),
-                T['notify_threshold_title'],
+            title = T['notify_threshold_title']
+            message = T['notify_threshold_extra_usage'].format(
+                pct=f'{pct:.0f}', used=format_credits(used), limit=format_credits(limit),
+            )
+            self.icon.notify(message, title)
+            self._run_threshold_command(
+                'extra_usage', pct, highest_exceeded, extra, title, message,
+                extra_used=format_credits(used), extra_limit=format_credits(limit),
             )
             self._notified_thresholds['extra_usage'] = highest_exceeded
         elif highest_exceeded < last_notified:
             self._notified_thresholds['extra_usage'] = highest_exceeded
+
+    # ── Event commands ─────────────────────────────────────────
+
+    def _run_reset_command(
+        self, variant: str, pct: float, prev_pct: float, *, pct_5h: float, pct_7d: float, entry: dict[str, Any],
+    ) -> None:
+        """Run the user-configured reset command if set."""
+        if not ON_RESET_COMMAND:
+            return
+
+        run_event_command(ON_RESET_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'reset',
+            'USAGE_MONITOR_VARIANT': variant,
+            'USAGE_MONITOR_UTILIZATION': str(round(pct)),
+            'USAGE_MONITOR_PREV_UTILIZATION': str(round(prev_pct)),
+            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': str(round(pct_5h)),
+            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': str(round(pct_7d)),
+            'USAGE_MONITOR_RESETS_AT': entry.get('resets_at', ''),
+            'USAGE_MONITOR_TITLE': T['notify_reset_title'],
+            'USAGE_MONITOR_MESSAGE': T['notify_reset'],
+        })
+
+    def _run_threshold_command(
+        self, variant: str, pct: float, threshold: float,
+        entry: dict[str, Any], title: str, message: str,
+        *, extra_used: str = '', extra_limit: str = '',
+    ) -> None:
+        """Run the user-configured threshold command if set.
+
+        Skipped on the first update (before ``_prev_5h`` is set) so that
+        already-exceeded thresholds at app startup do not trigger commands.
+        Notifications still fire - commands react to *events*, not *state*.
+        """
+        if not ON_THRESHOLD_COMMAND or self._prev_5h is None:
+            return
+
+        env_vars = {
+            'USAGE_MONITOR_EVENT': 'threshold',
+            'USAGE_MONITOR_VARIANT': variant,
+            'USAGE_MONITOR_UTILIZATION': str(round(pct)),
+            'USAGE_MONITOR_THRESHOLD': str(round(threshold)),
+            'USAGE_MONITOR_RESETS_AT': entry.get('resets_at', ''),
+            'USAGE_MONITOR_TITLE': title,
+            'USAGE_MONITOR_MESSAGE': message,
+        }
+        if extra_used:
+            env_vars['USAGE_MONITOR_EXTRA_USED'] = extra_used
+        if extra_limit:
+            env_vars['USAGE_MONITOR_EXTRA_LIMIT'] = extra_limit
+
+        run_event_command(ON_THRESHOLD_COMMAND, env_vars)
 
     # ── Polling ───────────────────────────────────────────────
 

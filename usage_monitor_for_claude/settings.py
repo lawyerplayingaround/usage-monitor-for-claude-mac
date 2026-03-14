@@ -21,6 +21,20 @@ import locale as _locale
 import sys
 from pathlib import Path
 
+__all__ = [
+    'ALERT_THRESHOLDS_EXTRA_USAGE', 'ALERT_THRESHOLDS_FIVE_HOUR', 'ALERT_THRESHOLDS_SEVEN_DAY',
+    'ALERT_TIME_AWARE', 'ALERT_TIME_AWARE_BELOW',
+    'BAR_BG', 'BAR_FG', 'BAR_FG_WARN', 'BG',
+    'CURRENCY_SYMBOL',
+    'FG', 'FG_DIM', 'FG_HEADING',
+    'ICON_DARK', 'ICON_LIGHT', 'IDLE_PAUSE',
+    'LANGUAGE', 'MAX_BACKOFF',
+    'ON_RESET_COMMAND', 'ON_THRESHOLD_COMMAND',
+    'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
+    'SETTINGS_FILENAME',
+    'get_alert_thresholds',
+]
+
 SETTINGS_FILENAME = 'usage-monitor-settings.json'
 
 _NUMERIC_BOUNDS: dict[str, int] = {
@@ -35,7 +49,7 @@ _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg',
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day', 'alert_thresholds_extra_usage'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
-_STRING_KEYS = frozenset({'currency_symbol', 'language'})
+_STRING_KEYS = frozenset({'currency_symbol', 'language', 'on_reset_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 
 
@@ -208,6 +222,10 @@ CURRENCY_SYMBOL: str = _S.get('currency_symbol', _SYSTEM_CURRENCY_SYMBOL)
 
 # ── Language override ──────────────────────────────────────
 LANGUAGE: str = _S.get('language', '')
+
+# ── Event commands ─────────────────────────────────────────
+ON_RESET_COMMAND: str = _S.get('on_reset_command', '')
+ON_THRESHOLD_COMMAND: str = _S.get('on_threshold_command', '')
 
 _ALERT_THRESHOLDS = {
     'five_hour': ALERT_THRESHOLDS_FIVE_HOUR,
