@@ -40,7 +40,7 @@ Prioritize readability and auditability - users handle credentials and must be a
 - Three groups separated by blank lines: standard library, third-party, local
 - Within groups: `import` before `from...import`, sorted alphabetically
 - Relative imports within the `usage_monitor_for_claude` package (e.g. `from .api import ...`), except `__main__.py` which requires absolute imports for PyInstaller compatibility
-- Absolute imports for external packages, avoid wildcards, import NumPy as `np`
+- Absolute imports for external packages, avoid wildcards
 
 ## Structure
 - Main exported functions first, then helpers in logical order
@@ -49,8 +49,8 @@ Prioritize readability and auditability - users handle credentials and must be a
 
 ## Style
 - Prefer functional/modular code over classes
-- Pure functions without side effects
-- Descriptive variable names, no global variables
+- Isolate side effects in dedicated modules (e.g. `api.py`, `command.py`) - keep helper and utility functions pure
+- Descriptive, self-explanatory variable and parameter names, no global variables - no ambiguous names like `other`, `data2`, `flag`. Every name must be immediately clear without reading the surrounding code
 - Comments only for complex/non-obvious code and math operations - never about improvements or changes
 
 ## List Comprehensions
@@ -88,6 +88,8 @@ Prioritize readability and auditability - users handle credentials and must be a
 - After completing all changes, run the full test suite (`python -m unittest discover -s tests`) and ensure all tests pass - this applies to any change (code, locale files, config, data files), not just Python modules
 - Fix the code to make tests pass - never weaken or remove tests to avoid failures
 - When adding new functionality or changing existing behavior, update or add corresponding tests
+- Tests are not optional extras - they are essential. Cover edge cases (concurrent events, boundary values, empty/missing data) not just the happy path
+- During code review, never dismiss missing tests as "nice to have" or "not critical" - identify and add them
 - Tests live in `tests/` (outside the package, not included in PyInstaller builds)
 - Use `unittest` from the standard library - no additional test dependencies
 - Mock time-dependent logic by patching `datetime` in the module under test
@@ -96,6 +98,8 @@ Prioritize readability and auditability - users handle credentials and must be a
 - **NEVER create commits** - only suggest commit messages when asked, the user commits manually
 - Never push, tag, or run any destructive git operations
 
+## Memory & Persistence
+- **NEVER write to the auto-memory system** (`~/.claude/projects/.../memory/`) - this project is version-controlled, so all persistent knowledge belongs in this CLAUDE.md file where it is shared across contributors and visible in the repository
+
 ## Execution
 - Always activate virtual environment before running Python code
-- Research current recommendations before changes if needed

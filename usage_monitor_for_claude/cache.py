@@ -74,7 +74,7 @@ class UsageCache:
         self._last_failed_token: str | None = None
         self._rate_limit_until: float = 0
 
-    # ── Public properties ─────────────────────────────────────
+    # Public properties
 
     @property
     def usage(self) -> dict[str, Any]:
@@ -124,7 +124,7 @@ class UsageCache:
                 version=self._version,
             )
 
-    # ── Public methods ────────────────────────────────────────
+    # Public methods
 
     def ensure_profile(self) -> None:
         """Fetch the account profile if not yet loaded (thread-safe).
@@ -165,7 +165,7 @@ class UsageCache:
         finally:
             self._lock.release()
 
-    # ── Private helpers ───────────────────────────────────────
+    # Private helpers
 
     def _update_locked(self) -> UpdateResult:
         """Execute the actual update while holding ``_lock``."""

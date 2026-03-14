@@ -17,6 +17,8 @@ from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BG, FG, FG_DIM, FG_HEADING
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, time_until
 from .i18n import T
 
+__all__ = ['UsagePopup']
+
 if TYPE_CHECKING:
     from .app import UsageMonitorForClaude
     from .cache import CacheSnapshot
@@ -136,7 +138,7 @@ class UsagePopup:
         self._main_frame = tk.Frame(self.win, bg=BG, padx=pad)
         self._main_frame.pack(fill='both', expand=True, pady=(12, 16))
 
-        # ── Title bar ──
+        # Title bar
         title_frame = tk.Frame(self._main_frame, bg=BG)
         title_frame.pack(fill='x', pady=(0, 4))
         tk.Label(title_frame, text=T['title'], font=('Segoe UI', 13, 'bold'), fg=FG_HEADING, bg=BG).pack(side='left')
@@ -144,19 +146,19 @@ class UsagePopup:
         close_btn.pack(side='right')
         close_btn.bind('<Button-1>', lambda e: self._close())
 
-        # ── Account section ──
+        # Account section
         self._build_account_section(snap.profile)
 
-        # ── Usage section (rebuilt on refresh) ──
+        # Usage section (rebuilt on refresh)
         self._build_usage_section(snap.usage)
 
-        # ── Extra usage section ──
+        # Extra usage section
         self._build_extra_usage_section(snap.usage)
 
-        # ── Claude Code installations ──
+        # Claude Code installations
         self._build_installations_section()
 
-        # ── Status line ──
+        # Status line
         self._build_status_line()
 
     def _has_content(self, *frames: tk.Frame | None) -> bool:

@@ -332,7 +332,7 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertEqual(result['poll_fast'], 60)
         self.assertEqual(result['bg'], '#000')
 
-    # ── Non-negative numeric validation ─────────────────────────
+    # Non-negative numeric validation
 
     def test_idle_pause_zero_valid(self):
         """Value 0 for idle_pause is valid (disables idle detection)."""
@@ -369,7 +369,7 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertNotIn('idle_pause', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
-    # ── Threshold array validation ─────────────────────────────
+    # Threshold array validation
 
     def test_valid_threshold_array(self):
         """Valid threshold array passes through without MessageBox."""
@@ -432,7 +432,7 @@ class TestSettingsValidation(unittest.TestCase):
         result, _ = self._run_validate({'alert_thresholds_seven_day': 'bad'})
         self.assertNotIn('alert_thresholds_seven_day', result)
 
-    # ── Percent key validation ─────────────────────────────────
+    # Percent key validation
 
     def test_alert_time_aware_below_valid(self):
         """Valid number for alert_time_aware_below passes through."""
@@ -469,7 +469,7 @@ class TestSettingsValidation(unittest.TestCase):
         result, _ = self._run_validate({'alert_time_aware_below': True})
         self.assertNotIn('alert_time_aware_below', result)
 
-    # ── Boolean key validation ──────────────────────────────────
+    # Boolean key validation
 
     def test_alert_time_aware_true_valid(self):
         """Boolean true for alert_time_aware passes through."""
@@ -495,7 +495,7 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertNotIn('alert_time_aware', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
-    # ── String command validation ────────────────────────────────
+    # String command validation
 
     def test_on_reset_command_string_valid(self):
         """String value for on_reset_command passes through."""

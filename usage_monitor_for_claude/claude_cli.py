@@ -13,7 +13,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-# ── Known installation locations ──────────────────────────────
+# Known installation locations
 CLAUDE_CLI_PATH = Path.home() / '.local' / 'bin' / 'claude.exe'
 
 _EXTENSION_DIRS: list[tuple[str, Path]] = [

@@ -11,7 +11,7 @@ any constant.  Search order:
 1. Next to the executable (frozen) or project root (source)
 2. ``~/.claude/usage-monitor-settings.json``
 
-The app never creates this file — users place it manually.
+The app never creates this file - users place it manually.
 """
 from __future__ import annotations
 
@@ -170,7 +170,7 @@ def _icon_colors(key: str, defaults: dict[str, tuple]) -> dict[str, tuple]:
 
 _S = _load_settings()
 
-# ── Polling intervals (seconds) ───────────────────────────────
+# Polling intervals (seconds)
 POLL_INTERVAL = _S.get('poll_interval', 180)
 POLL_FAST = _S.get('poll_fast', 120)
 POLL_FAST_EXTRA = _S.get('poll_fast_extra', 2)
@@ -178,7 +178,7 @@ POLL_ERROR = _S.get('poll_error', 30)
 MAX_BACKOFF = _S.get('max_backoff', 900)
 IDLE_PAUSE = _S.get('idle_pause', 300)
 
-# ── Popup theme ───────────────────────────────────────────────
+# Popup theme
 BG = _S.get('bg', '#1e1e1e')
 FG = _S.get('fg', '#cccccc')
 FG_DIM = _S.get('fg_dim', '#888888')
@@ -187,7 +187,7 @@ BAR_BG = _S.get('bar_bg', '#333333')
 BAR_FG = _S.get('bar_fg', '#4a9eff')
 BAR_FG_WARN = _S.get('bar_fg_warn', '#e05050')
 
-# ── Tray icon colors ─────────────────────────────────────────
+# Tray icon colors
 ICON_LIGHT = _icon_colors('icon_light', {
     'fg': (255, 255, 255, 255),
     'fg_half': (255, 255, 255, 80),
@@ -199,14 +199,14 @@ ICON_DARK = _icon_colors('icon_dark', {
     'fg_dim': (0, 0, 0, 140),
 })
 
-# ── Alert thresholds ────────────────────────────────────────
+# Alert thresholds
 ALERT_THRESHOLDS_FIVE_HOUR: list[float] = _S.get('alert_thresholds_five_hour', [50, 80, 95])
 ALERT_THRESHOLDS_SEVEN_DAY: list[float] = _S.get('alert_thresholds_seven_day', [95])
 ALERT_THRESHOLDS_EXTRA_USAGE: list[float] = _S.get('alert_thresholds_extra_usage', [50, 80, 95])
 ALERT_TIME_AWARE: bool = _S.get('alert_time_aware', True)
 ALERT_TIME_AWARE_BELOW: float = _S.get('alert_time_aware_below', 90)
 
-# ── Currency ───────────────────────────────────────────────
+# Currency
 
 def _detect_currency_symbol() -> str:
     """Detect the system locale currency symbol for monetary formatting."""
@@ -220,10 +220,10 @@ def _detect_currency_symbol() -> str:
 _SYSTEM_CURRENCY_SYMBOL = _detect_currency_symbol()
 CURRENCY_SYMBOL: str = _S.get('currency_symbol', _SYSTEM_CURRENCY_SYMBOL)
 
-# ── Language override ──────────────────────────────────────
+# Language override
 LANGUAGE: str = _S.get('language', '')
 
-# ── Event commands ─────────────────────────────────────────
+# Event commands
 ON_RESET_COMMAND: str = _S.get('on_reset_command', '')
 ON_THRESHOLD_COMMAND: str = _S.get('on_threshold_command', '')
 

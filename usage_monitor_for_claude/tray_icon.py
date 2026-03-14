@@ -16,7 +16,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 from .settings import ICON_DARK, ICON_LIGHT
 
-# ── Theme registry ────────────────────────────────────────────
+__all__ = ['load_font', 'taskbar_uses_light_theme', 'watch_theme_change', 'create_icon_image', 'create_status_image']
+
+# Theme registry
 THEME_REG_KEY = r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 THEME_REG_VALUE = 'SystemUsesLightTheme'
 REG_NOTIFY_CHANGE_LAST_SET = 0x00000004
@@ -77,7 +79,7 @@ def create_icon_image(pct_5h: float, pct_7d: float, light_taskbar: bool = False)
     img = Image.new('RGBA', (S, S), TRANSPARENT)
     draw = ImageDraw.Draw(img)
 
-    # ── Top text: "C", percentage when usage > 50%, or "✕" at 100% ──
+    # Top text: "C", percentage when usage > 50%, or "✕" at 100%
     stroke_width = 0
     if pct_5h >= 100:
         text, font = '\u2715', load_font(36, symbol=True)
@@ -91,7 +93,7 @@ def create_icon_image(pct_5h: float, pct_7d: float, light_taskbar: bool = False)
     tw = bbox[2] - bbox[0]
     draw.text(((S - tw) / 2 - bbox[0], -bbox[1]), text, fill=fg, font=font, stroke_width=stroke_width, stroke_fill=fg)
 
-    # ── Progress bars – full width, flush to bottom ──
+    # Progress bars – full width, flush to bottom
     bar_h = 9
     gap = 3
     bar2_y = S - bar_h

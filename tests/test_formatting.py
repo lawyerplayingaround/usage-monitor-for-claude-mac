@@ -343,7 +343,7 @@ class TestFormatTooltip(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# tooltip length – Windows limits tooltip text to 127 characters
+# tooltip length - Windows limits tooltip text to 127 characters
 # ---------------------------------------------------------------------------
 
 class TestTooltipMaxLength(unittest.TestCase):

@@ -18,19 +18,13 @@ import requests
 
 from .i18n import T
 
-# ── API endpoints & credentials ───────────────────────────────
+__all__ = ['API_URL_USAGE', 'API_URL_PROFILE', 'CLAUDE_CREDENTIALS', 'read_access_token', 'api_headers', 'fetch_usage', 'fetch_profile']
+
+# API endpoints & credentials
 API_URL_USAGE = 'https://api.anthropic.com/api/oauth/usage'
 API_URL_PROFILE = 'https://api.anthropic.com/api/oauth/profile'
 CLAUDE_CREDENTIALS = Path.home() / '.claude' / '.credentials.json'
 _FALLBACK_USER_AGENT = 'claude-code/2.1.69'
-
-
-def _user_agent() -> str:
-    """Return the User-Agent string with the installed Claude Code version."""
-    from .claude_cli import CLAUDE_CLI_PATH, cli_version
-
-    version = cli_version(CLAUDE_CLI_PATH)
-    return f'claude-code/{version}' if version else _FALLBACK_USER_AGENT
 
 
 def read_access_token() -> str | None:
@@ -57,37 +51,6 @@ def api_headers() -> dict[str, str] | None:
         'User-Agent': _user_agent(),
         'anthropic-beta': 'oauth-2025-04-20',
     }
-
-
-def _extract_server_message(response: requests.Response | None) -> str | None:
-    """Extract ``error.message`` from a JSON error response body.
-
-    Strips the trailing "Please try again later." suffix that the API
-    appends to some error messages - the app retries automatically, so
-    the advice would be misleading.
-    """
-    if response is None:
-        return None
-    try:
-        msg = response.json().get('error', {}).get('message') or None
-        if msg:
-            msg = msg.removesuffix(' Please try again later.').removesuffix(' Please try again later').strip()
-        return msg or None
-    except Exception:
-        return None
-
-
-def _parse_retry_after(response: requests.Response | None) -> int | None:
-    """Parse the ``Retry-After`` header as an integer number of seconds."""
-    if response is None:
-        return None
-    raw = response.headers.get('Retry-After')
-    if raw is None:
-        return None
-    try:
-        return max(int(raw), 0)
-    except (ValueError, TypeError):
-        return None
 
 
 def fetch_usage() -> dict[str, Any]:
@@ -134,4 +97,46 @@ def fetch_profile() -> dict[str, Any] | None:
         resp.raise_for_status()
         return resp.json()
     except Exception:
+        return None
+
+
+# Helpers
+
+
+def _user_agent() -> str:
+    """Return the User-Agent string with the installed Claude Code version."""
+    from .claude_cli import CLAUDE_CLI_PATH, cli_version
+
+    version = cli_version(CLAUDE_CLI_PATH)
+    return f'claude-code/{version}' if version else _FALLBACK_USER_AGENT
+
+
+def _extract_server_message(response: requests.Response | None) -> str | None:
+    """Extract ``error.message`` from a JSON error response body.
+
+    Strips the trailing "Please try again later." suffix that the API
+    appends to some error messages - the app retries automatically, so
+    the advice would be misleading.
+    """
+    if response is None:
+        return None
+    try:
+        msg = response.json().get('error', {}).get('message') or None
+        if msg:
+            msg = msg.removesuffix(' Please try again later.').removesuffix(' Please try again later').strip()
+        return msg or None
+    except Exception:
+        return None
+
+
+def _parse_retry_after(response: requests.Response | None) -> int | None:
+    """Parse the ``Retry-After`` header as an integer number of seconds."""
+    if response is None:
+        return None
+    raw = response.headers.get('Retry-After')
+    if raw is None:
+        return None
+    try:
+        return max(int(raw), 0)
+    except (ValueError, TypeError):
         return None

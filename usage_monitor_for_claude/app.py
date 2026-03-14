@@ -31,6 +31,8 @@ from .i18n import T
 from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
+__all__ = ['UsageMonitorForClaude', 'crash_log']
+
 
 _VARIANT_NOTIFY_KEYS = {
     'five_hour': 'notify_threshold_five_hour',
@@ -88,7 +90,7 @@ class UsageMonitorForClaude:
             ),
         )
 
-    # ── Menu actions ──────────────────────────────────────────
+    # Menu actions
 
     def on_show_popup(self, icon: Any = None, item: Any = None) -> None:
         with self._popup_lock:
@@ -106,7 +108,7 @@ class UsageMonitorForClaude:
         self.running = False
         self.icon.stop()
 
-    # ── Popup ─────────────────────────────────────────────────
+    # Popup
 
     def _open_popup(self) -> None:
         # _popup_open is set True under _popup_lock (in on_show_popup) and
@@ -131,7 +133,7 @@ class UsageMonitorForClaude:
             self._popup_closed_at = time.time()
             self._popup_open = False
 
-    # ── Tray rendering ────────────────────────────────────────
+    # Tray rendering
 
     def _render_tray(self) -> None:
         """Re-render tray icon and tooltip from current state."""
@@ -154,7 +156,7 @@ class UsageMonitorForClaude:
         if self._last_response:
             self._render_tray()
 
-    # ── Update orchestration ──────────────────────────────────
+    # Update orchestration
 
     def update(self) -> None:
         """Request a data refresh from the cache and process the result."""
@@ -200,7 +202,7 @@ class UsageMonitorForClaude:
         self._prev_5h = pct_5h
         self._prev_7d = pct_7d
 
-    # ── Notifications ─────────────────────────────────────────
+    # Notifications
 
     def _check_threshold_alerts(self, data: dict[str, Any]) -> None:
         """Show a notification when usage crosses a configured threshold.
@@ -282,7 +284,7 @@ class UsageMonitorForClaude:
         elif highest_exceeded < last_notified:
             self._notified_thresholds['extra_usage'] = highest_exceeded
 
-    # ── Event commands ─────────────────────────────────────────
+    # Event commands
 
     def _run_reset_command(
         self, variant: str, pct: float, prev_pct: float, *, pct_5h: float, pct_7d: float, entry: dict[str, Any],
@@ -333,7 +335,7 @@ class UsageMonitorForClaude:
 
         run_event_command(ON_THRESHOLD_COMMAND, env_vars)
 
-    # ── Polling ───────────────────────────────────────────────
+    # Polling
 
     def _seconds_until_next_reset(self) -> float | None:
         """Return seconds until the earliest upcoming quota reset, or None."""
@@ -426,7 +428,7 @@ class UsageMonitorForClaude:
                     if lst is not None and time.time() - lst >= interval:
                         break
 
-    # ── Lifecycle ─────────────────────────────────────────────
+    # Lifecycle
 
     def _on_icon_ready(self, icon: Any) -> None:
         """Called by pystray in a separate thread once the tray icon is set up."""
