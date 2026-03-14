@@ -10,6 +10,7 @@
     "weekly_opus": "每週 Opus",
     "quit": "結束",
     "autostart": "開機自動啟動",
+    "restart": "重新啟動",
     "resets_in": "{duration}後重置 ({clock})",
     "resets_tomorrow": "明天重置，{clock}",
     "resets_weekday": "{day}重置，{clock}",

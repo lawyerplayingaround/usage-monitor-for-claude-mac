@@ -10,6 +10,7 @@
     "weekly_opus": "Semanal Opus",
     "quit": "Salir",
     "autostart": "Iniciar con Windows",
+    "restart": "Reiniciar",
     "resets_in": "Se restablece en {duration} ({clock})",
     "resets_tomorrow": "Se restablece mañana, {clock}",
     "resets_weekday": "Se restablece el {day}, {clock}",

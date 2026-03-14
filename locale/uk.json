@@ -10,6 +10,7 @@
     "weekly_opus": "Тиждень Opus",
     "quit": "Вийти",
     "autostart": "Запускати з Windows",
+    "restart": "Перезапустити",
     "resets_in": "Скидання через {duration} ({clock})",
     "resets_tomorrow": "Скидання завтра, {clock}",
     "resets_weekday": "Скидання в {day}, {clock}",

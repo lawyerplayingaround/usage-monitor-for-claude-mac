@@ -10,6 +10,7 @@
     "weekly_opus": "Mingguan Opus",
     "quit": "Keluar",
     "autostart": "Mulai dengan Windows",
+    "restart": "Mulai Ulang",
     "resets_in": "Reset dalam {duration} ({clock})",
     "resets_tomorrow": "Reset besok, {clock}",
     "resets_weekday": "Reset {day}, {clock}",

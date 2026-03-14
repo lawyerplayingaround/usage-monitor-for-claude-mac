@@ -15,7 +15,7 @@ The app searches for this file in two locations (first match wins):
 1. **Next to the EXE** (or project root when running from source)
 2. **`~/.claude/usage-monitor-settings.json`**
 
-The app never creates or modifies this file. To start, create an empty file and add keys as needed.
+The app never creates or modifies this file. To start, create an empty file and add keys as needed. Settings are read at startup - after editing the file, use the **Restart** option in the tray context menu to apply changes.
 
 ## Alert thresholds
 

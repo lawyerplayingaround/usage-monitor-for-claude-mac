@@ -10,6 +10,7 @@
     "weekly_opus": "Wöchentlich Opus",
     "quit": "Beenden",
     "autostart": "Mit Windows starten",
+    "restart": "Neu starten",
     "resets_in": "Zurücksetzung in {duration} ({clock})",
     "resets_tomorrow": "Zurücksetzung morgen, {clock}",
     "resets_weekday": "Zurücksetzung am {day}, {clock}",

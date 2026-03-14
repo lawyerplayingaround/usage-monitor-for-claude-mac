@@ -10,6 +10,7 @@
     "weekly_opus": "साप्ताहिक Opus",
     "quit": "बंद करें",
     "autostart": "Windows के साथ शुरू करें",
+    "restart": "पुनः आरंभ करें",
     "resets_in": "{duration} में रीसेट ({clock})",
     "resets_tomorrow": "कल रीसेट, {clock}",
     "resets_weekday": "{day} को रीसेट, {clock}",

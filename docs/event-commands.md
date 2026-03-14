@@ -4,7 +4,7 @@ Run a custom shell command when a quota resets or a usage threshold is crossed. 
 
 ## Settings
 
-Add these keys to your [`usage-monitor-settings.json`](configuration.md):
+Add these keys to your [`usage-monitor-settings.json`](configuration.md). After saving, use the **Restart** option in the tray context menu to apply the changes.
 
 | Key | Default | Description |
 |-----|---------|-------------|

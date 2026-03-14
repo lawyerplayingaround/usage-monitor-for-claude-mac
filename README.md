@@ -59,7 +59,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 |---|---|
 | **Hover** over the tray icon | Tooltip shows 5h and 7d usage percentages with reset times |
 | **Left-click** the tray icon | Opens the detail popup with account info and all usage bars |
-| **Right-click** the tray icon | Context menu: open popup, autostart toggle, or quit |
+| **Right-click** the tray icon | Context menu: open popup, autostart toggle, restart, or quit |
 | **Escape** or click outside | Closes the detail popup |
 
 ### Tray icon not visible?

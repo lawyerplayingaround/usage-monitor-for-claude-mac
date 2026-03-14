@@ -10,6 +10,7 @@
     "weekly_opus": "Settimanale Opus",
     "quit": "Esci",
     "autostart": "Avvia con Windows",
+    "restart": "Riavvia",
     "resets_in": "Si ripristina tra {duration} ({clock})",
     "resets_tomorrow": "Si ripristina domani, {clock}",
     "resets_weekday": "Si ripristina {day}, {clock}",

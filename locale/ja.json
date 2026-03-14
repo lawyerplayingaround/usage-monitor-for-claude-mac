@@ -10,6 +10,7 @@
     "weekly_opus": "週間 Opus",
     "quit": "終了",
     "autostart": "Windows起動時に開始",
+    "restart": "再起動",
     "resets_in": "{duration}後にリセット ({clock})",
     "resets_tomorrow": "明日リセット、{clock}",
     "resets_weekday": "{day}にリセット、{clock}",

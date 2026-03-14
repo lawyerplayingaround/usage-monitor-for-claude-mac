@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import subprocess
 import sys
 import traceback
 
@@ -17,5 +18,17 @@ if not getattr(sys, 'frozen', False):
 try:
     app = UsageMonitorForClaude()
     app.run()
+
+    if app.restart_requested:
+        if getattr(sys, 'frozen', False):
+            subprocess.Popen(
+                [sys.executable],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+        else:
+            subprocess.Popen(
+                [sys.executable, '-m', 'usage_monitor_for_claude'],
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
 except Exception:
     crash_log(traceback.format_exc())

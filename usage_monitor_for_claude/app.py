@@ -75,6 +75,8 @@ class UsageMonitorForClaude:
         # Theme state
         self._light_taskbar = taskbar_uses_light_theme()
 
+        self.restart_requested = False
+
         self.icon = pystray.Icon(
             'usage_monitor',
             icon=create_icon_image(0, 0, self._light_taskbar),
@@ -86,6 +88,7 @@ class UsageMonitorForClaude:
                     checked=lambda item: is_autostart_enabled(),
                     visible=getattr(sys, 'frozen', False),
                 ),
+                pystray.MenuItem(T['restart'], self.on_restart),
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
         )
@@ -103,6 +106,10 @@ class UsageMonitorForClaude:
 
     def on_toggle_autostart(self, icon: Any = None, item: Any = None) -> None:
         set_autostart(not is_autostart_enabled())
+
+    def on_restart(self, icon: Any = None, item: Any = None) -> None:
+        self.restart_requested = True
+        self.on_quit(icon, item)
 
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
         self.running = False
