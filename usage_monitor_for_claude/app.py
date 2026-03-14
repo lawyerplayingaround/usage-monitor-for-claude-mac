@@ -12,7 +12,7 @@ import sys
 import threading
 import time
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pystray  # type: ignore[import-untyped]  # no type stubs available
@@ -32,6 +32,11 @@ from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
 __all__ = ['UsageMonitorForClaude', 'crash_log']
+
+
+def _future_iso(**kwargs: float) -> str:
+    """Return an ISO 8601 timestamp offset from now by the given timedelta kwargs."""
+    return (datetime.now(timezone.utc) + timedelta(**kwargs)).isoformat()
 
 
 _VARIANT_NOTIFY_KEYS = {
@@ -83,12 +88,20 @@ class UsageMonitorForClaude:
             title=T['loading'],
             menu=pystray.Menu(
                 pystray.MenuItem(T['title'].replace('&', '&&'), self.on_show_popup, default=True),
+                pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
                     T['autostart'], self.on_toggle_autostart,
                     checked=lambda item: is_autostart_enabled(),
                     visible=getattr(sys, 'frozen', False),
                 ),
+                pystray.MenuItem(T['test_commands'], pystray.Menu(
+                    pystray.MenuItem(T['test_reset_5h'], self.on_test_reset_5h, enabled=bool(ON_RESET_COMMAND)),
+                    pystray.MenuItem(T['test_reset_7d'], self.on_test_reset_7d, enabled=bool(ON_RESET_COMMAND)),
+                    pystray.MenuItem(T['test_threshold_5h'], self.on_test_threshold_5h, enabled=bool(ON_THRESHOLD_COMMAND)),
+                    pystray.MenuItem(T['test_threshold_7d'], self.on_test_threshold_7d, enabled=bool(ON_THRESHOLD_COMMAND)),
+                ), enabled=bool(ON_RESET_COMMAND or ON_THRESHOLD_COMMAND)),
                 pystray.MenuItem(T['restart'], self.on_restart),
+                pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
         )
@@ -110,6 +123,54 @@ class UsageMonitorForClaude:
     def on_restart(self, icon: Any = None, item: Any = None) -> None:
         self.restart_requested = True
         self.on_quit(icon, item)
+
+    def on_test_reset_5h(self, icon: Any = None, item: Any = None) -> None:
+        run_event_command(ON_RESET_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'reset',
+            'USAGE_MONITOR_VARIANT': 'five_hour',
+            'USAGE_MONITOR_UTILIZATION': '0',
+            'USAGE_MONITOR_PREV_UTILIZATION': '95',
+            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '0',
+            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '45',
+            'USAGE_MONITOR_RESETS_AT': _future_iso(hours=5),
+            'USAGE_MONITOR_TITLE': T['notify_reset_title'],
+            'USAGE_MONITOR_MESSAGE': T['notify_reset'],
+        })
+
+    def on_test_reset_7d(self, icon: Any = None, item: Any = None) -> None:
+        run_event_command(ON_RESET_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'reset',
+            'USAGE_MONITOR_VARIANT': 'seven_day',
+            'USAGE_MONITOR_UTILIZATION': '0',
+            'USAGE_MONITOR_PREV_UTILIZATION': '99',
+            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '12',
+            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '0',
+            'USAGE_MONITOR_RESETS_AT': _future_iso(days=7),
+            'USAGE_MONITOR_TITLE': T['notify_reset_title'],
+            'USAGE_MONITOR_MESSAGE': T['notify_reset'],
+        })
+
+    def on_test_threshold_5h(self, icon: Any = None, item: Any = None) -> None:
+        run_event_command(ON_THRESHOLD_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'threshold',
+            'USAGE_MONITOR_VARIANT': 'five_hour',
+            'USAGE_MONITOR_UTILIZATION': '82',
+            'USAGE_MONITOR_THRESHOLD': '80',
+            'USAGE_MONITOR_RESETS_AT': _future_iso(hours=3),
+            'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
+            'USAGE_MONITOR_MESSAGE': T['notify_threshold_five_hour'].format(pct='82'),
+        })
+
+    def on_test_threshold_7d(self, icon: Any = None, item: Any = None) -> None:
+        run_event_command(ON_THRESHOLD_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'threshold',
+            'USAGE_MONITOR_VARIANT': 'seven_day',
+            'USAGE_MONITOR_UTILIZATION': '81',
+            'USAGE_MONITOR_THRESHOLD': '80',
+            'USAGE_MONITOR_RESETS_AT': _future_iso(days=4),
+            'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
+            'USAGE_MONITOR_MESSAGE': T['notify_threshold_seven_day'].format(pct='81'),
+        })
 
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
         self.running = False

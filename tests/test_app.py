@@ -1350,5 +1350,116 @@ class TestExtraUsageCommand(unittest.TestCase):
         mock_cmd.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# Test event command handlers (tray context menu)
+# ---------------------------------------------------------------------------
+
+class TestTestEventCommands(unittest.TestCase):
+    """Tests for on_test_* handlers that fire sample event commands from the tray menu."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_reset_5h_fires_with_correct_env(self, mock_cmd):
+        """Test reset 5h handler passes all required env vars with correct values."""
+        self.app.on_test_reset_5h()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, 'echo reset')
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '0')
+        self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '95')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '0')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '45')
+        self.assertIn('USAGE_MONITOR_RESETS_AT', env)
+        self.assertIn('USAGE_MONITOR_TITLE', env)
+        self.assertIn('USAGE_MONITOR_MESSAGE', env)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_reset_7d_fires_with_correct_env(self, mock_cmd):
+        """Test reset 7d handler passes all required env vars with correct values."""
+        self.app.on_test_reset_7d()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, 'echo reset')
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'seven_day')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '0')
+        self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '99')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '12')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '0')
+        self.assertIn('USAGE_MONITOR_RESETS_AT', env)
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_threshold_5h_fires_with_correct_env(self, mock_cmd):
+        """Test threshold 5h handler passes all required env vars with correct values."""
+        self.app.on_test_threshold_5h()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, 'notify.bat')
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'threshold')
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '82')
+        self.assertEqual(env['USAGE_MONITOR_THRESHOLD'], '80')
+        self.assertIn('USAGE_MONITOR_RESETS_AT', env)
+        self.assertIn('USAGE_MONITOR_TITLE', env)
+        self.assertIn('USAGE_MONITOR_MESSAGE', env)
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_threshold_7d_fires_with_correct_env(self, mock_cmd):
+        """Test threshold 7d handler passes all required env vars with correct values."""
+        self.app.on_test_threshold_7d()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, 'notify.bat')
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'threshold')
+        self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'seven_day')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '81')
+        self.assertEqual(env['USAGE_MONITOR_THRESHOLD'], '80')
+        self.assertIn('USAGE_MONITOR_RESETS_AT', env)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_reset_5h_resets_at_is_valid_iso_timestamp(self, mock_cmd):
+        """USAGE_MONITOR_RESETS_AT is a parseable ISO 8601 timestamp in the future."""
+        self.app.on_test_reset_5h()
+
+        env = mock_cmd.call_args[0][1]
+        resets_at = datetime.fromisoformat(env['USAGE_MONITOR_RESETS_AT'])
+        self.assertGreater(resets_at, datetime.now(timezone.utc))
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_threshold_5h_resets_at_is_valid_iso_timestamp(self, mock_cmd):
+        """USAGE_MONITOR_RESETS_AT is a parseable ISO 8601 timestamp in the future."""
+        self.app.on_test_threshold_5h()
+
+        env = mock_cmd.call_args[0][1]
+        resets_at = datetime.fromisoformat(env['USAGE_MONITOR_RESETS_AT'])
+        self.assertGreater(resets_at, datetime.now(timezone.utc))
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_threshold_message_contains_utilization_pct(self, mock_cmd):
+        """USAGE_MONITOR_MESSAGE includes the utilization percentage."""
+        self.app.on_test_threshold_5h()
+
+        env = mock_cmd.call_args[0][1]
+        self.assertIn('82', env['USAGE_MONITOR_MESSAGE'])
+
+
 if __name__ == '__main__':
     unittest.main()

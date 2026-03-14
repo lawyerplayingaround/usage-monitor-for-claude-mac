@@ -23,6 +23,9 @@ Add these keys to your [`usage-monitor-settings.json`](configuration.md). After 
 > [!NOTE]
 > Commands only fire on **state changes** detected while the app is running. On app startup, already-exceeded thresholds trigger a desktop notification but do not run `on_threshold_command` - this prevents duplicate commands after a restart or reboot.
 
+> [!TIP]
+> Use the **Test event commands** submenu in the tray context menu to fire your configured commands with sample data. This lets you verify your command and script setup without waiting for a real event.
+
 ## Examples
 
 ### Resume a Claude Code session when the quota resets
