@@ -18,6 +18,9 @@ dist/
 .vscode/
 .idea/
 
+# User settings
+usage-monitor-settings.json
+
 # OS
 Thumbs.db
 Desktop.ini
