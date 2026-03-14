@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.7.0...HEAD)
+
+## [1.7.0] - 2026-03-14
+
 ### Added
 
 - Ukrainian language support (thanks to [@Actpohomoc](https://github.com/Actpohomoc) for the contribution)
@@ -17,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Usage bars now turn red only when usage passes the time marker (usage ahead of elapsed time), instead of always at 80%
 - **Breaking:** Setting `bar_fg_high` renamed to `bar_fg_warn`
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.6.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.6.0...v1.7.0)
 
 ## [1.6.0] - 2026-03-10
 
