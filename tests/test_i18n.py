@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 from usage_monitor_for_claude.i18n import LOCALE_DIR, detect_lang_code, load_translations
 
-MOCK_LOCALE_FILES = ['en.json', 'de.json', 'es.json', 'fr.json', 'ja.json', 'pt-BR.json', 'zh-CN.json', 'zh-TW.json']
+MOCK_LOCALE_FILES = ['en.json', 'de.json', 'es.json', 'fr.json', 'ja.json', 'pt-BR.json', 'uk.json', 'zh-CN.json', 'zh-TW.json']
 
 NORMALIZE_MAP = {
     'de_DE': 'de_DE.ISO8859-1',
@@ -29,6 +29,8 @@ NORMALIZE_MAP = {
     'German': 'de_DE.ISO8859-1',
     'Spanish_Mexico': 'Spanish_Mexico',
     'Spanish': 'es_ES.ISO8859-1',
+    'Ukrainian_Ukraine': 'Ukrainian_Ukraine',
+    'Ukrainian': 'Ukrainian',
     '': '',
 }
 
@@ -90,6 +92,10 @@ class TestDetectLangCode(unittest.TestCase):
     def test_spanish_mexico_windows_name(self, _mock_norm):
         """Windows-style name without regional file falls back to base."""
         self.assertEqual(detect_lang_code('Spanish_Mexico'), 'es')
+
+    def test_ukrainian_windows_name(self, _mock_norm):
+        """Windows-style name with manual override resolves correctly."""
+        self.assertEqual(detect_lang_code('Ukrainian_Ukraine'), 'uk')
 
     def test_base_code_without_region(self, _mock_norm):
         """Base language code without region resolves directly."""
