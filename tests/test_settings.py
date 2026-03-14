@@ -180,7 +180,19 @@ class TestSettingsOverrides(unittest.TestCase):
     def test_partial_override_keeps_defaults(self):
         """Unspecified keys retain their default values."""
         settings = {'poll_interval': 300}
-        self._assert_overrides(settings, [('POLL_INTERVAL', 300), ('POLL_FAST', 60), ('BG', '#1e1e1e')])
+        self._assert_overrides(settings, [
+            ('POLL_INTERVAL', 300), ('POLL_FAST', 60), ('BG', '#1e1e1e'),
+            ('ALERT_THRESHOLDS_EXTRA_USAGE', [50, 80, 95]),
+        ])
+
+    def test_threshold_overrides(self):
+        """Alert threshold lists are overridden by settings."""
+        settings = {'alert_thresholds_extra_usage': [70, 90], 'alert_thresholds_five_hour': [80]}
+        self._assert_overrides(settings, [
+            ('ALERT_THRESHOLDS_EXTRA_USAGE', [70, 90]),
+            ('ALERT_THRESHOLDS_FIVE_HOUR', [80]),
+            ('ALERT_THRESHOLDS_SEVEN_DAY', [95]),
+        ])
 
     def test_icon_color_override(self):
         """Icon color dicts are merged, JSON arrays become tuples."""
@@ -206,6 +218,9 @@ class TestSettingsOverrides(unittest.TestCase):
         'POLL_INTERVAL': 120, 'POLL_FAST': 60, 'POLL_FAST_EXTRA': 2, 'POLL_ERROR': 30,
         'BG': '#1e1e1e', 'FG': '#cccccc', 'FG_DIM': '#888888', 'FG_HEADING': '#ffffff',
         'BAR_BG': '#333333', 'BAR_FG': '#4a9eff', 'BAR_FG_WARN': '#e05050',
+        'ALERT_THRESHOLDS_FIVE_HOUR': [50, 80, 95], 'ALERT_THRESHOLDS_SEVEN_DAY': [95],
+        'ALERT_THRESHOLDS_EXTRA_USAGE': [50, 80, 95],
+        'ALERT_TIME_AWARE': True, 'ALERT_TIME_AWARE_BELOW': 90,
     }
 
     def _assert_overrides(self, settings: dict, expected: list[tuple[str, object]]) -> None:
@@ -514,6 +529,12 @@ class TestGetAlertThresholds(unittest.TestCase):
         thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
         with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
             self.assertEqual(settings_mod.get_alert_thresholds('seven_day_opus'), [80, 95])
+
+    def test_extra_usage_returns_own_thresholds(self):
+        """extra_usage variant returns its own thresholds."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95], 'extra_usage': [50, 80, 95]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+            self.assertEqual(settings_mod.get_alert_thresholds('extra_usage'), [50, 80, 95])
 
     def test_unknown_variant_returns_empty(self):
         """Unknown variant key returns empty list."""

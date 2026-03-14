@@ -41,6 +41,7 @@
     "notify_threshold_seven_day": "您的每周用量已达到 {pct}%。",
     "notify_threshold_seven_day_sonnet": "您的每周 Sonnet 用量已达到 {pct}%。",
     "notify_threshold_seven_day_opus": "您的每周 Opus 用量已达到 {pct}%。",
+    "notify_threshold_extra_usage": "您的额外用量已达到 {pct}% ({used} / {limit})。",
     "extra_usage": "额外用量",
     "extra_usage_spent": "已用 {used} / {limit}",
     "claude_code": "CLAUDE CODE",

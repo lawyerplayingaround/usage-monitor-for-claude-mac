@@ -1,4 +1,4 @@
-﻿{
+{
     "title": "Акаунт і використання",
     "account": "АКАУНТ",
     "usage": "ВИКОРИСТАННЯ",
@@ -41,6 +41,7 @@
     "notify_threshold_seven_day": "Ваше тижневе використання досягло {pct}%.",
     "notify_threshold_seven_day_sonnet": "Ваше тижневе використання Sonnet досягло {pct}%.",
     "notify_threshold_seven_day_opus": "Ваше тижневе використання Opus досягло {pct}%.",
+    "notify_threshold_extra_usage": "Ваше додаткове використання досягло {pct}% ({used} / {limit}).",
     "extra_usage": "ДОДАТКОВЕ ВИКОРИСТАННЯ",
     "extra_usage_spent": "Витрачено {used} / {limit}",
     "claude_code": "CLAUDE CODE",

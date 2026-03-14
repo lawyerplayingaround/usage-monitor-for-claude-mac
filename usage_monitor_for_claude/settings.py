@@ -33,7 +33,7 @@ _NUMERIC_BOUNDS: dict[str, int] = {
 }
 _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg', 'bar_fg_warn'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
-_THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day'})
+_THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day', 'alert_thresholds_extra_usage'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
 _STRING_KEYS = frozenset({'currency_symbol', 'language'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
@@ -188,6 +188,7 @@ ICON_DARK = _icon_colors('icon_dark', {
 # ── Alert thresholds ────────────────────────────────────────
 ALERT_THRESHOLDS_FIVE_HOUR: list[float] = _S.get('alert_thresholds_five_hour', [50, 80, 95])
 ALERT_THRESHOLDS_SEVEN_DAY: list[float] = _S.get('alert_thresholds_seven_day', [95])
+ALERT_THRESHOLDS_EXTRA_USAGE: list[float] = _S.get('alert_thresholds_extra_usage', [50, 80, 95])
 ALERT_TIME_AWARE: bool = _S.get('alert_time_aware', True)
 ALERT_TIME_AWARE_BELOW: float = _S.get('alert_time_aware_below', 90)
 
@@ -213,19 +214,21 @@ _ALERT_THRESHOLDS = {
     'seven_day': ALERT_THRESHOLDS_SEVEN_DAY,
     'seven_day_sonnet': ALERT_THRESHOLDS_SEVEN_DAY,
     'seven_day_opus': ALERT_THRESHOLDS_SEVEN_DAY,
+    'extra_usage': ALERT_THRESHOLDS_EXTRA_USAGE,
 }
 
 
 def get_alert_thresholds(variant_key: str) -> list[float]:
     """Return the alert thresholds for a usage variant.
 
-    Session (5h) and weekly (7d) quotas use separate threshold lists.
-    All weekly variants (general, Sonnet, Opus) share the same thresholds.
-    An empty list means alerts are disabled.
+    Session (5h), weekly (7d), and extra usage quotas each use separate
+    threshold lists.  All weekly variants (general, Sonnet, Opus) share
+    the same thresholds.  An empty list means alerts are disabled.
 
     Parameters
     ----------
     variant_key : str
-        API variant key, e.g. ``'five_hour'`` or ``'seven_day_sonnet'``.
+        API variant key, e.g. ``'five_hour'``, ``'seven_day_sonnet'``,
+        or ``'extra_usage'``.
     """
     return _ALERT_THRESHOLDS.get(variant_key, [])

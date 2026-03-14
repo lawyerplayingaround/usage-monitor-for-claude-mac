@@ -278,6 +278,118 @@ class TestTimeAwareAlerts(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
+# Extra usage alerts
+# ---------------------------------------------------------------------------
+
+class TestExtraUsageAlerts(unittest.TestCase):
+    """Tests for _check_extra_usage_alerts() notification logic."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def _extra_data(self, used: float = 0.0, limit: float = 1000, enabled: bool = True) -> dict:
+        return {'extra_usage': {'is_enabled': enabled, 'monthly_limit': limit, 'used_credits': used, 'utilization': None}}
+
+    def test_notification_at_threshold(self):
+        """Notification fires when extra usage crosses a threshold."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+
+        self.app.icon.notify.assert_called_once()
+        args = self.app.icon.notify.call_args[0]
+        self.assertIn('82%', args[0])
+
+    def test_no_notification_below_threshold(self):
+        """No notification when usage is below all thresholds."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=100, limit=1000))
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_no_duplicate_notification(self):
+        """No notification if threshold was already notified."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+        self.app.icon.notify.reset_mock()
+
+        self.app._check_extra_usage_alerts(self._extra_data(used=850, limit=1000))
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_higher_threshold_triggers_new_notification(self):
+        """Crossing a higher threshold triggers a new notification."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+        self.app.icon.notify.reset_mock()
+
+        self.app._check_extra_usage_alerts(self._extra_data(used=960, limit=1000))
+
+        self.app.icon.notify.assert_called_once()
+        args = self.app.icon.notify.call_args[0]
+        self.assertIn('96%', args[0])
+
+    def test_re_notification_after_usage_drops(self):
+        """After usage drops (e.g. new billing cycle), thresholds re-trigger."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+        self.app.icon.notify.reset_mock()
+
+        self.app._check_extra_usage_alerts(self._extra_data(used=100, limit=1000))
+        self.app.icon.notify.assert_not_called()
+
+        self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+        self.app.icon.notify.assert_called_once()
+
+    def test_disabled_extra_usage_skipped(self):
+        """No notification when extra usage is disabled."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=950, limit=1000, enabled=False))
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_missing_extra_usage_skipped(self):
+        """No notification when extra_usage is missing from data."""
+        self.app._check_extra_usage_alerts({})
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_zero_limit_skipped(self):
+        """No notification when monthly limit is zero."""
+        self.app._check_extra_usage_alerts(self._extra_data(used=0, limit=0))
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_no_notification_when_thresholds_empty(self):
+        """No notification when thresholds list is empty."""
+        _cleanup(self.app)
+        self.app = _make_app(thresholds=[])
+
+        self.app._check_extra_usage_alerts(self._extra_data(used=950, limit=1000))
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_notification_includes_credit_amounts(self):
+        """Notification message includes formatted credit amounts."""
+        with patch('usage_monitor_for_claude.app.format_credits', side_effect=lambda c: f'${c / 100:.2f}'):
+            self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+
+        args = self.app.icon.notify.call_args[0]
+        self.assertIn('$8.20', args[0])
+        self.assertIn('$10.00', args[0])
+
+    def test_called_from_check_threshold_alerts(self):
+        """_check_threshold_alerts delegates to _check_extra_usage_alerts."""
+        data = self._extra_data(used=820, limit=1000)
+        self.app._check_threshold_alerts(data)
+
+        self.app.icon.notify.assert_called_once()
+
+    def test_no_time_aware_logic(self):
+        """Extra usage alerts are not affected by time-aware settings."""
+        with patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', True):
+            self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
+
+        self.app.icon.notify.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
 # update() orchestration
 # ---------------------------------------------------------------------------
 

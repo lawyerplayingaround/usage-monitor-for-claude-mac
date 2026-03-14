@@ -41,6 +41,7 @@
     "notify_threshold_seven_day": "週間の使用量が{pct}%に達しました。",
     "notify_threshold_seven_day_sonnet": "週間Sonnetの使用量が{pct}%に達しました。",
     "notify_threshold_seven_day_opus": "週間Opusの使用量が{pct}%に達しました。",
+    "notify_threshold_extra_usage": "追加使用量が{pct}%に達しました ({used} / {limit})。",
     "extra_usage": "追加使用量",
     "extra_usage_spent": "{used} / {limit} 使用済み",
     "claude_code": "CLAUDE CODE",

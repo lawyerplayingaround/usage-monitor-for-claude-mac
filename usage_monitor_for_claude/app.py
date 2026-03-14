@@ -22,7 +22,7 @@ from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .cache import UsageCache
 from .idle import get_idle_seconds, is_workstation_locked
 from .settings import ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, IDLE_PAUSE, POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_tooltip
+from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip
 from .i18n import T
 from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
@@ -229,6 +229,45 @@ class UsageMonitorForClaude:
                 self._notified_thresholds[variant_key] = highest_exceeded
             elif highest_exceeded < last_notified:
                 self._notified_thresholds[variant_key] = highest_exceeded
+
+        self._check_extra_usage_alerts(data)
+
+    def _check_extra_usage_alerts(self, data: dict[str, Any]) -> None:
+        """Show a notification when extra usage crosses a configured threshold.
+
+        Extra usage has a different data format (``used_credits`` /
+        ``monthly_limit``) and no time-based reset, so it is handled
+        separately from the sliding-window quotas.
+        """
+        extra = data.get('extra_usage')
+        if not extra or not extra.get('is_enabled'):
+            return
+
+        limit = extra.get('monthly_limit', 0) or 0
+        if limit <= 0:
+            return
+
+        used = extra.get('used_credits', 0) or 0
+        pct = used / limit * 100
+
+        thresholds = get_alert_thresholds('extra_usage')
+        if not thresholds:
+            return
+
+        exceeded = [t for t in thresholds if pct >= t]
+        highest_exceeded = max(exceeded) if exceeded else 0
+        last_notified = self._notified_thresholds.get('extra_usage', 0)
+
+        if highest_exceeded > last_notified:
+            self.icon.notify(
+                T['notify_threshold_extra_usage'].format(
+                    pct=f'{pct:.0f}', used=format_credits(used), limit=format_credits(limit),
+                ),
+                T['notify_threshold_title'],
+            )
+            self._notified_thresholds['extra_usage'] = highest_exceeded
+        elif highest_exceeded < last_notified:
+            self._notified_thresholds['extra_usage'] = highest_exceeded
 
     # ── Polling ───────────────────────────────────────────────
 
