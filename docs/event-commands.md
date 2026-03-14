@@ -11,20 +11,15 @@ Add these keys to your [`usage-monitor-settings.json`](configuration.md). After 
 | `on_reset_command` | *(none)* | Shell command to run when a quota resets (usage drops) |
 | `on_threshold_command` | *(none)* | Shell command to run when usage crosses a configured alert threshold |
 
-> [!NOTE]
-> Commands run **without a visible window** - no console pops up and no focus is stolen. This is ideal for background tasks like sending notifications, playing sounds, or running headless commands (e.g. `claude -p "..."`). If you need a visible terminal, prefix your command with `start cmd /c`, e.g.:
+Commands run with the same privileges as the app and **without a visible window** - no console pops up and no focus is stolen. This is ideal for background tasks like sending notifications, playing sounds, or running headless commands (e.g. `claude -p "..."`). Relative paths in commands are resolved relative to the executable's folder (or the project root when running from source).
+
+Commands only fire on **state changes** detected while the app is running. On app startup, already-exceeded thresholds trigger a desktop notification but do not run `on_threshold_command` - this prevents duplicate commands after a restart or reboot.
+
+> [!TIP]
+> If you need a visible terminal, prefix your command with `start cmd /c`, e.g.:
 > ```
 > "on_reset_command": "start cmd /c claude --continue"
 > ```
-
-> [!NOTE]
-> Commands run with the same privileges as the app. If you run the app as Administrator, the command also runs elevated.
-
-> [!NOTE]
-> **Relative paths** in commands are resolved relative to the executable's folder (or the project root when running from source). This works reliably even when Windows autostart sets the working directory to `C:\Windows\System32`.
-
-> [!NOTE]
-> Commands only fire on **state changes** detected while the app is running. On app startup, already-exceeded thresholds trigger a desktop notification but do not run `on_threshold_command` - this prevents duplicate commands after a restart or reboot.
 
 > [!TIP]
 > Use the **Test event commands** submenu in the tray context menu to fire your configured commands with sample data. This lets you verify your command and script setup without waiting for a real event.
