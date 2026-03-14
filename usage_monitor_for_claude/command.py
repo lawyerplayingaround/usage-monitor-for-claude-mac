@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 import traceback
+from pathlib import Path
 
 __all__ = ['run_event_command']
 
@@ -37,9 +39,17 @@ def run_event_command(command: str, env_vars: dict[str, str]) -> None:
 
     env = {**os.environ, **env_vars}
 
+    # Pin working directory to the executable's folder so that relative paths
+    # in commands resolve predictably - even when Windows autostart sets the
+    # CWD to C:\Windows\System32.
+    if getattr(sys, 'frozen', False):
+        working_dir = Path(sys.executable).parent
+    else:
+        working_dir = Path(__file__).resolve().parent.parent
+
     try:
         subprocess.Popen(
-            command, shell=True, env=env,
+            command, shell=True, env=env, cwd=working_dir,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )

@@ -21,6 +21,9 @@ Add these keys to your [`usage-monitor-settings.json`](configuration.md). After 
 > Commands run with the same privileges as the app. If you run the app as Administrator, the command also runs elevated.
 
 > [!NOTE]
+> **Relative paths** in commands are resolved relative to the executable's folder (or the project root when running from source). This works reliably even when Windows autostart sets the working directory to `C:\Windows\System32`.
+
+> [!NOTE]
 > Commands only fire on **state changes** detected while the app is running. On app startup, already-exceeded thresholds trigger a desktop notification but do not run `on_threshold_command` - this prevents duplicate commands after a restart or reboot.
 
 > [!TIP]
@@ -86,7 +89,7 @@ Different actions depending on quota type and threshold:
 {
   "alert_thresholds_five_hour": [80, 95],
   "alert_thresholds_seven_day": [95],
-  "on_threshold_command": "powershell -ExecutionPolicy Bypass -File C:\\Scripts\\notify.ps1"
+  "on_threshold_command": "powershell -ExecutionPolicy Bypass -File .\\notify.ps1"
 }
 ```
 

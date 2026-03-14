@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import subprocess
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from usage_monitor_for_claude.command import run_event_command
@@ -99,6 +100,27 @@ class TestRunEventCommand(unittest.TestCase):
         mock_process = mock_popen.return_value
         mock_process.wait.assert_not_called()
         mock_process.communicate.assert_not_called()
+
+    @patch('usage_monitor_for_claude.command.subprocess.Popen')
+    def test_cwd_set_to_project_root(self, mock_popen: MagicMock):
+        """Working directory is set to the project root (non-frozen)."""
+        run_event_command('test', {'USAGE_MONITOR_EVENT': 'reset'})
+
+        kwargs = mock_popen.call_args[1]
+        expected = Path(__file__).resolve().parent.parent
+        self.assertEqual(kwargs['cwd'], expected)
+
+    @patch('usage_monitor_for_claude.command.subprocess.Popen')
+    @patch('usage_monitor_for_claude.command.sys')
+    def test_cwd_set_to_executable_dir_when_frozen(self, mock_sys: MagicMock, mock_popen: MagicMock):
+        """Working directory is set to the executable's folder when frozen."""
+        mock_sys.frozen = True
+        mock_sys.executable = 'C:\\Program Files\\MyApp\\app.exe'
+
+        run_event_command('test', {'USAGE_MONITOR_EVENT': 'reset'})
+
+        kwargs = mock_popen.call_args[1]
+        self.assertEqual(kwargs['cwd'], Path('C:\\Program Files\\MyApp'))
 
 
 if __name__ == '__main__':
