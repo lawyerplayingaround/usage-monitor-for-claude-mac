@@ -83,7 +83,7 @@ class TestCliVersion(unittest.TestCase):
         cli_version(path)
         mock_run.assert_called_once_with(
             [str(path), '--version'],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
         )
 
     @patch('usage_monitor_for_claude.claude_cli.subprocess.run')
