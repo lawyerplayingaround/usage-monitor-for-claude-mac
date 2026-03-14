@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 import traceback
 
 __all__ = ['run_event_command']
@@ -38,13 +37,11 @@ def run_event_command(command: str, env_vars: dict[str, str]) -> None:
 
     env = {**os.environ, **env_vars}
 
-    creation_flags = subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
-
     try:
         subprocess.Popen(
             command, shell=True, env=env,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            creationflags=creation_flags,
+            creationflags=subprocess.CREATE_NO_WINDOW,
         )
     except Exception:
         traceback.print_exc()

@@ -7,7 +7,6 @@ Unit tests for the command module: subprocess execution with environment variabl
 from __future__ import annotations
 
 import subprocess
-import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -62,22 +61,12 @@ class TestRunEventCommand(unittest.TestCase):
         self.assertEqual(kwargs['stderr'], subprocess.DEVNULL)
 
     @patch('usage_monitor_for_claude.command.subprocess.Popen')
-    def test_create_no_window_on_windows(self, mock_popen: MagicMock):
-        """CREATE_NO_WINDOW flag is set on Windows."""
-        with patch.object(sys, 'platform', 'win32'):
-            run_event_command('test', {'USAGE_MONITOR_EVENT': 'reset'})
+    def test_create_no_window_flag(self, mock_popen: MagicMock):
+        """CREATE_NO_WINDOW flag is set."""
+        run_event_command('test', {'USAGE_MONITOR_EVENT': 'reset'})
 
         kwargs = mock_popen.call_args[1]
         self.assertEqual(kwargs['creationflags'], subprocess.CREATE_NO_WINDOW)
-
-    @patch('usage_monitor_for_claude.command.subprocess.Popen')
-    def test_no_creation_flags_on_non_windows(self, mock_popen: MagicMock):
-        """No creation flags on non-Windows platforms."""
-        with patch.object(sys, 'platform', 'linux'):
-            run_event_command('test', {'USAGE_MONITOR_EVENT': 'reset'})
-
-        kwargs = mock_popen.call_args[1]
-        self.assertEqual(kwargs['creationflags'], 0)
 
     @patch('usage_monitor_for_claude.command.subprocess.Popen')
     def test_empty_command_skipped(self, mock_popen: MagicMock):
