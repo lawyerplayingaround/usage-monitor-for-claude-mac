@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.9.0...HEAD)
+
+## [1.9.0] - 2026-03-15
+
 ### Added
 
 - Day dividers on the weekly usage bar - subtle gaps at local midnight boundaries visually group usage into day segments
@@ -16,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `on_reset_command` and `on_threshold_command` now accept an array of command strings to run multiple commands per event (single strings still work)
 - `on_reset_command` now fires promptly even when the computer is idle or locked, so automated workflows (e.g. resuming a Claude session) are not delayed until the user returns
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.8.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.8.0...v1.9.0)
 
 ## [1.8.0] - 2026-03-15
 
