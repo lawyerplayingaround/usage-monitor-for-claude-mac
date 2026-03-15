@@ -71,6 +71,8 @@ class UsageMonitorForClaude:
 
         # Adaptive polling state
         self._fast_polls_remaining = 0
+        self._idle_reset_pending = False
+        self._deferred_notifications: dict[str, tuple[str, str]] = {}
 
         # Popup state
         self._popup_lock = threading.Lock()
@@ -248,17 +250,20 @@ class UsageMonitorForClaude:
         pct_5h = result.data.get('five_hour', {}).get('utilization', 0) or 0
         pct_7d = result.data.get('seven_day', {}).get('utilization', 0) or 0
 
-        # Notify when quota resets after being nearly exhausted, but only if the other quota isn't blocking usage
+        # Notify when quota resets after being nearly exhausted, but only if the other quota isn't blocking usage.
+        # While idle/locked, defer notifications until the user returns (avoids lock screen privacy concerns).
         if self._prev_5h is not None and self._prev_5h > 95 and pct_5h < self._prev_5h and pct_7d < 99:
-            self.icon.notify(T['notify_reset'], T['notify_reset_title'])
+            self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
         if self._prev_7d is not None and self._prev_7d > 98 and pct_7d < self._prev_7d and pct_5h < 99:
-            self.icon.notify(T['notify_reset'], T['notify_reset_title'])
+            self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
 
         # Run reset command on any detected usage drop (independent of notification threshold)
         if self._prev_5h is not None and pct_5h < self._prev_5h:
             self._run_reset_command('five_hour', pct_5h, self._prev_5h, pct_5h=pct_5h, pct_7d=pct_7d, entry=result.data.get('five_hour', {}))
+            self._idle_reset_pending = False
         if self._prev_7d is not None and pct_7d < self._prev_7d:
             self._run_reset_command('seven_day', pct_7d, self._prev_7d, pct_5h=pct_5h, pct_7d=pct_7d, entry=result.data.get('seven_day', {}))
+            self._idle_reset_pending = False
 
         self._check_threshold_alerts(result.data)
 
@@ -271,6 +276,31 @@ class UsageMonitorForClaude:
         self._prev_7d = pct_7d
 
     # Notifications
+
+    def _notify_or_defer(self, category: str, message: str, title: str) -> None:
+        """Show a notification immediately, or defer it if the user is away.
+
+        Parameters
+        ----------
+        category : str
+            Deduplication key (e.g. ``'reset'``, ``'threshold_five_hour'``).
+            While deferred, only the latest notification per category is
+            kept so the user does not get a flood on return.
+        message : str
+            Notification body text.
+        title : str
+            Notification title.
+        """
+        if self._is_user_away():
+            self._deferred_notifications[category] = (message, title)
+        else:
+            self.icon.notify(message, title)
+
+    def _flush_deferred_notifications(self) -> None:
+        """Show all deferred notifications and clear the queue."""
+        for message, title in self._deferred_notifications.values():
+            self.icon.notify(message, title)
+        self._deferred_notifications.clear()
 
     def _check_threshold_alerts(self, data: dict[str, Any]) -> None:
         """Show a notification when usage crosses a configured threshold.
@@ -304,7 +334,7 @@ class UsageMonitorForClaude:
             if highest_exceeded > last_notified:
                 title = T['notify_threshold_title']
                 message = T[notify_key].format(pct=f'{pct:.0f}')
-                self.icon.notify(message, title)
+                self._notify_or_defer(f'threshold_{variant_key}', message, title)
                 self._run_threshold_command(variant_key, pct, highest_exceeded, entry, title, message)
                 self._notified_thresholds[variant_key] = highest_exceeded
             elif highest_exceeded < last_notified:
@@ -343,7 +373,7 @@ class UsageMonitorForClaude:
             message = T['notify_threshold_extra_usage'].format(
                 pct=f'{pct:.0f}', used=format_credits(used), limit=format_credits(limit),
             )
-            self.icon.notify(message, title)
+            self._notify_or_defer('threshold_extra_usage', message, title)
             self._run_threshold_command(
                 'extra_usage', pct, highest_exceeded, extra, title, message,
                 extra_used=format_credits(used), extra_limit=format_credits(limit),
@@ -460,9 +490,19 @@ class UsageMonitorForClaude:
             return True
         return IDLE_PAUSE > 0 and get_idle_seconds() >= IDLE_PAUSE
 
-    def _wait_for_activity(self) -> None:
-        """Block until user activity resumes or the app is stopping."""
+    def _wait_for_activity(self, until: float | None = None) -> None:
+        """Block until user activity resumes or the app is stopping.
+
+        Parameters
+        ----------
+        until : float | None
+            Optional deadline (``time.time()`` epoch).  When set, the
+            wait ends even if the user is still away, allowing a
+            time-critical poll (e.g. quota reset command) to proceed.
+        """
         while self.running and self._is_user_away():
+            if until is not None and time.time() >= until:
+                break
             time.sleep(2)
 
     def poll_loop(self) -> None:
@@ -487,11 +527,40 @@ class UsageMonitorForClaude:
                 if lst is not None:
                     target = max(target, lst + interval)
 
-                # Pause polling while the user is away
+                # Pause polling while the user is away.
+                # Regular polling stops entirely during idle/lock.
+                # The only exception: when on_reset_command is configured
+                # and a quota reset is due, the idle pause is interrupted
+                # so the command fires on time.  The flag
+                # _idle_reset_pending keeps polling at POLL_INTERVAL
+                # until the reset is actually confirmed (usage drop) -
+                # this covers server-side delays and transient network
+                # errors.  The flag is cleared when update() detects the
+                # drop, or when the user returns (they'll see it anyway).
                 if self._is_user_away():
-                    self._wait_for_activity()
-                    # After resuming: poll immediately if interval has
-                    # elapsed, otherwise let the loop re-evaluate
+                    reset_deadline = None
+                    if ON_RESET_COMMAND:
+                        next_reset = self._seconds_until_next_reset()
+                        if next_reset is not None:
+                            reset_deadline = time.time() + next_reset + 5
+                            self._idle_reset_pending = True
+                        elif self._idle_reset_pending:
+                            reset_deadline = time.time() + POLL_INTERVAL
+
+                    self._wait_for_activity(until=reset_deadline)
+
+                    if reset_deadline is not None and self._is_user_away():
+                        # Woke up for a reset while still idle - poll once
+                        break
+
+                    # User returned - show any notifications deferred
+                    # during idle and poll immediately if interval elapsed.
+                    # _idle_reset_pending is intentionally kept: if the
+                    # user locks again before a successful poll confirms
+                    # the reset (e.g. network was down), idle polling
+                    # must resume.  The flag is only cleared by update()
+                    # when a usage drop is actually detected.
+                    self._flush_deferred_notifications()
                     lst = self.cache.last_success_time
                     if lst is not None and time.time() - lst >= interval:
                         break

@@ -15,6 +15,8 @@ Commands run with the same privileges as the app and **without a visible window*
 
 Commands only fire on **state changes** detected while the app is running. On app startup, already-exceeded thresholds trigger a desktop notification but do not run `on_threshold_command` - this prevents duplicate commands after a restart or reboot.
 
+When `on_reset_command` is configured, the app briefly wakes from idle/lock pause to poll at the expected reset time so the command fires promptly - even if the computer is unattended. If the API has not applied the reset yet (server-side delay) or the network is temporarily unavailable, the app retries at regular intervals until the reset is confirmed. `on_threshold_command` does not wake from idle - thresholds are driven by active usage, so they are checked when polling resumes after the user returns. Desktop notifications that occur during idle are deferred and shown when the user returns.
+
 > [!TIP]
 > If you need a visible terminal, prefix your command with `start cmd /c`, e.g.:
 > ```

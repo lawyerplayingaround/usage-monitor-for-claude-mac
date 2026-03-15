@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Day dividers on the weekly usage bar - subtle gaps at local midnight boundaries visually group usage into day segments
 
+### Changed
+
+- `on_reset_command` now fires promptly even when the computer is idle or locked, so automated workflows (e.g. resuming a Claude session) are not delayed until the user returns
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.8.0...HEAD)
 
 ## [1.8.0] - 2026-03-15
