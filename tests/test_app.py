@@ -1360,6 +1360,26 @@ class TestResetCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=True)
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_reset_command_fires_while_notification_deferred(self, _icon, _tooltip, _locked, mock_cmd):
+        """Reset command fires immediately even when notification is deferred due to idle/lock."""
+        self.app._prev_5h = 97.0
+        self.app._prev_7d = 50.0
+        data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        self.assertEqual(mock_cmd.call_args[0][1]['USAGE_MONITOR_EVENT'], 'reset')
+        self.assertIn('reset', self.app._deferred_notifications)
+        self.app.icon.notify.assert_not_called()
+
 
 class TestThresholdCommand(unittest.TestCase):
     """Tests for on_threshold_command execution during threshold alerts."""
@@ -1453,6 +1473,27 @@ class TestThresholdCommand(unittest.TestCase):
         # Notification fires (threshold was exceeded), but command does not
         self.app.icon.notify.assert_called_once()
         mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
+    @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', False)
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=True)
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_threshold_command_fires_while_notification_deferred(self, _icon, _tooltip, _locked, mock_cmd):
+        """Threshold command fires immediately even when notification is deferred due to idle/lock."""
+        self.app._prev_5h = 50.0
+        self.app._prev_7d = 10.0
+        data = {'five_hour': {'utilization': 85.0, 'resets_at': '2025-01-15T18:00:00Z'}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        self.assertEqual(mock_cmd.call_args[0][1]['USAGE_MONITOR_EVENT'], 'threshold')
+        self.assertIn('threshold_five_hour', self.app._deferred_notifications)
+        self.app.icon.notify.assert_not_called()
 
 
 class TestExtraUsageCommand(unittest.TestCase):
