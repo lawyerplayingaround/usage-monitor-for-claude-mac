@@ -145,10 +145,11 @@ Produces `dist/UsageMonitorForClaude.exe` (~20 MB), a single-file executable tha
 5. Smoke test: `python -m usage_monitor_for_claude` - verify tray icon, popup, and settings
 6. Build the EXE with `python build.py`
 7. Smoke test: `dist/UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
-8. Commit, tag, push, and publish:
+8. Stage the changes from steps 2 and 3
+9. Commit, tag, push, and publish:
 
    ```bash
-   git add -A && git commit -m "Release v1.x.x"
+   git commit -m "Release v1.x.x"
    git tag v1.x.x
    git push origin main v1.x.x
    gh release create v1.x.x dist/UsageMonitorForClaude.exe --title "v1.x.x" --notes "<release notes from CHANGELOG.md, followed by a [README for this version](https://github.com/jens-duttke/usage-monitor-for-claude/blob/v1.x.x/README.md) link>"
