@@ -1179,7 +1179,7 @@ class TestResetCommand(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1195,7 +1195,7 @@ class TestResetCommand(unittest.TestCase):
 
         mock_cmd.assert_called_once()
         cmd, env = mock_cmd.call_args[0]
-        self.assertEqual(cmd, 'echo reset')
+        self.assertEqual(cmd, ['echo reset'])
         self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
         self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '20')
@@ -1204,7 +1204,7 @@ class TestResetCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '10')
         self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], '2025-01-15T18:00:00Z')
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1225,7 +1225,7 @@ class TestResetCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '50')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '10')
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1244,7 +1244,7 @@ class TestResetCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_PREV_UTILIZATION'], '30')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '5')
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1262,7 +1262,7 @@ class TestResetCommand(unittest.TestCase):
         env = mock_cmd.call_args[0][1]
         self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], '')
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', [])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1278,7 +1278,7 @@ class TestResetCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1294,7 +1294,7 @@ class TestResetCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1312,7 +1312,7 @@ class TestResetCommand(unittest.TestCase):
         variants = {call[0][1]['USAGE_MONITOR_VARIANT'] for call in mock_cmd.call_args_list}
         self.assertEqual(variants, {'five_hour', 'seven_day'})
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1326,7 +1326,7 @@ class TestResetCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1353,7 +1353,7 @@ class TestThresholdCommand(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', False)
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_threshold_command_fires_on_crossing(self, mock_cmd):
@@ -1362,7 +1362,7 @@ class TestThresholdCommand(unittest.TestCase):
 
         mock_cmd.assert_called_once()
         cmd, env = mock_cmd.call_args[0]
-        self.assertEqual(cmd, 'notify.bat')
+        self.assertEqual(cmd, ['notify.bat'])
         self.assertEqual(env['USAGE_MONITOR_EVENT'], 'threshold')
         self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '85')
@@ -1371,7 +1371,7 @@ class TestThresholdCommand(unittest.TestCase):
         self.assertIn('USAGE_MONITOR_TITLE', env)
         self.assertIn('USAGE_MONITOR_MESSAGE', env)
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', [])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_no_command_when_setting_empty(self, mock_cmd):
         """No command executed when on_threshold_command is empty."""
@@ -1379,7 +1379,7 @@ class TestThresholdCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_no_command_below_threshold(self, mock_cmd):
         """No command when usage is below all thresholds."""
@@ -1387,7 +1387,7 @@ class TestThresholdCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_no_duplicate_command(self, mock_cmd):
         """No duplicate command for same threshold."""
@@ -1398,7 +1398,7 @@ class TestThresholdCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_command_for_higher_threshold(self, mock_cmd):
         """Command fires again when usage crosses the next higher threshold."""
@@ -1412,7 +1412,7 @@ class TestThresholdCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_THRESHOLD'], '95')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '97')
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', True)
     @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE_BELOW', 90)
     @patch('usage_monitor_for_claude.app.run_event_command')
@@ -1423,7 +1423,7 @@ class TestThresholdCommand(unittest.TestCase):
 
         mock_cmd.assert_not_called()
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', False)
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_no_command_on_first_update(self, mock_cmd):
@@ -1447,7 +1447,7 @@ class TestExtraUsageCommand(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_extra_usage_command_includes_amounts(self, mock_cmd):
         """Extra usage threshold command includes used and limit amounts."""
@@ -1462,7 +1462,7 @@ class TestExtraUsageCommand(unittest.TestCase):
         self.assertIn('USAGE_MONITOR_EXTRA_USED', env)
         self.assertIn('USAGE_MONITOR_EXTRA_LIMIT', env)
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', [])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_extra_usage_no_command_when_empty(self, mock_cmd):
         """No command for extra usage when setting is empty."""
@@ -1487,7 +1487,7 @@ class TestTestEventCommands(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_reset_5h_fires_with_correct_env(self, mock_cmd):
         """Test reset 5h handler passes all required env vars with correct values."""
@@ -1495,7 +1495,7 @@ class TestTestEventCommands(unittest.TestCase):
 
         mock_cmd.assert_called_once()
         cmd, env = mock_cmd.call_args[0]
-        self.assertEqual(cmd, 'echo reset')
+        self.assertEqual(cmd, ['echo reset'])
         self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
         self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '0')
@@ -1506,7 +1506,7 @@ class TestTestEventCommands(unittest.TestCase):
         self.assertIn('USAGE_MONITOR_TITLE', env)
         self.assertIn('USAGE_MONITOR_MESSAGE', env)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_reset_7d_fires_with_correct_env(self, mock_cmd):
         """Test reset 7d handler passes all required env vars with correct values."""
@@ -1514,7 +1514,7 @@ class TestTestEventCommands(unittest.TestCase):
 
         mock_cmd.assert_called_once()
         cmd, env = mock_cmd.call_args[0]
-        self.assertEqual(cmd, 'echo reset')
+        self.assertEqual(cmd, ['echo reset'])
         self.assertEqual(env['USAGE_MONITOR_EVENT'], 'reset')
         self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'seven_day')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '0')
@@ -1523,7 +1523,7 @@ class TestTestEventCommands(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '0')
         self.assertIn('USAGE_MONITOR_RESETS_AT', env)
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_threshold_5h_fires_with_correct_env(self, mock_cmd):
         """Test threshold 5h handler passes all required env vars with correct values."""
@@ -1531,7 +1531,7 @@ class TestTestEventCommands(unittest.TestCase):
 
         mock_cmd.assert_called_once()
         cmd, env = mock_cmd.call_args[0]
-        self.assertEqual(cmd, 'notify.bat')
+        self.assertEqual(cmd, ['notify.bat'])
         self.assertEqual(env['USAGE_MONITOR_EVENT'], 'threshold')
         self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'five_hour')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '82')
@@ -1540,7 +1540,7 @@ class TestTestEventCommands(unittest.TestCase):
         self.assertIn('USAGE_MONITOR_TITLE', env)
         self.assertIn('USAGE_MONITOR_MESSAGE', env)
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_threshold_7d_fires_with_correct_env(self, mock_cmd):
         """Test threshold 7d handler passes all required env vars with correct values."""
@@ -1548,14 +1548,14 @@ class TestTestEventCommands(unittest.TestCase):
 
         mock_cmd.assert_called_once()
         cmd, env = mock_cmd.call_args[0]
-        self.assertEqual(cmd, 'notify.bat')
+        self.assertEqual(cmd, ['notify.bat'])
         self.assertEqual(env['USAGE_MONITOR_EVENT'], 'threshold')
         self.assertEqual(env['USAGE_MONITOR_VARIANT'], 'seven_day')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION'], '81')
         self.assertEqual(env['USAGE_MONITOR_THRESHOLD'], '80')
         self.assertIn('USAGE_MONITOR_RESETS_AT', env)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_reset_5h_resets_at_is_valid_iso_timestamp(self, mock_cmd):
         """USAGE_MONITOR_RESETS_AT is a parseable ISO 8601 timestamp in the future."""
@@ -1565,7 +1565,7 @@ class TestTestEventCommands(unittest.TestCase):
         resets_at = datetime.fromisoformat(env['USAGE_MONITOR_RESETS_AT'])
         self.assertGreater(resets_at, datetime.now(timezone.utc))
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_threshold_5h_resets_at_is_valid_iso_timestamp(self, mock_cmd):
         """USAGE_MONITOR_RESETS_AT is a parseable ISO 8601 timestamp in the future."""
@@ -1575,7 +1575,7 @@ class TestTestEventCommands(unittest.TestCase):
         resets_at = datetime.fromisoformat(env['USAGE_MONITOR_RESETS_AT'])
         self.assertGreater(resets_at, datetime.now(timezone.utc))
 
-    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', 'notify.bat')
+    @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', ['notify.bat'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_threshold_message_contains_utilization_pct(self, mock_cmd):
         """USAGE_MONITOR_MESSAGE includes the utilization percentage."""
@@ -1601,7 +1601,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.time.sleep')
     @patch('usage_monitor_for_claude.app.time.time')
     def test_idle_interrupted_for_imminent_reset(self, mock_time, mock_sleep):
@@ -1632,7 +1632,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
 
         self.assertEqual(call_count[0], 2)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', '')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', [])
     @patch('usage_monitor_for_claude.app.time.sleep')
     @patch('usage_monitor_for_claude.app.time.time')
     def test_idle_not_interrupted_without_reset_command(self, mock_time, mock_sleep):
@@ -1658,7 +1658,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
 
         self.assertEqual(wait_calls, [None])
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.time.sleep')
     @patch('usage_monitor_for_claude.app.time.time')
     def test_idle_no_deadline_when_no_imminent_reset(self, mock_time, mock_sleep):
@@ -1685,7 +1685,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         self.assertEqual(wait_calls, [None])
 
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.POLL_INTERVAL', 180)
     @patch('usage_monitor_for_claude.app.time.sleep')
     @patch('usage_monitor_for_claude.app.time.time')
@@ -1732,7 +1732,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         # _idle_reset_pending was set by the first idle detection
         self.assertTrue(self.app._idle_reset_pending)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.POLL_INTERVAL', 180)
     @patch('usage_monitor_for_claude.app.time.sleep')
     @patch('usage_monitor_for_claude.app.time.time')
@@ -1769,7 +1769,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         # reset is confirmed, idle polling resumes correctly.
         self.assertTrue(self.app._idle_reset_pending)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.POLL_INTERVAL', 180)
     @patch('usage_monitor_for_claude.app.time.sleep')
     @patch('usage_monitor_for_claude.app.time.time')
@@ -1825,7 +1825,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
     def tearDown(self):
         _cleanup(self.app)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1842,7 +1842,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
 
         self.assertFalse(self.app._idle_reset_pending)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1859,7 +1859,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
 
         self.assertFalse(self.app._idle_reset_pending)
 
-    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', 'echo reset')
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')

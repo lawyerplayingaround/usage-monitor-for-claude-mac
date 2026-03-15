@@ -49,7 +49,8 @@ _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg',
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day', 'alert_thresholds_extra_usage'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
-_STRING_KEYS = frozenset({'currency_symbol', 'language', 'on_reset_command', 'on_threshold_command'})
+_STRING_KEYS = frozenset({'currency_symbol', 'language'})
+_COMMAND_KEYS = frozenset({'on_reset_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 
 
@@ -133,6 +134,17 @@ def _validate(data: dict, path: Path) -> dict:
         elif key in _STRING_KEYS:
             if not isinstance(value, str):
                 errors.append(f'  {key}: expected a string, got {type(value).__name__}')
+                drop.append(key)
+
+        elif key in _COMMAND_KEYS:
+            if isinstance(value, str):
+                data[key] = [value]
+            elif isinstance(value, list):
+                if any(not isinstance(item, str) for item in value):
+                    errors.append(f'  {key}: all items must be strings')
+                    drop.append(key)
+            else:
+                errors.append(f'  {key}: expected a string or array of strings, got {type(value).__name__}')
                 drop.append(key)
 
         elif key in _BOOL_KEYS:
@@ -224,8 +236,8 @@ CURRENCY_SYMBOL: str = _S.get('currency_symbol', _SYSTEM_CURRENCY_SYMBOL)
 LANGUAGE: str = _S.get('language', '')
 
 # Event commands
-ON_RESET_COMMAND: str = _S.get('on_reset_command', '')
-ON_THRESHOLD_COMMAND: str = _S.get('on_threshold_command', '')
+ON_RESET_COMMAND: list[str] = _S.get('on_reset_command', [])
+ON_THRESHOLD_COMMAND: list[str] = _S.get('on_threshold_command', [])
 
 _ALERT_THRESHOLDS = {
     'five_hour': ALERT_THRESHOLDS_FIVE_HOUR,

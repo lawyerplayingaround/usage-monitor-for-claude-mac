@@ -35,8 +35,8 @@ Run a shell command when a usage event occurs. See [Event Commands](event-comman
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `on_reset_command` | *(none)* | Shell command to run when a quota resets (usage drops) |
-| `on_threshold_command` | *(none)* | Shell command to run when usage crosses a configured alert threshold |
+| `on_reset_command` | *(none)* | Shell command (or array of commands) to run when a quota resets (usage drops) |
+| `on_threshold_command` | *(none)* | Shell command (or array of commands) to run when usage crosses a configured alert threshold |
 
 ## Polling intervals
 

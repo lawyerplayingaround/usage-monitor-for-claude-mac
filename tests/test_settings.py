@@ -495,28 +495,52 @@ class TestSettingsValidation(unittest.TestCase):
         self.assertNotIn('alert_time_aware', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
-    # String command validation
+    # Command validation (string or array of strings)
 
-    def test_on_reset_command_string_valid(self):
-        """String value for on_reset_command passes through."""
+    def test_on_reset_command_string_normalized_to_list(self):
+        """String value for on_reset_command is normalized to a single-element list."""
         result, mock = self._run_validate({'on_reset_command': 'echo hello'})
-        self.assertEqual(result['on_reset_command'], 'echo hello')
+        self.assertEqual(result['on_reset_command'], ['echo hello'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_on_reset_command_list_valid(self):
+        """Array of strings for on_reset_command passes through."""
+        result, mock = self._run_validate({'on_reset_command': ['cmd1', 'cmd2']})
+        self.assertEqual(result['on_reset_command'], ['cmd1', 'cmd2'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_on_reset_command_empty_list_valid(self):
+        """Empty array for on_reset_command is valid (disables the command)."""
+        result, mock = self._run_validate({'on_reset_command': []})
+        self.assertEqual(result['on_reset_command'], [])
         mock.windll.user32.MessageBoxW.assert_not_called()
 
     def test_on_reset_command_non_string_dropped(self):
-        """Non-string value for on_reset_command is dropped."""
+        """Non-string/non-array value for on_reset_command is dropped."""
         result, mock = self._run_validate({'on_reset_command': 42})
         self.assertNotIn('on_reset_command', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
-    def test_on_threshold_command_string_valid(self):
-        """String value for on_threshold_command passes through."""
+    def test_on_reset_command_list_with_non_string_dropped(self):
+        """Array with non-string elements for on_reset_command is dropped."""
+        result, mock = self._run_validate({'on_reset_command': ['cmd1', 42]})
+        self.assertNotIn('on_reset_command', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_on_threshold_command_string_normalized_to_list(self):
+        """String value for on_threshold_command is normalized to a single-element list."""
         result, mock = self._run_validate({'on_threshold_command': 'powershell -File notify.ps1'})
-        self.assertEqual(result['on_threshold_command'], 'powershell -File notify.ps1')
+        self.assertEqual(result['on_threshold_command'], ['powershell -File notify.ps1'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_on_threshold_command_list_valid(self):
+        """Array of strings for on_threshold_command passes through."""
+        result, mock = self._run_validate({'on_threshold_command': ['sound.bat', 'curl http://example.com']})
+        self.assertEqual(result['on_threshold_command'], ['sound.bat', 'curl http://example.com'])
         mock.windll.user32.MessageBoxW.assert_not_called()
 
     def test_on_threshold_command_non_string_dropped(self):
-        """Non-string value for on_threshold_command is dropped."""
+        """Non-string/non-array value for on_threshold_command is dropped."""
         result, mock = self._run_validate({'on_threshold_command': True})
         self.assertNotIn('on_threshold_command', result)
         mock.windll.user32.MessageBoxW.assert_called_once()

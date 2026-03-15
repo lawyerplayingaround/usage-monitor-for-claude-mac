@@ -8,10 +8,12 @@ Add these keys to your [`usage-monitor-settings.json`](configuration.md). After 
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `on_reset_command` | *(none)* | Shell command to run when a quota resets (usage drops) |
-| `on_threshold_command` | *(none)* | Shell command to run when usage crosses a configured alert threshold |
+| `on_reset_command` | *(none)* | Shell command (or array of commands) to run when a quota resets (usage drops) |
+| `on_threshold_command` | *(none)* | Shell command (or array of commands) to run when usage crosses a configured alert threshold |
 
 Commands run with the same privileges as the app and **without a visible window** - no console pops up and no focus is stolen. This is ideal for background tasks like sending notifications, playing sounds, or running headless commands (e.g. `claude -p "..."`). Relative paths in commands are resolved relative to the executable's folder (or the project root when running from source).
+
+Both settings accept a single command string or an array of strings to run multiple commands per event. When an array is provided, all commands are launched independently (fire-and-forget) - if one fails, the others still run.
 
 Commands only fire on **state changes** detected while the app is running. On app startup, already-exceeded thresholds trigger a desktop notification but do not run `on_threshold_command` - this prevents duplicate commands after a restart or reboot.
 
@@ -46,11 +48,14 @@ When `on_reset_command` is configured, the app briefly wakes from idle/lock paus
 }
 ```
 
-### Send a Pushover push notification to your phone when the quota resets
+### Play a sound and send a push notification when the quota resets
 
 ```json
 {
-  "on_reset_command": "curl -s -d \"token=<APP_TOKEN>&user=<USER_KEY>&title=%USAGE_MONITOR_TITLE%&message=%USAGE_MONITOR_MESSAGE%\" https://api.pushover.net/1/messages.json"
+  "on_reset_command": [
+    "powershell -Command \"(New-Object Media.SoundPlayer 'C:\\Windows\\Media\\notify.wav').PlaySync()\"",
+    "curl -s -d \"token=<APP_TOKEN>&user=<USER_KEY>&title=%USAGE_MONITOR_TITLE%&message=%USAGE_MONITOR_MESSAGE%\" https://api.pushover.net/1/messages.json"
+  ]
 }
 ```
 
