@@ -144,7 +144,7 @@ Produces `dist/UsageMonitorForClaude.exe` (~20 MB), a single-file executable tha
 4. Run the test suite: `python -m unittest discover -s tests`
 5. Smoke test: `python -m usage_monitor_for_claude` - verify tray icon, popup, and settings
 6. Build the EXE with `python build.py`
-7. Smoke test: `dist/UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
+7. Smoke test: `dist\UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
 8. Stage the changes from steps 2 and 3
 9. Commit, tag, push, and publish:
 
