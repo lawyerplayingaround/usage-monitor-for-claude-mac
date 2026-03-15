@@ -158,6 +158,35 @@ Produces `dist/UsageMonitorForClaude.exe` (~20 MB), a single-file executable tha
 
 ---
 
+## Contributing
+
+Contributions are welcome - whether it's bug reports, feature ideas, or pull requests. Feel free to [open an issue](https://github.com/jens-duttke/usage-monitor-for-claude/issues) to report bugs, suggest features, or ask questions.
+
+<details>
+<summary>For developers who want to contribute to the project</summary>
+
+This project is developed with [Claude Code](https://docs.anthropic.com/en/docs/claude-code). The [`.claude/CLAUDE.md`](.claude/CLAUDE.md) file contains all project conventions, coding standards, and architectural guidelines - Claude Code applies these automatically during development.
+
+### Workflow
+
+1. Read `.claude/CLAUDE.md` to understand the project conventions
+2. Implement your changes with Claude Code - it will follow the guidelines automatically
+3. Before committing, run the `/review` slash command to perform a systematic quality review of all staged changes (code, tests, documentation)
+4. Stage remaining fixes if any, then run `/commit-message` to generate a properly formatted commit message
+
+### Adding features
+
+New features should follow the existing architecture. Key points from the guidelines:
+
+- Security-critical code (credentials, API calls) stays isolated in [`api.py`](usage_monitor_for_claude/api.py)
+- All user-facing changes need updates in [`CHANGELOG.md`](CHANGELOG.md), [`README.md`](README.md), and [`docs/configuration.md`](docs/configuration.md) where applicable
+- Tests are required - run `python -m unittest discover -s tests` before committing
+- The app is read-only and must never write files to disk
+
+</details>
+
+---
+
 ## License
 
 MIT
