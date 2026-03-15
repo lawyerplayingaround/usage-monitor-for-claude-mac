@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Day dividers on the weekly usage bar - subtle gaps at local midnight boundaries visually group usage into day segments
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.8.0...HEAD)
 
 ## [1.8.0] - 2026-03-15

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from .claude_cli import CHANGELOG_URL, find_installations
 from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BG, FG, FG_DIM, FG_HEADING
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, time_until
+from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, midnight_positions, time_until
 from .i18n import T
 
 __all__ = ['UsagePopup']
@@ -449,6 +449,14 @@ class UsagePopup:
         if fill_pct > 0:
             fill_frame = tk.Frame(bar_frame, bg=BAR_FG_WARN if warn else BAR_FG)
             fill_frame.place(relwidth=fill_pct, relheight=1.0)
+
+        # Day segment dividers at local midnight boundaries (z-order: fill -> dividers -> elapsed marker)
+        divider_frames = []
+        for relx in midnight_positions(resets_at, period_seconds):
+            divider = tk.Frame(bar_frame, bg=BG, width=1)
+            divider.place(relx=relx, relheight=1.0, width=1)
+            divider_frames.append(divider)
+
         marker_frame = None
         if time_pct is not None:
             marker_rel = max(0.0, min(1.0, time_pct / 100))
@@ -462,7 +470,7 @@ class UsagePopup:
 
         return {
             'pct_label': pct_label, 'bar_frame': bar_frame,
-            'fill_frame': fill_frame, 'marker_frame': marker_frame, 'reset_label': reset_label,
+            'fill_frame': fill_frame, 'divider_frames': divider_frames, 'marker_frame': marker_frame, 'reset_label': reset_label,
             'resets_at': resets_at, 'period_seconds': period_seconds,
         }
 
@@ -485,9 +493,19 @@ class UsagePopup:
             else:
                 widgets['fill_frame'] = tk.Frame(bar_frame, bg=color)
                 widgets['fill_frame'].place(relwidth=fill_pct, relheight=1.0)
+                widgets['fill_frame'].lower()
         elif widgets['fill_frame']:
             widgets['fill_frame'].destroy()
             widgets['fill_frame'] = None
+
+        if resets_at != widgets['resets_at']:
+            for divider in widgets['divider_frames']:
+                divider.destroy()
+            widgets['divider_frames'] = []
+            for relx in midnight_positions(resets_at, period_seconds):
+                divider = tk.Frame(bar_frame, bg=BG, width=1)
+                divider.place(relx=relx, relheight=1.0, width=1)
+                widgets['divider_frames'].append(divider)
 
         time_pct = elapsed_pct(resets_at, period_seconds)
         if time_pct is not None:

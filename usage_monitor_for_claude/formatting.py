@@ -15,7 +15,7 @@ from typing import Any
 from .i18n import T
 from .settings import CURRENCY_SYMBOL, _SYSTEM_CURRENCY_SYMBOL
 
-__all__ = ['PERIOD_5H', 'PERIOD_7D', 'elapsed_pct', 'time_until', 'format_credits', 'format_status', 'format_tooltip']
+__all__ = ['PERIOD_5H', 'PERIOD_7D', 'elapsed_pct', 'midnight_positions', 'time_until', 'format_credits', 'format_status', 'format_tooltip']
 
 PERIOD_5H = 5 * 3600
 PERIOD_7D = 7 * 24 * 3600
@@ -49,6 +49,49 @@ def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
         return max(0.0, min(100.0, elapsed / period_seconds * 100))
     except Exception:
         return None
+
+
+def midnight_positions(resets_at: str, period_seconds: int) -> list[float]:
+    """Return relative positions (0.0-1.0) of local midnight boundaries within a usage period.
+
+    Parameters
+    ----------
+    resets_at : str
+        ISO 8601 timestamp when the limit resets.
+    period_seconds : int
+        Total duration of the period in seconds.
+
+    Returns
+    -------
+    list[float]
+        Positions where local midnights fall within the period, each in the
+        range (0.0, 1.0) exclusive.  Positions that would round to 0px at
+        typical bar widths are omitted.
+    """
+    if not resets_at or period_seconds <= 0:
+        return []
+
+    try:
+        reset_utc = datetime.fromisoformat(resets_at)
+        start_utc = reset_utc - timedelta(seconds=period_seconds)
+
+        start_local = start_utc.astimezone()
+        end_local = reset_utc.astimezone()
+
+        # First midnight after the period start
+        midnight = (start_local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        positions = []
+        while midnight < end_local:
+            elapsed = (midnight - start_local).total_seconds()
+            rel = elapsed / period_seconds
+            if rel > 0.003:
+                positions.append(rel)
+            midnight += timedelta(days=1)
+
+        return positions
+    except Exception:
+        return []
 
 
 def time_until(iso_str: str) -> str:

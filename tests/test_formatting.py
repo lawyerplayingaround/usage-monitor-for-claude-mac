@@ -11,7 +11,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, format_tooltip, time_until
+from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, format_tooltip, midnight_positions, time_until
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
@@ -109,6 +109,99 @@ class TestElapsedPct(unittest.TestCase):
 
         assert result is not None
         self.assertAlmostEqual(result, 50.0)
+
+
+# ---------------------------------------------------------------------------
+# midnight_positions
+# ---------------------------------------------------------------------------
+
+class TestMidnightPositions(unittest.TestCase):
+    """Tests for midnight_positions().
+
+    Because midnight_positions converts to local time via astimezone(), tests
+    construct inputs relative to the system timezone so results are predictable
+    on any machine.
+    """
+
+    @staticmethod
+    def _local_to_utc_iso(naive_local: datetime) -> str:
+        """Convert a naive local datetime to a UTC ISO string."""
+        return naive_local.astimezone(timezone.utc).isoformat()
+
+    def test_empty_resets_at(self):
+        """Empty resets_at returns empty list."""
+        self.assertEqual(midnight_positions('', PERIOD_7D), [])
+
+    def test_zero_period(self):
+        """period_seconds=0 returns empty list."""
+        self.assertEqual(midnight_positions('2025-01-15T12:00:00+00:00', 0), [])
+
+    def test_negative_period(self):
+        """Negative period_seconds returns empty list."""
+        self.assertEqual(midnight_positions('2025-01-15T12:00:00+00:00', -100), [])
+
+    def test_invalid_iso_string(self):
+        """Invalid ISO string returns empty list."""
+        self.assertEqual(midnight_positions('not-a-date', PERIOD_7D), [])
+
+    def test_5h_period_no_midnight(self):
+        """5h period within a single day has no midnight crossings."""
+        # Period: 10:00-15:00 local on the same day - no midnight
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 15, 15, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_5H)
+        self.assertEqual(result, [])
+
+    def test_7d_period_has_seven_midnights(self):
+        """7-day period from noon to noon has exactly 7 internal midnight boundaries."""
+        # Period: Jan 15 12:00 to Jan 22 12:00 local - midnights on Jan 16-22
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_7D)
+        self.assertEqual(len(result), 7)
+
+    def test_positions_are_sorted_ascending(self):
+        """Positions must be in ascending order."""
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_7D)
+        self.assertEqual(result, sorted(result))
+
+    def test_positions_in_valid_range(self):
+        """All positions must be in the range (0.0, 1.0) exclusive."""
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_7D)
+        for pos in result:
+            self.assertGreater(pos, 0.0)
+            self.assertLess(pos, 1.0)
+
+    def test_5h_period_spanning_midnight(self):
+        """5h period crossing local midnight has exactly one midnight position."""
+        # Period: 23:00-04:00 local, crosses one midnight
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 4, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_5H)
+        self.assertEqual(len(result), 1)
+
+    def test_5h_midnight_position_is_correct(self):
+        """Midnight position in a 5h period crossing midnight at the expected fraction."""
+        # Period: 23:00-04:00 local. Midnight is 1h into a 5h period = 0.2
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 4, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_5H)
+        self.assertEqual(len(result), 1)
+        self.assertAlmostEqual(result[0], 0.2, places=2)
+
+    def test_near_zero_positions_filtered(self):
+        """Positions very close to 0.0 (< 0.003) are filtered out."""
+        # Period: 23:59:50-04:59:50 local. Midnight is 10s in = 10/18000 ≈ 0.00056, filtered.
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 4, 59, 50))
+        result = midnight_positions(reset_iso, PERIOD_5H)
+        for pos in result:
+            self.assertGreater(pos, 0.003)
+
+    def test_7d_first_position_approximately_correct(self):
+        """First midnight in a 7d period starting at noon is at roughly 1/14 of the bar."""
+        # Period: Jan 15 12:00 to Jan 22 12:00 local. First midnight is 12h into 168h = 1/14
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
+        result = midnight_positions(reset_iso, PERIOD_7D)
+        self.assertGreater(len(result), 0)
+        self.assertAlmostEqual(result[0], 12 / 168, places=2)
 
 
 # ---------------------------------------------------------------------------

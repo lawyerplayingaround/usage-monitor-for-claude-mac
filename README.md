@@ -72,11 +72,12 @@ Windows may hide new tray icons by default. To keep the icon always visible:
 
 ### Reading the progress bars
 
-Each bar in the detail popup has up to three visual elements:
+Each bar in the detail popup has up to four visual elements:
 
 1. **Blue fill** - how much of the limit you have used
-2. **White vertical line** - how much *time* has passed in the current period. The fill turns **red** when it passes this marker, warning that you may hit the limit before the period resets.
-3. **Reset text** - when the limit resets, shown as a countdown with clock time
+2. **Day dividers** - subtle gaps at local midnight boundaries, visually grouping usage into day segments (visible on the weekly bar)
+3. **White vertical line** - how much *time* has passed in the current period. The fill turns **red** when it passes this marker, warning that you may hit the limit before the period resets.
+4. **Reset text** - when the limit resets, shown as a countdown with clock time
 
 ---
 
