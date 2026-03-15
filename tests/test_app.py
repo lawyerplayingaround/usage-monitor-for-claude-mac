@@ -50,8 +50,11 @@ class TestCheckThresholdAlerts(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
+        self._cmd_patch.start()
 
     def tearDown(self):
+        self._cmd_patch.stop()
         _cleanup(self.app)
 
     def test_notification_on_first_crossing(self):
@@ -178,14 +181,17 @@ class TestTimeAwareAlerts(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
         self._time_aware_patch = patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE', True)
         self._below_patch = patch('usage_monitor_for_claude.app.ALERT_TIME_AWARE_BELOW', 100)
+        self._cmd_patch.start()
         self._time_aware_patch.start()
         self._below_patch.start()
 
     def tearDown(self):
         self._below_patch.stop()
         self._time_aware_patch.stop()
+        self._cmd_patch.stop()
         _cleanup(self.app)
 
     def test_alert_suppressed_when_usage_behind_time(self):
@@ -286,8 +292,11 @@ class TestExtraUsageAlerts(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
+        self._cmd_patch.start()
 
     def tearDown(self):
+        self._cmd_patch.stop()
         _cleanup(self.app)
 
     def _extra_data(self, used: float = 0.0, limit: float = 1000, enabled: bool = True) -> dict:
@@ -398,8 +407,11 @@ class TestUpdateOrchestration(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
+        self._cmd_patch.start()
 
     def tearDown(self):
+        self._cmd_patch.stop()
         _cleanup(self.app)
 
     def test_skipped_update_does_nothing(self):
@@ -514,8 +526,11 @@ class TestResetNotifications(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
+        self._cmd_patch.start()
 
     def tearDown(self):
+        self._cmd_patch.stop()
         _cleanup(self.app)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
@@ -688,8 +703,11 @@ class TestFastPolling(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
+        self._cmd_patch.start()
 
     def tearDown(self):
+        self._cmd_patch.stop()
         _cleanup(self.app)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
