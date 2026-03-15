@@ -45,6 +45,6 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    icon='usage_monitor.ico',
+    icon='usage_monitor_for_claude.ico',
     version='version_info.py',
 )
