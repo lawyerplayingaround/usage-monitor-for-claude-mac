@@ -372,12 +372,12 @@ class TestFormatTooltip(unittest.TestCase):
             'five_hour': {'utilization': 42.0, 'resets_at': ''},
             'seven_day': {'utilization': 15.0, 'resets_at': ''},
         }
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n5h: 42%\n7d: 15%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 42%\n7d: 15%')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='Resets in 2h 30m (14:30)')
     def test_with_reset_info(self, _mock_tu):
         data = {'five_hour': {'utilization': 42.0, 'resets_at': '2025-01-15T14:30:00+00:00'}}
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n5h: 42% (Resets in 2h 30m (14:30))')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 42% (Resets in 2h 30m (14:30))')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_utilization_none_skipped(self, _mock_tu):
@@ -385,39 +385,39 @@ class TestFormatTooltip(unittest.TestCase):
             'five_hour': {'utilization': None, 'resets_at': ''},
             'seven_day': {'utilization': 80.0, 'resets_at': ''},
         }
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n7d: 80%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n7d: 80%')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_empty_data_shows_title_only(self, _mock_tu):
-        self.assertEqual(format_tooltip({}), 'Account & Usage')
+        self.assertEqual(format_tooltip({}), 'Claude Usage')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_zero_percent(self, _mock_tu):
         data = {'five_hour': {'utilization': 0.0, 'resets_at': ''}}
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n5h: 0%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 0%')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_hundred_percent(self, _mock_tu):
         data = {'five_hour': {'utilization': 100.0, 'resets_at': ''}}
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n5h: 100%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 100%')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_entry_none_skipped(self, _mock_tu):
         """Entry that is None is skipped by the guard clause."""
         data = {'five_hour': None, 'seven_day': {'utilization': 50.0, 'resets_at': ''}}
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n7d: 50%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n7d: 50%')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_entry_empty_dict_skipped(self, _mock_tu):
         """Entry with no utilization key is skipped."""
         data = {'five_hour': {}, 'seven_day': {'utilization': 50.0, 'resets_at': ''}}
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n7d: 50%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n7d: 50%')
 
     @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
     def test_only_seven_day(self, _mock_tu):
         """Only seven_day present, five_hour absent."""
         data = {'seven_day': {'utilization': 25.0, 'resets_at': ''}}
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n7d: 25%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n7d: 25%')
 
     def test_auth_error_false_shows_normal_error(self):
         """auth_error=False with error shows normal error, not auth message."""
@@ -432,7 +432,7 @@ class TestFormatTooltip(unittest.TestCase):
             'five_hour': {'utilization': 26.0, 'resets_at': ''},
             'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 420.0},
         }
-        self.assertEqual(format_tooltip(data), 'Account & Usage\n5h: 26%')
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 26%')
 
 
 # ---------------------------------------------------------------------------
@@ -465,7 +465,7 @@ class TestTooltipMaxLength(unittest.TestCase):
         reset_5h = self._longest_reset(t, max_hours=4)
         reset_7d = self._longest_reset(t, max_hours=23)
 
-        return f"{t['title']}\n5h: 100% ({reset_5h})\n7d: 100% ({reset_7d})"
+        return f"{t['tooltip_title']}\n5h: 100% ({reset_5h})\n7d: 100% ({reset_7d})"
 
     def test_all_locales_fit_tooltip(self):
         """Every locale's worst-case tooltip must fit in 127 characters."""

@@ -215,7 +215,7 @@ def format_tooltip(data: dict[str, Any]) -> str:
             return f"{T['auth_expired_label']}\n{T['auth_expired_short']}"
         return f"{T['error_label']}\n{data['error'][:80]}"
 
-    lines = [T['title']]
+    lines = [T['tooltip_title']]
     for key, short in [('five_hour', '5h'), ('seven_day', '7d')]:
         entry = data.get(key)
         if entry and entry.get('utilization') is not None:

@@ -89,7 +89,7 @@ class UsageMonitorForClaude:
             icon=create_icon_image(0, 0, self._light_taskbar),
             title=T['loading'],
             menu=pystray.Menu(
-                pystray.MenuItem(T['title'].replace('&', '&&'), self.on_show_popup, default=True),
+                pystray.MenuItem(T['menu_show'], self.on_show_popup, default=True),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(
                     T['autostart'], self.on_toggle_autostart,
@@ -574,7 +574,7 @@ class UsageMonitorForClaude:
             if getattr(sys, 'frozen', False):
                 sync_autostart_path()
             if not api_headers():
-                icon.notify(f"{T['warn_no_token']}\n{T['warn_login']}", T['title'])
+                icon.notify(f"{T['warn_no_token']}\n{T['warn_login']}", T['popup_title'])
             threading.Thread(target=watch_theme_change, args=(self._on_theme_changed,), daemon=True).start()
             self.poll_loop()
         except Exception:

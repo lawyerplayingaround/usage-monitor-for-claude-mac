@@ -1,5 +1,7 @@
 {
-    "title": "Akun & Penggunaan",
+    "popup_title": "Usage Monitor for Claude",
+    "menu_show": "Tampilkan penggunaan Claude",
+    "tooltip_title": "Penggunaan Claude",
     "account": "AKUN",
     "usage": "PENGGUNAAN",
     "email": "Email",

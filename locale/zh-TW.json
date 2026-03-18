@@ -1,5 +1,7 @@
 {
-    "title": "帳戶與用量",
+    "popup_title": "Usage Monitor for Claude",
+    "menu_show": "顯示Claude用量",
+    "tooltip_title": "Claude用量",
     "account": "帳戶",
     "usage": "用量",
     "email": "電子郵件",

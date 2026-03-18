@@ -1,5 +1,7 @@
 {
-    "title": "Konto & Nutzung",
+    "popup_title": "Usage Monitor for Claude",
+    "menu_show": "Claude-Nutzung anzeigen",
+    "tooltip_title": "Claude-Nutzung",
     "account": "KONTO",
     "usage": "NUTZUNG",
     "email": "E-Mail",

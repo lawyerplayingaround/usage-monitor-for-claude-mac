@@ -1,5 +1,7 @@
 {
-    "title": "アカウントと使用状況",
+    "popup_title": "Usage Monitor for Claude",
+    "menu_show": "Claude使用状況を表示",
+    "tooltip_title": "Claude使用状況",
     "account": "アカウント",
     "usage": "使用状況",
     "email": "メール",

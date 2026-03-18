@@ -137,7 +137,7 @@ def _init_config(snap: CacheSnapshot) -> dict[str, Any]:
             'bar_bg': BAR_BG, 'bar_fg': BAR_FG, 'bar_fg_warn': BAR_FG_WARN, 'bar_marker': BAR_MARKER,
         },
         't': {
-            'title': T['title'], 'account': T['account'], 'email': T['email'], 'plan': T['plan'],
+            'title': T['popup_title'], 'account': T['account'], 'email': T['email'], 'plan': T['plan'],
             'usage': T['usage'], 'extra_usage': T['extra_usage'],
             'claude_code': T['claude_code'], 'changelog': T['changelog'],
         },

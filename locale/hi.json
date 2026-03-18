@@ -1,5 +1,7 @@
 {
-    "title": "खाता और उपयोग",
+    "popup_title": "Usage Monitor for Claude",
+    "menu_show": "Claude उपयोग दिखाएं",
+    "tooltip_title": "Claude उपयोग",
     "account": "खाता",
     "usage": "उपयोग",
     "email": "ईमेल",
