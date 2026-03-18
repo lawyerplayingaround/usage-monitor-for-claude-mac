@@ -80,6 +80,8 @@ Override individual channels as RGBA arrays `[R, G, B, A]` (0-255). Unspecified 
 | `fg` | `"#cccccc"` | Text |
 | `fg_dim` | `"#888888"` | Dimmed text (labels, reset times) |
 | `fg_heading` | `"#ffffff"` | Section headings |
+| `fg_link` | `"#4a9eff"` | Link text (e.g. changelog) |
 | `bar_bg` | `"#333333"` | Progress bar background |
 | `bar_fg` | `"#4a9eff"` | Progress bar fill |
-| `bar_fg_warn` | `"#e05050"` | Progress bar fill when usage outpaces elapsed time |
+| `bar_fg_warn` | `"#e05050"` | Progress bar fill when usage outpaces elapsed time, error text |
+| `bar_marker` | `"#ffffff"` | Time-position marker on progress bars |

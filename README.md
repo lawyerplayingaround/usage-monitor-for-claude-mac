@@ -8,7 +8,7 @@ A native Windows tray app that shows your Claude usage at a glance - lightweight
 
 ## Features
 
-- **Portable** - single EXE (~20 MB), no installation, no Electron, no runtime. Download, place anywhere, run
+- **Portable** - single EXE (~12.5 MB), no installation, no Electron, no runtime. Download, place anywhere, run
 - **Zero configuration** - authenticates through your existing Claude Code login. No API key, no manual token entry
 - **Live tray icon** with two progress bars (session + weekly), percentage display at high usage, and theme-aware colors for light and dark taskbars
 - **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, installed Claude Code versions, and data freshness
@@ -33,7 +33,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 - **No dynamic code execution** - no `eval()`, `exec()`, `compile()`, or dynamic imports
 - **No obfuscation** - no encoded strings, no hidden URLs, no minified logic
 - **Modular architecture** - small, focused modules with security-critical code (credentials, API calls) isolated in a single file ([`api.py`](usage_monitor_for_claude/api.py))
-- **Minimal runtime dependencies** - only three well-known packages: [requests](https://pypi.org/project/requests/), [Pillow](https://pypi.org/project/pillow/), [pystray](https://pypi.org/project/pystray/)
+- **Minimal runtime dependencies** - only four well-known packages: [requests](https://pypi.org/project/requests/), [Pillow](https://pypi.org/project/pillow/), [pystray](https://pypi.org/project/pystray/), [pywebview](https://pypi.org/project/pywebview/)
 
 ---
 
@@ -134,7 +134,17 @@ python -m usage_monitor_for_claude
 python build.py
 ```
 
-Produces `dist/UsageMonitorForClaude.exe` (~20 MB), a single-file executable that bundles Python and all dependencies.
+Produces `dist/UsageMonitorForClaude.exe` (~12.5 MB), a single-file executable that bundles Python and all dependencies.
+
+### Popup UI Development
+
+The popup UI lives in [`usage_monitor_for_claude/popup/`](usage_monitor_for_claude/popup/) as separate HTML, CSS, and JS files. To preview and iterate on the UI without running the full app:
+
+```bash
+start http://localhost:8080/dev.html && python -m http.server 8080 -d usage_monitor_for_claude/popup
+```
+
+This starts a local server and opens the dev preview in your default browser. Use the buttons to switch between data presets (full, minimal, error, loading) and test CSS/JS changes with instant feedback.
 
 ### Create a Release
 

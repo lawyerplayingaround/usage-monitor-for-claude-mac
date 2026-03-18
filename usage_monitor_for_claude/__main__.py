@@ -7,6 +7,8 @@ import subprocess
 import sys
 import traceback
 
+import webview  # type: ignore[import-untyped]  # no type stubs available
+
 from usage_monitor_for_claude.app import UsageMonitorForClaude, crash_log
 
 if not getattr(sys, 'frozen', False):
@@ -16,11 +18,36 @@ if not getattr(sys, 'frozen', False):
         datefmt='%H:%M:%S',
     )
 
-try:
-    app = UsageMonitorForClaude()
-    app.run()
+_result: dict = {}
 
-    if app.restart_requested:
+
+def _run_app() -> None:
+    """Run the tray application in a background thread (called by webview)."""
+    try:
+        app = UsageMonitorForClaude()
+        app.run()
+        _result['app'] = app
+    except Exception:
+        crash_log(traceback.format_exc())
+    finally:
+        # Destroy all webview windows (keeper + any open popups) so
+        # webview.start() on the main thread returns.
+        for win in list(webview.windows):
+            try:
+                win.destroy()
+            except Exception:
+                pass
+
+
+try:
+    # pywebview requires the main thread for its GUI event loop.
+    # A persistent hidden window keeps the loop alive while the
+    # tray app and popup windows are managed in background threads.
+    webview.create_window('', html='', hidden=True)
+    webview.start(func=_run_app)
+
+    app = _result.get('app')
+    if app and app.restart_requested:
         if getattr(sys, 'frozen', False):
             # Clear PyInstaller's internal env vars so the new
             # instance extracts to a fresh temp directory instead

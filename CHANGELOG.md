@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New color settings `fg_link` (link text) and `bar_marker` (time-position marker on progress bars) for finer theme control
+
+### Changed
+
+- Popup window rebuilt with HTML/CSS rendering (via Edge WebView2) replacing tkinter - smoother bar animations with CSS transitions, no flickering on updates, and more flexible layout
+- Executable size reduced by more than a third (from ~20 MB to ~12.5 MB) by removing unused image codecs and bundled modules
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.9.0...HEAD)
 
 ## [1.9.0] - 2026-03-15

@@ -24,9 +24,9 @@ from pathlib import Path
 __all__ = [
     'ALERT_THRESHOLDS_EXTRA_USAGE', 'ALERT_THRESHOLDS_FIVE_HOUR', 'ALERT_THRESHOLDS_SEVEN_DAY',
     'ALERT_TIME_AWARE', 'ALERT_TIME_AWARE_BELOW',
-    'BAR_BG', 'BAR_FG', 'BAR_FG_WARN', 'BG',
+    'BAR_BG', 'BAR_FG', 'BAR_FG_WARN', 'BAR_MARKER', 'BG',
     'CURRENCY_SYMBOL',
-    'FG', 'FG_DIM', 'FG_HEADING',
+    'FG', 'FG_DIM', 'FG_HEADING', 'FG_LINK',
     'ICON_DARK', 'ICON_LIGHT', 'IDLE_PAUSE',
     'LANGUAGE', 'MAX_BACKOFF',
     'ON_RESET_COMMAND', 'ON_THRESHOLD_COMMAND',
@@ -45,7 +45,7 @@ _NUMERIC_BOUNDS: dict[str, int] = {
     'max_backoff': 1,
     'idle_pause': 0,
 }
-_COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'bar_bg', 'bar_fg', 'bar_fg_warn'})
+_COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'fg_link', 'bar_bg', 'bar_fg', 'bar_fg_warn', 'bar_marker'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day', 'alert_thresholds_extra_usage'})
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
@@ -195,9 +195,11 @@ BG = _S.get('bg', '#1e1e1e')
 FG = _S.get('fg', '#cccccc')
 FG_DIM = _S.get('fg_dim', '#888888')
 FG_HEADING = _S.get('fg_heading', '#ffffff')
+FG_LINK = _S.get('fg_link', '#4a9eff')
 BAR_BG = _S.get('bar_bg', '#333333')
 BAR_FG = _S.get('bar_fg', '#4a9eff')
 BAR_FG_WARN = _S.get('bar_fg_warn', '#e05050')
+BAR_MARKER = _S.get('bar_marker', '#ffffff')
 
 # Tray icon colors
 ICON_LIGHT = _icon_colors('icon_light', {

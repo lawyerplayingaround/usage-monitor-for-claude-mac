@@ -161,38 +161,34 @@ class TestSettingsOverrides(unittest.TestCase):
     """Tests that settings values properly override default constants."""
 
     def test_unknown_keys_ignored(self):
-        """Unknown keys in settings are silently ignored, defaults unchanged."""
+        """Unknown keys in settings are silently ignored, overrides still applied."""
         settings = {'unknown_key': 'value', 'poll_interval': 90}
-        self._assert_overrides(settings, [('POLL_INTERVAL', 90), ('POLL_FAST', 60)])
+        self._assert_overrides(settings, [('poll_interval', 90)], absent=['poll_fast'])
 
     def test_polling_overrides(self):
         """Polling constants are overridden by settings."""
         settings = {'poll_interval': 300, 'poll_fast': 30, 'poll_fast_extra': 5, 'poll_error': 10}
         self._assert_overrides(settings, [
-            ('POLL_INTERVAL', 300), ('POLL_FAST', 30), ('POLL_FAST_EXTRA', 5), ('POLL_ERROR', 10),
+            ('poll_interval', 300), ('poll_fast', 30), ('poll_fast_extra', 5), ('poll_error', 10),
         ])
 
     def test_popup_color_overrides(self):
         """Popup color constants are overridden by settings."""
         settings = {'bg': '#000000', 'fg': '#ffffff', 'bar_fg': '#00ff00'}
-        self._assert_overrides(settings, [('BG', '#000000'), ('FG', '#ffffff'), ('BAR_FG', '#00ff00')])
+        self._assert_overrides(settings, [('bg', '#000000'), ('fg', '#ffffff'), ('bar_fg', '#00ff00')])
 
     def test_partial_override_keeps_defaults(self):
-        """Unspecified keys retain their default values."""
+        """Overriding one key does not affect other keys."""
         settings = {'poll_interval': 300}
-        self._assert_overrides(settings, [
-            ('POLL_INTERVAL', 300), ('POLL_FAST', 60), ('BG', '#1e1e1e'),
-            ('ALERT_THRESHOLDS_EXTRA_USAGE', [50, 80, 95]),
-        ])
+        self._assert_overrides(settings, [('poll_interval', 300)], absent=['poll_fast', 'bg', 'alert_thresholds_extra_usage'])
 
     def test_threshold_overrides(self):
         """Alert threshold lists are overridden by settings."""
         settings = {'alert_thresholds_extra_usage': [70, 90], 'alert_thresholds_five_hour': [80]}
         self._assert_overrides(settings, [
-            ('ALERT_THRESHOLDS_EXTRA_USAGE', [70, 90]),
-            ('ALERT_THRESHOLDS_FIVE_HOUR', [80]),
-            ('ALERT_THRESHOLDS_SEVEN_DAY', [95]),
-        ])
+            ('alert_thresholds_extra_usage', [70, 90]),
+            ('alert_thresholds_five_hour', [80]),
+        ], absent=['alert_thresholds_seven_day'])
 
     def test_icon_color_override(self):
         """Icon color dicts are merged, JSON arrays become tuples."""
@@ -214,24 +210,28 @@ class TestSettingsOverrides(unittest.TestCase):
         self.assertEqual(icon_light['fg_half'], (255, 255, 255, 80))
         self.assertEqual(icon_light['fg_dim'], (255, 255, 255, 140))
 
-    _DEFAULTS = {
-        'POLL_INTERVAL': 120, 'POLL_FAST': 60, 'POLL_FAST_EXTRA': 2, 'POLL_ERROR': 30,
-        'BG': '#1e1e1e', 'FG': '#cccccc', 'FG_DIM': '#888888', 'FG_HEADING': '#ffffff',
-        'BAR_BG': '#333333', 'BAR_FG': '#4a9eff', 'BAR_FG_WARN': '#e05050',
-        'ALERT_THRESHOLDS_FIVE_HOUR': [50, 80, 95], 'ALERT_THRESHOLDS_SEVEN_DAY': [95],
-        'ALERT_THRESHOLDS_EXTRA_USAGE': [50, 80, 95],
-        'ALERT_TIME_AWARE': True, 'ALERT_TIME_AWARE_BELOW': 90,
-    }
+    def _assert_overrides(self, settings: dict, expected: list[tuple[str, object]], absent: list[str] | None = None) -> None:
+        """Load settings and verify overridden keys have expected values.
 
-    def _assert_overrides(self, settings: dict, expected: list[tuple[str, object]]) -> None:
-        """Load settings and verify that .get() with defaults produces expected values."""
+        Parameters
+        ----------
+        settings : dict
+            Raw settings to write to the JSON file.
+        expected : list of (key, value) tuples
+            Keys that should be present in the loaded dict with exact values.
+        absent : list of str or None
+            Keys that should NOT be present (proving they weren't touched).
+        """
         with TemporaryDirectory() as app_tmp, TemporaryDirectory() as home_tmp:
             (Path(app_tmp) / settings_mod.SETTINGS_FILENAME).write_text(json.dumps(settings), encoding='utf-8')
             loaded = _load(Path(app_tmp), Path(home_tmp))
 
         for key, value in expected:
-            actual = loaded.get(key.lower(), self._DEFAULTS[key])
-            self.assertEqual(actual, value, f'{key} should be {value!r}, got {actual!r}')
+            self.assertIn(key, loaded, f'{key} should be in loaded settings')
+            self.assertEqual(loaded[key], value, f'{key} should be {value!r}, got {loaded[key]!r}')
+
+        for key in (absent or []):
+            self.assertNotIn(key, loaded, f'{key} should not be in loaded settings')
 
 
 class TestSettingsValidation(unittest.TestCase):
