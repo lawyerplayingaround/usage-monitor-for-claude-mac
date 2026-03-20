@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.12.0...HEAD)
+
+## [1.12.0] - 2026-03-20
+
 ### Added
 
 - "Project on GitHub" link in the tray context menu to quickly open the project repository
@@ -19,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Popup no longer shows an icon in the taskbar while open
 - Popup appearing at the wrong position after changing DPI scaling without restarting the app
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.11.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.11.0...v1.12.0)
 
 ## [1.11.0] - 2026-03-20
 
