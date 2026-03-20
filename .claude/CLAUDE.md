@@ -83,6 +83,7 @@ Prioritize readability and auditability - users handle credentials and must be a
 - Write entries from the user's perspective - describe what changed, not how the code changed
 - One bullet point per logical change; keep it concise (one sentence)
 - Changelog entries describe changes relative to the latest release tag, not intermediate commits - do not mention bugs that were introduced and fixed within the same unreleased period
+- Before writing a changelog entry for a fix, check `git log` to verify the bug existed in the latest release - if it was introduced after the release tag, it does not get a changelog entry
 
 ## Releasing
 - Update `__version__` in `usage_monitor_for_claude/__init__.py` and all four version fields in `version_info.py` (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
