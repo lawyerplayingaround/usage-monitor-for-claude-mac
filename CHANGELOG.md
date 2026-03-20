@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Context menu hover effect not showing on displays with DPI scaling above 100%
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.11.0...HEAD)
 
 ## [1.11.0] - 2026-03-20

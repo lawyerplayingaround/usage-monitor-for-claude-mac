@@ -1,11 +1,16 @@
 """Entry point for ``python -m usage_monitor_for_claude``."""
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import subprocess
 import sys
 import traceback
+
+# Per-Monitor V2 must be set before pywebview's legacy SetProcessDPIAware() call,
+# which only sets SYSTEM_DPI_AWARE and breaks native menu hover at high DPI.
+ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_ssize_t(-4))
 
 import webview  # type: ignore[import-untyped]  # no type stubs available
 
