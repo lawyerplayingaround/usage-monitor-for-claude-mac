@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Context menu hover effect not showing on displays with DPI scaling above 100%
+- Popup no longer shows an icon in the taskbar while open
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.11.0...HEAD)
 

@@ -26,6 +26,11 @@ from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, F
 
 _POPUP_DIR = Path(__file__).parent / 'popup'
 _BASELINE_DPI = 96
+_GWL_EXSTYLE = -20
+_WS_EX_APPWINDOW = 0x00040000
+_WS_EX_TOOLWINDOW = 0x00000080
+_WS_EX_LAYERED = 0x00080000
+_LWA_ALPHA = 0x00000002
 
 __all__ = ['UsagePopup']
 
@@ -168,6 +173,8 @@ class _PopupApi:
         if height and height != self._popup._last_height:
             self._popup._last_height = height
             self._popup._resize_and_position(height)
+            if not self._popup._shown:
+                self._popup._show_window()
 
 
 # ---------------------------------------------------------------------------
@@ -202,17 +209,9 @@ class UsagePopup:
 
         api = _PopupApi(self)
 
-        # create_window uses logical pixels (WinForms auto-scales via
-        # AutoScaleMode.Dpi), but _tray_position needs the resulting
-        # physical size to compute the correct screen position.
-        dpi = ctypes.windll.user32.GetDpiForSystem()
-        scale = dpi / _BASELINE_DPI
-        x, y = self._tray_position(int(self.WIDTH * scale), int(initial_height * scale))
-
         self._window = webview.create_window(
             '', url=str(_POPUP_DIR / 'popup.html'),
             width=self.WIDTH, height=initial_height,
-            x=x, y=y,
             resizable=False, frameless=True, shadow=False,
             easy_drag=False,
             on_top=True, hidden=True,
@@ -226,11 +225,31 @@ class UsagePopup:
         self._closed.wait()
 
     def _on_loaded(self) -> None:
-        """Inject config, show the window, and start the update loop."""
+        """Inject config and show the window transparently for layout."""
         config = _init_config(self.app.cache.snapshot)
         self._window.evaluate_js(f'init({json.dumps(config)})')
-        self._window.show()
+
         self._popup_hwnd = self._window.native.Handle.ToInt32()
+
+        # Hide the taskbar icon and enable layered mode for opacity control.
+        # WinForms sets WS_EX_APPWINDOW by default, which forces a taskbar
+        # button even when WS_EX_TOOLWINDOW is present - both must be fixed.
+        # WS_EX_LAYERED is needed for SetLayeredWindowAttributes (opacity).
+        ex_style = ctypes.windll.user32.GetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE)
+        ctypes.windll.user32.SetWindowLongW(
+            self._popup_hwnd, _GWL_EXSTYLE,
+            (ex_style | _WS_EX_TOOLWINDOW | _WS_EX_LAYERED) & ~_WS_EX_APPWINDOW,
+        )
+
+        # Show fully transparent so JS can layout and report the real height
+        ctypes.windll.user32.SetLayeredWindowAttributes(self._popup_hwnd, 0, 0, _LWA_ALPHA)
+        self._window.show()
+
+    def _show_window(self) -> None:
+        """Make the popup visible after the first resize positioned it correctly."""
+        # Remove the layered style to restore normal rendering
+        ex_style = ctypes.windll.user32.GetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE)
+        ctypes.windll.user32.SetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE, ex_style & ~_WS_EX_LAYERED)
         self._shown = True
         threading.Thread(target=self._update_loop, daemon=True).start()
 
@@ -392,8 +411,8 @@ class UsagePopup:
         Returns
         -------
         tuple[int, int]
-            Logical (x, y) coordinates for pywebview's ``move()``, which
-            scales them back to physical internally.
+            Logical (x, y) coordinates.  Callers that need physical pixels
+            must multiply by the DPI scale factor.
         """
         work_area = ctypes.wintypes.RECT()
         ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work_area), 0)
@@ -417,6 +436,9 @@ class UsagePopup:
 
     def _resize_and_position(self, height: int) -> None:
         """Resize the window and reposition it near the system tray.
+
+        The first call happens while the window is still transparent
+        (opacity 0), so separate resize/move calls cause no visible jump.
 
         pywebview's ``resize()`` calls ``SetWindowPos`` directly without
         DPI scaling, so it expects physical pixels.  The *height* from JS
