@@ -59,5 +59,6 @@
     "server_error": "La API de Anthropic no está disponible temporalmente (HTTP {code}).",
     "status_updated": "Actualizado hace {duration}",
     "status_updated_now": "Actualizado ahora mismo",
-    "status_refreshing": "Actualizando..."
+    "status_refreshing": "Actualizando...",
+    "already_running": "Usage Monitor for Claude v{running_version} ya se está ejecutando.\n\n¿Desea reemplazar la instancia en ejecución?"
 }

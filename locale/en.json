@@ -51,5 +51,6 @@
     "server_error": "Anthropic API temporarily unavailable (HTTP {code}).",
     "status_updated": "Updated {duration} ago",
     "status_updated_now": "Updated just now",
-    "status_refreshing": "Refreshing..."
+    "status_refreshing": "Refreshing...",
+    "already_running": "Usage Monitor for Claude v{running_version} is already running.\n\nDo you want to replace the running instance?"
 }

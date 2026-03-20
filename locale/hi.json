@@ -59,5 +59,6 @@
     "server_error": "Anthropic API अस्थायी रूप से अनुपलब्ध है (HTTP {code})।",
     "status_updated": "{duration} पहले अपडेट किया गया",
     "status_updated_now": "अभी अपडेट किया गया",
-    "status_refreshing": "रीफ़्रेश हो रहा है..."
+    "status_refreshing": "रीफ़्रेश हो रहा है...",
+    "already_running": "Usage Monitor for Claude v{running_version} पहले से चल रहा है।\n\nक्या आप चल रही प्रति को बदलना चाहते हैं?"
 }

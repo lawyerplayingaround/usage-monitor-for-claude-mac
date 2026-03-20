@@ -59,5 +59,6 @@
     "server_error": "Anthropic API тимчасово недоступний (HTTP {code}).",
     "status_updated": "Оновлено {duration} тому",
     "status_updated_now": "Щойно оновлено",
-    "status_refreshing": "Оновлення..."
+    "status_refreshing": "Оновлення...",
+    "already_running": "Usage Monitor for Claude v{running_version} вже запущено.\n\nБажаєте замінити запущений екземпляр?"
 }

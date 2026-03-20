@@ -10,6 +10,7 @@ import traceback
 import webview  # type: ignore[import-untyped]  # no type stubs available
 
 from usage_monitor_for_claude.app import UsageMonitorForClaude, crash_log
+from usage_monitor_for_claude.single_instance import ensure_single_instance, release_instance_lock
 
 if not getattr(sys, 'frozen', False):
     logging.basicConfig(
@@ -40,6 +41,9 @@ def _run_app() -> None:
 
 
 try:
+    if not ensure_single_instance():
+        sys.exit(0)
+
     # pywebview requires the main thread for its GUI event loop.
     # A persistent hidden window keeps the loop alive while the
     # tray app and popup windows are managed in background threads.
@@ -48,6 +52,8 @@ try:
 
     app = _result.get('app')
     if app and app.restart_requested:
+        release_instance_lock()
+
         if getattr(sys, 'frozen', False):
             # Clear PyInstaller's internal env vars so the new
             # instance extracts to a fresh temp directory instead

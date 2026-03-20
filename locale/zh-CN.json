@@ -59,5 +59,6 @@
     "server_error": "Anthropic API 暂时不可用 (HTTP {code})。",
     "status_updated": "{duration}前更新",
     "status_updated_now": "刚刚更新",
-    "status_refreshing": "刷新中..."
+    "status_refreshing": "刷新中...",
+    "already_running": "Usage Monitor for Claude v{running_version} 已在运行中。\n\n是否要替换正在运行的实例？"
 }

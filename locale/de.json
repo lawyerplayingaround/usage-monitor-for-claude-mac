@@ -59,5 +59,6 @@
     "server_error": "Anthropic API vorübergehend nicht erreichbar (HTTP {code}).",
     "status_updated": "Aktualisiert vor {duration}",
     "status_updated_now": "Gerade aktualisiert",
-    "status_refreshing": "Aktualisiere..."
+    "status_refreshing": "Aktualisiere...",
+    "already_running": "Usage Monitor for Claude v{running_version} wird bereits ausgeführt.\n\nMöchten Sie die laufende Instanz ersetzen?"
 }

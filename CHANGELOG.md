@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Single-instance guard - if the app is already running, a dialog shows the running version and asks whether to replace it (thanks to [@GitHubEtienne](https://github.com/GitHubEtienne) for reporting [#6](https://github.com/jens-duttke/usage-monitor-for-claude/issues/6))
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.10.0...HEAD)
 
 ## [1.10.0] - 2026-03-18

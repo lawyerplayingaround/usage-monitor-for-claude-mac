@@ -59,5 +59,6 @@
     "server_error": "API Anthropic tidak tersedia sementara (HTTP {code}).",
     "status_updated": "Diperbarui {duration} yang lalu",
     "status_updated_now": "Baru saja diperbarui",
-    "status_refreshing": "Memperbarui..."
+    "status_refreshing": "Memperbarui...",
+    "already_running": "Usage Monitor for Claude v{running_version} sudah berjalan.\n\nApakah Anda ingin mengganti instans yang sedang berjalan?"
 }
