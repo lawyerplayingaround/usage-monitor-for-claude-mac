@@ -25,8 +25,9 @@ _EXTENSION_DIRS: list[tuple[str, Path]] = [
 _EXTENSION_PREFIX = 'anthropic.claude-code-'
 
 CHANGELOG_URL = 'https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md'
+PROJECT_URL = 'https://github.com/jens-duttke/usage-monitor-for-claude'
 
-__all__ = ['CLAUDE_CLI_PATH', 'CHANGELOG_URL', 'ClaudeInstallation', 'RefreshResult', 'cli_version', 'find_installations', 'refresh_token']
+__all__ = ['CLAUDE_CLI_PATH', 'CHANGELOG_URL', 'PROJECT_URL', 'ClaudeInstallation', 'RefreshResult', 'cli_version', 'find_installations', 'refresh_token']
 
 # Cache: path → (mtime, version) - avoids re-running subprocess when the binary hasn't changed
 _version_cache: dict[Path, tuple[float, str]] = {}

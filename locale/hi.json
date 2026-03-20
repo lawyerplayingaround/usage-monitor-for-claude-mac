@@ -13,6 +13,7 @@
     "quit": "बंद करें",
     "autostart": "Windows के साथ शुरू करें",
     "restart": "पुनः आरंभ करें",
+    "menu_project": "GitHub पर प्रोजेक्ट",
     "test_commands": "इवेंट कमांड परीक्षण",
     "test_reset_5h": "रीसेट (5-घंटा)",
     "test_reset_7d": "रीसेट (7-दिन)",

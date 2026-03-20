@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "Project on GitHub" link in the tray context menu to quickly open the project repository
 - Live status timer in popup - shows "Updated Xs ago" counting up every second instead of a static timestamp, with "Next update in ..." countdown after 60 seconds
 - Tray tooltip now includes the server's error message (e.g. "Rate limited") alongside the HTTP error
 

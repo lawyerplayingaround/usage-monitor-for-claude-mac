@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import traceback
+import webbrowser
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -20,6 +21,7 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 from .api import api_headers
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .cache import UsageCache
+from .claude_cli import PROJECT_URL
 from .command import run_event_command
 from .idle import get_idle_seconds, is_workstation_locked
 from .settings import (
@@ -105,6 +107,8 @@ class UsageMonitorForClaude:
                 ), enabled=bool(ON_RESET_COMMAND or ON_THRESHOLD_COMMAND)),
                 pystray.MenuItem(T['restart'], self.on_restart),
                 pystray.Menu.SEPARATOR,
+                pystray.MenuItem(T['menu_project'], self.on_open_project),
+                pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
         )
@@ -126,6 +130,9 @@ class UsageMonitorForClaude:
     def on_restart(self, icon: Any = None, item: Any = None) -> None:
         self.restart_requested = True
         self.on_quit(icon, item)
+
+    def on_open_project(self, icon: Any = None, item: Any = None) -> None:
+        webbrowser.open(PROJECT_URL)
 
     def on_test_reset_5h(self, icon: Any = None, item: Any = None) -> None:
         run_event_command(ON_RESET_COMMAND, {
