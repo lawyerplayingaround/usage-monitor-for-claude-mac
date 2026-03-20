@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any
 import webview  # type: ignore[import-untyped]  # no type stubs available
 
 from .claude_cli import CHANGELOG_URL, find_installations
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, midnight_positions, time_until
+from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, midnight_positions, time_until
 from .i18n import T
 from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK
 
@@ -53,7 +53,9 @@ def _usage_entries(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | No
     ]
 
 
-def _snapshot_to_dict(snap: CacheSnapshot, installations: list[dict[str, str]] | None = None) -> dict[str, Any]:
+def _snapshot_to_dict(
+    snap: CacheSnapshot, installations: list[dict[str, str]] | None = None, next_poll_time: float | None = None,
+) -> dict[str, Any]:
     """Convert a CacheSnapshot to a JSON-serializable dict for the popup JS.
 
     Parameters
@@ -62,6 +64,8 @@ def _snapshot_to_dict(snap: CacheSnapshot, installations: list[dict[str, str]] |
         Immutable snapshot of the cache state.
     installations : list or None
         Pre-computed installation list, or None to detect now.
+    next_poll_time : float or None
+        Unix timestamp of the next scheduled API poll.
     """
     # Profile - truthiness check (not `is not None`): hides the account section when the API
     # returns an empty or incomplete response, instead of rendering empty Email/Plan fields.
@@ -117,15 +121,19 @@ def _snapshot_to_dict(snap: CacheSnapshot, installations: list[dict[str, str]] |
     if installations is None:
         installations = [{'name': i.name, 'version': i.version} for i in find_installations()]
 
-    # Status
+    # Status - pass raw timestamps for JS live timer; fallback text for initial load
     if not snap.usage:
         if snap.last_error:
-            status = {'text': snap.last_error[:120], 'is_error': True}
+            status: dict[str, Any] = {'text': snap.last_error[:120], 'is_error': True}
         else:
-            status = {'text': T['status_refreshing'], 'is_error': False}
+            status = {'text': T['status_refreshing'], 'is_error': False, 'refreshing': True}
     else:
-        text, has_error = format_status(snap.last_success_time, snap.refreshing, snap.last_error)
-        status = {'text': text, 'is_error': has_error}
+        status = {
+            'last_success_time': snap.last_success_time,
+            'next_poll_time': next_poll_time,
+            'refreshing': snap.refreshing,
+            'error': snap.last_error[:120] if snap.last_error else None,
+        }
 
     return {
         'profile': profile,
@@ -136,7 +144,7 @@ def _snapshot_to_dict(snap: CacheSnapshot, installations: list[dict[str, str]] |
     }
 
 
-def _init_config(snap: CacheSnapshot) -> dict[str, Any]:
+def _init_config(snap: CacheSnapshot, next_poll_time: float | None = None) -> dict[str, Any]:
     """Build the config object passed to JS ``init()`` after the page loads."""
     return {
         'colors': {
@@ -147,8 +155,11 @@ def _init_config(snap: CacheSnapshot) -> dict[str, Any]:
             'title': T['popup_title'], 'account': T['account'], 'email': T['email'], 'plan': T['plan'],
             'usage': T['usage'], 'extra_usage': T['extra_usage'],
             'claude_code': T['claude_code'], 'changelog': T['changelog'],
+            'status_updated_s': T['status_updated_s'], 'status_updated': T['status_updated'],
+            'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
+            'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
         },
-        'data': _snapshot_to_dict(snap),
+        'data': _snapshot_to_dict(snap, next_poll_time=next_poll_time),
     }
 
 
@@ -226,7 +237,7 @@ class UsagePopup:
 
     def _on_loaded(self) -> None:
         """Inject config and show the window transparently for layout."""
-        config = _init_config(self.app.cache.snapshot)
+        config = _init_config(self.app.cache.snapshot, next_poll_time=self.app._next_poll_time)
         self._window.evaluate_js(f'init({json.dumps(config)})')
 
         self._popup_hwnd = self._window.native.Handle.ToInt32()
@@ -384,16 +395,21 @@ class UsagePopup:
     def _update_loop(self) -> None:
         """Poll for data changes and push updates to the popup."""
         cached_installations = [{'name': i.name, 'version': i.version} for i in find_installations()]
+        last_next_poll_time = self.app._next_poll_time
         while self._running:
             time.sleep(self._CHECK_MS / 1000)
             if not self._running:
                 break
             try:
                 snap = self.app.cache.snapshot
+                next_poll_time = self.app._next_poll_time
+                if snap.version == self._last_version and next_poll_time == last_next_poll_time:
+                    continue
                 if snap.version != self._last_version:
                     self._last_version = snap.version
                     cached_installations = [{'name': i.name, 'version': i.version} for i in find_installations()]
-                data = _snapshot_to_dict(snap, installations=cached_installations)
+                last_next_poll_time = next_poll_time
+                data = _snapshot_to_dict(snap, installations=cached_installations, next_poll_time=next_poll_time)
                 self._window.evaluate_js(f'updateData({json.dumps(data)})')
             except Exception:
                 break

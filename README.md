@@ -11,7 +11,7 @@ A native Windows tray app that shows your Claude usage at a glance - lightweight
 - **Portable** - single EXE (~12.5 MB), no installation, no Electron, no runtime. Download, place anywhere, run
 - **Zero configuration** - authenticates through your existing Claude Code login. No API key, no manual token entry
 - **Live tray icon** with two progress bars (session + weekly), percentage display at high usage, and theme-aware colors for light and dark taskbars
-- **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, installed Claude Code versions, and data freshness
+- **Detail popup** (left-click) showing account info, usage bars for all quota types (Session, Weekly, Sonnet, Opus, extra usage), reset countdowns, and installed Claude Code versions
 - **Time marker** on each bar - a white line showing elapsed time in the current period, so you can instantly see whether your usage is ahead of or behind the clock
 - **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
 - **[Event commands](docs/event-commands.md)** - run a custom shell command when a quota resets or a usage threshold is crossed. Send push notifications to your phone, resume an AI agent, play an alert sound, or trigger any custom workflow

@@ -23,6 +23,7 @@
     "resets_weekday": "Réinitialisation {day}, {clock}",
     "duration_hm": "{h} h {m} min",
     "duration_m": "{m} min",
+    "duration_s": "{s}s",
     "weekdays": [
         "lun",
         "mar",
@@ -58,7 +59,8 @@
     "notify_update": "Claude Code mis à jour de {old} à {new}.",
     "server_error": "L'API Anthropic est temporairement indisponible (HTTP {code}).",
     "status_updated": "Mis à jour il y a {duration}",
-    "status_updated_now": "Mis à jour à l'instant",
+    "status_updated_s": "Mis à jour il y a {s}s",
+    "status_next_update": "Prochaine mise à jour dans {duration}",
     "status_refreshing": "Actualisation...",
     "already_running": "Usage Monitor for Claude v{running_version} est déjà en cours d'exécution.\n\nVoulez-vous remplacer l'instance en cours ?"
 }

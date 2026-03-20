@@ -56,7 +56,8 @@
     <button onclick="loadPreset('full')">Full data</button>
     <button onclick="loadPreset('minimal')">Minimal</button>
     <button onclick="loadPreset('error')">Error state</button>
-    <button onclick="loadPreset('loading')">Loading</button>
+    <button onclick="loadPreset('refreshing')">Refreshing</button>
+    <button onclick="loadPreset('loading')">Initial load</button>
     <button onclick="randomize()">Randomize bars</button>
 </div>
 
@@ -70,6 +71,9 @@ const COLORS = {
 const T = {
     title: 'Usage Monitor for Claude', account: 'ACCOUNT', email: 'Email', plan: 'Plan',
     usage: 'USAGE', extra_usage: 'EXTRA USAGE', claude_code: 'CLAUDE CODE', changelog: 'Changelog',
+    status_updated_s: 'Updated {s}s ago', status_updated: 'Updated {duration} ago',
+    status_next_update: 'Next update in {duration}', status_refreshing: 'Refreshing...',
+    duration_hm: '{h}h {m}m', duration_m: '{m}m', duration_s: '{s}s',
 };
 
 const PRESETS = {
@@ -89,7 +93,7 @@ const PRESETS = {
             { name: 'VS Code', version: '2.1.69' },
             { name: 'Cursor', version: '2.1.65' },
         ],
-        status: { text: 'Updated just now', is_error: false },
+        status: () => ({ last_success_time: now() - 3, next_poll_time: now() + 20, refreshing: false, error: null }),
     },
     minimal: {
         profile: null,
@@ -99,7 +103,7 @@ const PRESETS = {
         ],
         extra: null,
         installations: [],
-        status: { text: 'Updated 3m ago', is_error: false },
+        status: () => ({ last_success_time: now() - 90, next_poll_time: now() + 90, refreshing: false, error: null }),
     },
     error: {
         profile: { email: 'user@example.com', plan: 'Max' },
@@ -111,30 +115,54 @@ const PRESETS = {
         ],
         extra: null,
         installations: [{ name: 'CLI', version: '2.1.69' }],
-        status: { text: 'Updated 5m ago - Could not connect to Anthropic API.', is_error: true },
+        status: () => ({ last_success_time: now() - 300, next_poll_time: now() + 30, refreshing: false, error: 'Could not connect to Anthropic API.' }),
+    },
+    refreshing: {
+        profile: { email: 'user@example.com', plan: 'Max (Team)' },
+        usage: [
+            { label: 'Session (5hr)', pct_text: '42%', fill_pct: 0.42, warn: false,
+              reset_text: 'Resets in 2h 30m (14:30)', midnights: [], marker_rel: 0.35 },
+        ],
+        extra: null,
+        installations: [{ name: 'CLI', version: '2.1.69' }],
+        status: () => ({ last_success_time: now() - 180, next_poll_time: null, refreshing: true, error: null }),
     },
     loading: {
         profile: null, usage: [], extra: null, installations: [],
-        status: { text: 'Refreshing...', is_error: false },
+        status: { text: 'Refreshing...', is_error: false, refreshing: true },
     },
 };
 
 const iframe = document.getElementById('popup');
 const win = () => iframe.contentWindow;
+const now = () => Date.now() / 1000;
+
+function resolvePreset(name) {
+    const preset = PRESETS[name];
+    const status = typeof preset.status === 'function' ? preset.status() : preset.status;
+    return { ...structuredClone({ ...preset, status: null }), status };
+}
 
 // Stub pywebview.api so popup.js doesn't throw
 function applyPreset(name) {
-    win().init({ colors: COLORS, t: T, data: structuredClone(PRESETS[name]) });
+    win().init({ colors: COLORS, t: T, data: resolvePreset(name) });
 }
+
+let initialized = false;
 
 function loadPreset(name) {
     location.hash = name;
-    applyPreset(name);
+    if (initialized) {
+        win().updateData(resolvePreset(name));
+    } else {
+        applyPreset(name);
+        initialized = true;
+    }
 }
 
 function randomize() {
     location.hash = 'randomize';
-    const data = structuredClone(PRESETS.full);
+    const data = resolvePreset('full');
     for (const entry of data.usage) {
         const pct = Math.round(Math.random() * 100);
         entry.fill_pct = pct / 100;
@@ -157,6 +185,7 @@ iframe.addEventListener('load', () => {
     }}};
     const hash = location.hash.slice(1);
     applyPreset(PRESETS[hash] ? hash : 'full');
+    initialized = true;
     if (hash === 'randomize') randomize();
 }, { once: true });
 </script>

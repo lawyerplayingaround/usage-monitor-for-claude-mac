@@ -78,6 +78,7 @@ class UsageMonitorForClaude:
         self._popup_lock = threading.Lock()
         self._popup_open = False
         self._popup_closed_at = 0.0
+        self._next_poll_time: float | None = None
 
         # Theme state
         self._light_taskbar = taskbar_uses_light_theme()
@@ -518,6 +519,7 @@ class UsageMonitorForClaude:
             interval = self._calculate_poll_interval()
 
             target = time.time() + interval
+            self._next_poll_time = target
             while self.running and time.time() < target:
                 time.sleep(1)
                 # If another thread (popup) fetched successfully,
@@ -525,7 +527,10 @@ class UsageMonitorForClaude:
                 # fetch right after.
                 lst = self.cache.last_success_time
                 if lst is not None:
-                    target = max(target, lst + interval)
+                    new_target = max(target, lst + interval)
+                    if new_target != target:
+                        target = new_target
+                        self._next_poll_time = target
 
                 # Pause polling while the user is away.
                 # Regular polling stops entirely during idle/lock.

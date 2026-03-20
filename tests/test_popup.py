@@ -288,20 +288,30 @@ class TestSnapshotToDict(unittest.TestCase):
         self.assertEqual(result['status']['text'], T['status_refreshing'])
         self.assertFalse(result['status']['is_error'])
 
-    @patch('usage_monitor_for_claude.popup.format_status', return_value=('Updated just now', False))
-    def test_status_from_format_status_when_usage_present(self, _mock_fmt):
-        """Uses format_status when usage data is available."""
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
+    def test_status_live_mode_keys(self, _mock_mid, _mock_tu, _mock_ep):
+        """Live mode status contains all required keys for the JS timer."""
         usage = {'five_hour': {'utilization': 50, 'resets_at': '2026-01-01T05:00:00Z'}}
-        result = _snapshot_to_dict(_snap(usage=usage, last_success_time=1000.0), installations=[])
-        self.assertEqual(result['status']['text'], 'Updated just now')
-        self.assertFalse(result['status']['is_error'])
+        result = _snapshot_to_dict(
+            _snap(usage=usage, last_success_time=1000.0, refreshing=True, last_error='Server down'),
+            installations=[], next_poll_time=1180.0,
+        )
+        self.assertEqual(set(result['status'].keys()), {'last_success_time', 'next_poll_time', 'refreshing', 'error'})
 
-    @patch('usage_monitor_for_claude.popup.format_status', return_value=('Error: timeout', True))
-    def test_status_error_flag_from_format_status(self, _mock_fmt):
-        """Error flag from format_status is propagated."""
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
+    def test_status_error_truncated_in_live_mode(self, _mock_mid, _mock_tu, _mock_ep):
+        """Error messages are truncated to 120 characters in live mode."""
         usage = {'five_hour': {'utilization': 50, 'resets_at': '2026-01-01T05:00:00Z'}}
-        result = _snapshot_to_dict(_snap(usage=usage, last_error='timeout'), installations=[])
-        self.assertTrue(result['status']['is_error'])
+        long_error = 'x' * 200
+        result = _snapshot_to_dict(
+            _snap(usage=usage, last_error=long_error),
+            installations=[],
+        )
+        self.assertEqual(len(result['status']['error']), 120)
 
     # -- top-level dict structure --
 
@@ -353,6 +363,13 @@ class TestInitConfig(unittest.TestCase):
         self.assertEqual(t['extra_usage'], T['extra_usage'])
         self.assertEqual(t['claude_code'], T['claude_code'])
         self.assertEqual(t['changelog'], T['changelog'])
+        self.assertEqual(t['status_updated_s'], T['status_updated_s'])
+        self.assertEqual(t['status_updated'], T['status_updated'])
+        self.assertEqual(t['status_refreshing'], T['status_refreshing'])
+        self.assertEqual(t['status_next_update'], T['status_next_update'])
+        self.assertEqual(t['duration_hm'], T['duration_hm'])
+        self.assertEqual(t['duration_m'], T['duration_m'])
+        self.assertEqual(t['duration_s'], T['duration_s'])
 
     def test_data_is_snapshot_to_dict_output(self):
         """The data key contains the output of _snapshot_to_dict."""

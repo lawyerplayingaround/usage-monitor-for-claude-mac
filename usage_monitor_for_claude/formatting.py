@@ -8,14 +8,13 @@ elapsed period percentages, credit amounts, status lines, and tooltip text.
 from __future__ import annotations
 
 import locale as _locale
-import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .i18n import T
 from .settings import CURRENCY_SYMBOL, _SYSTEM_CURRENCY_SYMBOL
 
-__all__ = ['PERIOD_5H', 'PERIOD_7D', 'elapsed_pct', 'midnight_positions', 'time_until', 'format_credits', 'format_status', 'format_tooltip']
+__all__ = ['PERIOD_5H', 'PERIOD_7D', 'elapsed_pct', 'midnight_positions', 'time_until', 'format_credits', 'format_tooltip']
 
 PERIOD_5H = 5 * 3600
 PERIOD_7D = 7 * 24 * 3600
@@ -160,52 +159,6 @@ def format_credits(cents: float) -> str:
         if CURRENCY_SYMBOL:
             return f'{CURRENCY_SYMBOL}\u00a0{amount:.2f}'
         return f'{amount:.2f}'
-
-
-def format_status(last_success_time: float | None, refreshing: bool, last_error: str | None) -> tuple[str, bool]:
-    """Format the popup status line showing data freshness and current state.
-
-    Parameters
-    ----------
-    last_success_time : float or None
-        Unix timestamp of the last successful API response.
-    refreshing : bool
-        Whether an API call is currently in progress.
-    last_error : str or None
-        Error message from the most recent failed API call.
-
-    Returns
-    -------
-    tuple[str, bool]
-        ``(text, has_error)`` where *text* is the full status string
-        and *has_error* indicates the text ends with an error message
-        (so the caller can color it differently).
-    """
-    parts: list[str] = []
-
-    if last_success_time is not None:
-        seconds_ago = time.time() - last_success_time
-        if seconds_ago < 60:
-            parts.append(T['status_updated_now'])
-        else:
-            total_min = int(seconds_ago // 60)
-            hours = total_min // 60
-            mins = total_min % 60
-            if hours > 0:
-                duration = T['duration_hm'].format(h=hours, m=mins)
-            else:
-                duration = T['duration_m'].format(m=total_min)
-            parts.append(T['status_updated'].format(duration=duration))
-
-    if refreshing:
-        parts.append(T['status_refreshing'])
-        return (' \u00b7 '.join(parts), False)
-
-    if last_error:
-        parts.append(last_error)
-        return (' \u00b7 '.join(parts), True)
-
-    return (' \u00b7 '.join(parts), False)
 
 
 def format_tooltip(data: dict[str, Any]) -> str:

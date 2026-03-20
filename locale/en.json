@@ -23,6 +23,7 @@
     "resets_weekday": "Resets on {day}, {clock}",
     "duration_hm": "{h}h {m}m",
     "duration_m": "{m}m",
+    "duration_s": "{s}s",
     "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     "loading": "Usage Monitor: Loading...",
     "error_label": "Usage Monitor: Error",
@@ -50,7 +51,8 @@
     "notify_update": "Claude Code updated from {old} to {new}.",
     "server_error": "Anthropic API temporarily unavailable (HTTP {code}).",
     "status_updated": "Updated {duration} ago",
-    "status_updated_now": "Updated just now",
+    "status_updated_s": "Updated {s}s ago",
+    "status_next_update": "Next update in {duration}",
     "status_refreshing": "Refreshing...",
     "already_running": "Usage Monitor for Claude v{running_version} is already running.\n\nDo you want to replace the running instance?"
 }

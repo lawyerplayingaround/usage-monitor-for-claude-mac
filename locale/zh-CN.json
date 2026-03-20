@@ -23,6 +23,7 @@
     "resets_weekday": "{day}重置，{clock}",
     "duration_hm": "{h}小时{m}分钟",
     "duration_m": "{m}分钟",
+    "duration_s": "{s}秒",
     "weekdays": [
         "周一",
         "周二",
@@ -58,7 +59,8 @@
     "notify_update": "Claude Code 已从 {old} 更新到 {new}。",
     "server_error": "Anthropic API 暂时不可用 (HTTP {code})。",
     "status_updated": "{duration}前更新",
-    "status_updated_now": "刚刚更新",
+    "status_updated_s": "{s}秒前更新",
+    "status_next_update": "{duration}后更新",
     "status_refreshing": "刷新中...",
     "already_running": "Usage Monitor for Claude v{running_version} 已在运行中。\n\n是否要替换正在运行的实例？"
 }

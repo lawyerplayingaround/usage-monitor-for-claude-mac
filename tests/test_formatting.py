@@ -11,7 +11,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_status, format_tooltip, midnight_positions, time_until
+from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip, midnight_positions, time_until
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
@@ -532,81 +532,6 @@ class TestFormatCredits(unittest.TestCase):
     def test_zero_cents(self, mock_currency):
         """Zero cents formats correctly."""
         self.assertEqual(format_credits(0.0), '$0.00')
-
-
-# ---------------------------------------------------------------------------
-# format_status
-# ---------------------------------------------------------------------------
-
-@patch('usage_monitor_for_claude.formatting.T', EN)
-class TestFormatStatus(unittest.TestCase):
-    """Tests for format_status()."""
-
-    @patch('usage_monitor_for_claude.formatting.time')
-    def test_just_now(self, mock_time):
-        """Recent success shows 'Updated just now'."""
-        mock_time.time.return_value = 1000.0
-        text, has_error = format_status(last_success_time=970.0, refreshing=False, last_error=None)
-
-        self.assertEqual(text, 'Updated just now')
-        self.assertFalse(has_error)
-
-    @patch('usage_monitor_for_claude.formatting.time')
-    def test_minutes_ago(self, mock_time):
-        """Success a few minutes ago shows duration."""
-        mock_time.time.return_value = 1000.0
-        text, has_error = format_status(last_success_time=700.0, refreshing=False, last_error=None)
-
-        self.assertEqual(text, 'Updated 5m ago')
-        self.assertFalse(has_error)
-
-    @patch('usage_monitor_for_claude.formatting.time')
-    def test_hours_ago(self, mock_time):
-        """Success over an hour ago shows hours and minutes."""
-        mock_time.time.return_value = 10000.0
-        text, has_error = format_status(last_success_time=3400.0, refreshing=False, last_error=None)
-
-        self.assertEqual(text, 'Updated 1h 50m ago')
-        self.assertFalse(has_error)
-
-    def test_refreshing_no_previous_data(self):
-        """Refreshing with no prior success shows only 'Refreshing...'."""
-        text, has_error = format_status(last_success_time=None, refreshing=True, last_error=None)
-
-        self.assertEqual(text, 'Refreshing...')
-        self.assertFalse(has_error)
-
-    @patch('usage_monitor_for_claude.formatting.time')
-    def test_refreshing_with_previous_data(self, mock_time):
-        """Refreshing with cached data shows time and refreshing status."""
-        mock_time.time.return_value = 1000.0
-        text, has_error = format_status(last_success_time=970.0, refreshing=True, last_error=None)
-
-        self.assertEqual(text, 'Updated just now \u00b7 Refreshing...')
-        self.assertFalse(has_error)
-
-    @patch('usage_monitor_for_claude.formatting.time')
-    def test_error_with_cached_data(self, mock_time):
-        """Error with cached data shows time and error message."""
-        mock_time.time.return_value = 1000.0
-        text, has_error = format_status(last_success_time=700.0, refreshing=False, last_error='Server down')
-
-        self.assertEqual(text, 'Updated 5m ago \u00b7 Server down')
-        self.assertTrue(has_error)
-
-    def test_error_no_cached_data(self):
-        """Error with no prior success shows only error message."""
-        text, has_error = format_status(last_success_time=None, refreshing=False, last_error='Server down')
-
-        self.assertEqual(text, 'Server down')
-        self.assertTrue(has_error)
-
-    def test_no_data_no_error_no_refreshing(self):
-        """No data, no error, not refreshing returns empty string."""
-        text, has_error = format_status(last_success_time=None, refreshing=False, last_error=None)
-
-        self.assertEqual(text, '')
-        self.assertFalse(has_error)
 
 
 if __name__ == '__main__':
