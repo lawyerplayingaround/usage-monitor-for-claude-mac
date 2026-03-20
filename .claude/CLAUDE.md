@@ -7,6 +7,15 @@ Prioritize readability and auditability - users handle credentials and must be a
 - Windows-only application - no `sys.platform` checks or cross-platform guards needed
 - Windows APIs (`ctypes.windll`, `winreg`) can be used unconditionally
 
+## Popup Window & DPI
+- The popup uses pywebview with a WinForms host window and Edge WebView2
+- pywebview's `resize()` expects **physical pixels** (it calls `SetWindowPos` directly without DPI scaling)
+- pywebview's `move()` expects **logical pixels** (it scales to physical internally)
+- `SystemParametersInfoW(SPI_GETWORKAREA)` returns **physical pixels** (process is Per-Monitor DPI Aware V2)
+- `_tray_position()` returns **logical coordinates** - never change this to physical
+- Never replace `resize()`/`move()` with direct `SetWindowPos` calls - the mixed coordinate spaces (physical size, logical position) make this error-prone
+- The taskbar icon is hidden via Win32 extended styles (`WS_EX_TOOLWINDOW` + remove `WS_EX_APPWINDOW`). Do **not** use WinForms `ShowInTaskbar = False` - it recreates the native window handle, which crashes WebView2 from background threads
+
 ## Security & Transparency
 - All URLs and API endpoints as top-level constants - no dynamic URL construction
 - Network communication exclusively with `api.anthropic.com` - no other destinations
