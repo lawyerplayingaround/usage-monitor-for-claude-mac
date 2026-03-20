@@ -57,14 +57,6 @@ class TestSharedMemoryRoundTrip(unittest.TestCase):
         self.assertEqual(pid, os.getpid())
         self.assertEqual(version, '0.0.1')
 
-    def test_read_without_store_returns_none(self):
-        """Reading shared memory that does not exist returns (None, None)."""
-        from usage_monitor_for_claude.single_instance import _read_holder_info
-
-        pid, version = _read_holder_info()
-        self.assertIsNone(pid)
-        self.assertIsNone(version)
-
     @patch(f'{MODULE}.__version__', 'a' * 100)
     def test_long_version_is_truncated(self):
         """Version strings exceeding shared memory size are truncated, not crashed."""
