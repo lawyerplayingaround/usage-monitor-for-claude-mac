@@ -394,6 +394,7 @@ class TestTrayPosition(unittest.TestCase):
     def _call(self, work_left, work_top, work_right, work_bottom, dpi, physical_width, physical_height):
         """Call _tray_position without constructing a full UsagePopup."""
         popup = object.__new__(UsagePopup)
+        popup._popup_hwnd = 12345
 
         def set_rect(_code, _size, rect_ptr, _flags):
             import ctypes
@@ -406,7 +407,7 @@ class TestTrayPosition(unittest.TestCase):
             return 1
 
         with patch('ctypes.windll.user32.SystemParametersInfoW', side_effect=set_rect), \
-             patch('ctypes.windll.user32.GetDpiForSystem', return_value=dpi):
+             patch('ctypes.windll.user32.GetDpiForWindow', return_value=dpi):
             return popup._tray_position(physical_width, physical_height)
 
     def test_bottom_right_at_100_percent_scaling(self):
@@ -476,6 +477,7 @@ class TestResizeAndPosition(unittest.TestCase):
         """Call _resize_and_position and capture the resize/move arguments."""
         popup = object.__new__(UsagePopup)
         popup.WIDTH = UsagePopup.WIDTH
+        popup._popup_hwnd = 12345
 
         mock_window = MagicMock()
         popup._window = mock_window
@@ -490,7 +492,7 @@ class TestResizeAndPosition(unittest.TestCase):
             rect.bottom = 1040
             return 1
 
-        with patch('ctypes.windll.user32.GetDpiForSystem', return_value=dpi), \
+        with patch('ctypes.windll.user32.GetDpiForWindow', return_value=dpi), \
              patch('ctypes.windll.user32.SystemParametersInfoW', side_effect=set_rect):
             popup._resize_and_position(css_height)
 
@@ -531,6 +533,33 @@ class TestResizeAndPosition(unittest.TestCase):
         physical_y = move_y * scale
         self.assertLessEqual(physical_x + resize_w, 1920)
         self.assertLessEqual(physical_y + resize_h, 1040)
+
+    def test_falls_back_to_system_dpi_when_window_dpi_unavailable(self):
+        """When GetDpiForWindow returns 0, GetDpiForSystem is used as fallback."""
+        popup = object.__new__(UsagePopup)
+        popup.WIDTH = UsagePopup.WIDTH
+        popup._popup_hwnd = 12345
+
+        mock_window = MagicMock()
+        popup._window = mock_window
+
+        def set_rect(_code, _size, rect_ptr, _flags):
+            import ctypes
+            import ctypes.wintypes
+            rect = ctypes.cast(rect_ptr, ctypes.POINTER(ctypes.wintypes.RECT)).contents
+            rect.left = 0
+            rect.top = 0
+            rect.right = 1920
+            rect.bottom = 1040
+            return 1
+
+        with patch('ctypes.windll.user32.GetDpiForWindow', return_value=0), \
+             patch('ctypes.windll.user32.GetDpiForSystem', return_value=144) as mock_sys_dpi, \
+             patch('ctypes.windll.user32.SystemParametersInfoW', side_effect=set_rect):
+            popup._resize_and_position(500)
+
+        mock_sys_dpi.assert_called()
+        mock_window.resize.assert_called_once_with(int(340 * 1.5), int(500 * 1.5))
 
 
 if __name__ == '__main__':

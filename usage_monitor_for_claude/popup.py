@@ -433,7 +433,7 @@ class UsagePopup:
         work_area = ctypes.wintypes.RECT()
         ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work_area), 0)
 
-        dpi = ctypes.windll.user32.GetDpiForSystem()
+        dpi = ctypes.windll.user32.GetDpiForWindow(self._popup_hwnd) or ctypes.windll.user32.GetDpiForSystem()
         scale = dpi / _BASELINE_DPI
 
         margin = 12
@@ -458,11 +458,11 @@ class UsagePopup:
 
         pywebview's ``resize()`` calls ``SetWindowPos`` directly without
         DPI scaling, so it expects physical pixels.  The *height* from JS
-        ``ResizeObserver`` is in CSS pixels, so we multiply by the system
-        DPI factor.  ``move()`` scales internally, and ``_tray_position``
-        already accounts for that.
+        ``ResizeObserver`` is in CSS pixels, so we multiply by the window's
+        current DPI factor.  ``move()`` scales internally, and
+        ``_tray_position`` already accounts for that.
         """
-        dpi = ctypes.windll.user32.GetDpiForSystem()
+        dpi = ctypes.windll.user32.GetDpiForWindow(self._popup_hwnd) or ctypes.windll.user32.GetDpiForSystem()
         scale = dpi / _BASELINE_DPI
         physical_width = int(self.WIDTH * scale)
         physical_height = int(height * scale)

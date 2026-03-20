@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Context menu hover effect not showing on displays with DPI scaling above 100%
 - Popup no longer shows an icon in the taskbar while open
+- Popup appearing at the wrong position after changing DPI scaling without restarting the app
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.11.0...HEAD)
 
