@@ -46,23 +46,17 @@ Follow **Conventional Commits** format with a descriptive body:
 ```
 fix: use certifi for SSL certificate verification on model download
 
-On Windows, Python's urllib often fails to verify SSL certificates
-when downloading the Real-ESRGAN model due to missing system CA
-certificates. Using certifi provides Mozilla's trusted CA bundle,
-which resolves the SSL_CERTIFICATE_VERIFY_FAILED error.
+On Windows, Python's urllib often fails to verify SSL certificates when downloading the Real-ESRGAN model due to missing system CA certificates. Using certifi provides Mozilla's trusted CA bundle, which resolves the SSL_CERTIFICATE_VERIFY_FAILED error.
 ```
 
 ```
 feat: add automatic token refresh to prevent session expiration
 
-Users were being logged out during active sessions when their
-access token expired. Automatic refresh keeps sessions alive
-without requiring re-authentication.
+Users were being logged out during active sessions when their access token expired. Automatic refresh keeps sessions alive without requiring re-authentication.
 ```
 
 ```
 refactor: rename user endpoints for REST consistency
 
-BREAKING CHANGE: /users/list renamed to /users, /users/get/:id
-renamed to /users/:id
+BREAKING CHANGE: /users/list renamed to /users, /users/get/:id renamed to /users/:id
 ```
