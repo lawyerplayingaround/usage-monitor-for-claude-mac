@@ -25,6 +25,7 @@ from .i18n import T
 from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK
 
 _POPUP_DIR = Path(__file__).parent / 'popup'
+_BASELINE_DPI = 96
 
 __all__ = ['UsagePopup']
 
@@ -193,6 +194,7 @@ class UsagePopup:
         self.app = app
         self._running = True
         self._closed = threading.Event()
+        self._popup_hwnd = 0
         initial_height = 400
         self._last_height = initial_height
         snap = app.cache.snapshot
@@ -200,7 +202,12 @@ class UsagePopup:
 
         api = _PopupApi(self)
 
-        x, y = self._tray_position(initial_height)
+        # create_window uses logical pixels (WinForms auto-scales via
+        # AutoScaleMode.Dpi), but _tray_position needs the resulting
+        # physical size to compute the correct screen position.
+        dpi = ctypes.windll.user32.GetDpiForSystem()
+        scale = dpi / _BASELINE_DPI
+        x, y = self._tray_position(int(self.WIDTH * scale), int(initial_height * scale))
 
         self._window = webview.create_window(
             '', url=str(_POPUP_DIR / 'popup.html'),
@@ -223,6 +230,7 @@ class UsagePopup:
         config = _init_config(self.app.cache.snapshot)
         self._window.evaluate_js(f'init({json.dumps(config)})')
         self._window.show()
+        self._popup_hwnd = self._window.native.Handle.ToInt32()
         self._shown = True
         threading.Thread(target=self._update_loop, daemon=True).start()
 
@@ -234,6 +242,10 @@ class UsagePopup:
         * ``WH_MOUSE_LL`` - catches clicks outside the popup bounds
         * ``WH_KEYBOARD_LL`` - catches Escape even without focus
         * ``EVENT_SYSTEM_FOREGROUND`` - catches Alt-Tab, browser open, etc.
+
+        The foreground hook uses a short delay to ride out the brief
+        focus bounce that WebView2 causes between its host and renderer
+        process on every click inside the content area.
         """
         this_thread = ctypes.windll.kernel32.GetCurrentThreadId()
         WM_QUIT = 0x0012
@@ -256,10 +268,13 @@ class UsagePopup:
         @ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_int, ctypes.wintypes.WPARAM, ctypes.wintypes.LPARAM)
         def mouse_proc(code, wparam, lparam):
             if code >= 0 and wparam == 0x0201:  # WM_LBUTTONDOWN
-                info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
-                x, y = self._tray_position(self._last_height)
-                if not (x <= info.pt.x <= x + self.WIDTH and y <= info.pt.y <= y + self._last_height):
-                    _post_quit()
+                popup_hwnd = self._popup_hwnd
+                if popup_hwnd:
+                    rect = ctypes.wintypes.RECT()
+                    ctypes.windll.user32.GetWindowRect(popup_hwnd, ctypes.byref(rect))
+                    info = ctypes.cast(lparam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                    if not (rect.left <= info.pt.x <= rect.right and rect.top <= info.pt.y <= rect.bottom):
+                        _post_quit()
             return _call_next(None, code, wparam, lparam)
 
         # -- Keyboard hook: Escape key --
@@ -276,15 +291,46 @@ class UsagePopup:
                     _post_quit()
             return _call_next(None, code, wparam, lparam)
 
-        # -- Foreground event: another window activated --
+        # -- Foreground event with delayed check --
         WINEVENT_CALLBACK = ctypes.WINFUNCTYPE(
             None, ctypes.wintypes.HANDLE, ctypes.wintypes.DWORD, ctypes.wintypes.HWND,
             ctypes.wintypes.LONG, ctypes.wintypes.LONG, ctypes.wintypes.DWORD, ctypes.wintypes.DWORD,
         )
 
-        @WINEVENT_CALLBACK
-        def fg_proc(_hook, _event, _hwnd, _id_obj, _id_child, _thread, _time):
+        _fg_timer: threading.Timer | None = None
+
+        def _delayed_fg_check() -> None:
+            """Check if focus is still outside the popup after the delay."""
+            popup_hwnd = self._popup_hwnd
+            if not popup_hwnd or not self._shown:
+                return
+            fg = ctypes.windll.user32.GetForegroundWindow()
+            if fg == popup_hwnd:
+                return
+            if ctypes.windll.user32.IsChild(popup_hwnd, fg):
+                return
+            if ctypes.windll.user32.GetAncestor(fg, 3) == popup_hwnd:  # GA_ROOTOWNER
+                return
             _post_quit()
+
+        @WINEVENT_CALLBACK
+        def fg_proc(_hook, _event, hwnd, _id_obj, _id_child, _thread, _time):
+            nonlocal _fg_timer
+            popup_hwnd = self._popup_hwnd
+            if not popup_hwnd:
+                return
+            # Quick accept: focus moved to a child/owned window of our popup
+            if ctypes.windll.user32.IsChild(popup_hwnd, hwnd):
+                return
+            if ctypes.windll.user32.GetAncestor(hwnd, 3) == popup_hwnd:  # GA_ROOTOWNER
+                return
+            # Delay the dismiss to ride out WebView2's focus bounce
+            # between host and renderer process on content clicks.
+            if _fg_timer is not None:
+                _fg_timer.cancel()
+            _fg_timer = threading.Timer(0.2, _delayed_fg_check)
+            _fg_timer.daemon = True
+            _fg_timer.start()
 
         mouse_hook = ctypes.windll.user32.SetWindowsHookExW(14, mouse_proc, None, 0)  # WH_MOUSE_LL
         kb_hook = ctypes.windll.user32.SetWindowsHookExW(13, kb_proc, None, 0)  # WH_KEYBOARD_LL
@@ -296,6 +342,8 @@ class UsagePopup:
             while self._running and ctypes.windll.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 pass
         finally:
+            if _fg_timer is not None:
+                _fg_timer.cancel()
             ctypes.windll.user32.UnhookWindowsHookEx(mouse_hook)
             ctypes.windll.user32.UnhookWindowsHookEx(kb_hook)
             ctypes.windll.user32.UnhookWinEvent(fg_hook)
@@ -331,31 +379,55 @@ class UsagePopup:
             except Exception:
                 break
 
-    def _tray_position(self, height: int) -> tuple[int, int]:
+    def _tray_position(self, physical_width: int, physical_height: int) -> tuple[int, int]:
         """Calculate popup position near the system tray.
 
-        Detects the taskbar position from the work area and returns
-        coordinates so the popup grows away from the taskbar edge.
+        Parameters
+        ----------
+        physical_width : int
+            Actual window width in physical pixels.
+        physical_height : int
+            Actual window height in physical pixels.
+
+        Returns
+        -------
+        tuple[int, int]
+            Logical (x, y) coordinates for pywebview's ``move()``, which
+            scales them back to physical internally.
         """
         work_area = ctypes.wintypes.RECT()
         ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(work_area), 0)
+
+        dpi = ctypes.windll.user32.GetDpiForSystem()
+        scale = dpi / _BASELINE_DPI
 
         margin = 12
 
         if work_area.left > 0:
             x = work_area.left + margin
         else:
-            x = work_area.right - self.WIDTH - margin
+            x = work_area.right - physical_width - margin
 
         if work_area.top > 0:
             y = work_area.top + margin
         else:
-            y = work_area.bottom - height - margin
+            y = work_area.bottom - physical_height - margin
 
-        return x, y
+        return int(x / scale), int(y / scale)
 
     def _resize_and_position(self, height: int) -> None:
-        """Resize the window and reposition it near the system tray."""
-        self._window.resize(self.WIDTH, height)
-        x, y = self._tray_position(height)
+        """Resize the window and reposition it near the system tray.
+
+        pywebview's ``resize()`` calls ``SetWindowPos`` directly without
+        DPI scaling, so it expects physical pixels.  The *height* from JS
+        ``ResizeObserver`` is in CSS pixels, so we multiply by the system
+        DPI factor.  ``move()`` scales internally, and ``_tray_position``
+        already accounts for that.
+        """
+        dpi = ctypes.windll.user32.GetDpiForSystem()
+        scale = dpi / _BASELINE_DPI
+        physical_width = int(self.WIDTH * scale)
+        physical_height = int(height * scale)
+        self._window.resize(physical_width, physical_height)
+        x, y = self._tray_position(physical_width, physical_height)
         self._window.move(x, y)
