@@ -213,7 +213,11 @@ def format_tooltip(data: dict[str, Any]) -> str:
     if 'error' in data:
         if data.get('auth_error'):
             return f"{T['auth_expired_label']}\n{T['auth_expired_short']}"
-        return f"{T['error_label']}\n{data['error'][:80]}"
+        error = data['error']
+        server_msg = data.get('server_message')
+        if server_msg:
+            error += f' {server_msg}'
+        return f"{T['error_label']}\n{error[:80]}"
 
     lines = [T['tooltip_title']]
     for key, short in [('five_hour', '5h'), ('seven_day', '7d')]:

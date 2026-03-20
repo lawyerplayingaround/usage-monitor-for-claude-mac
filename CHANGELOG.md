@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tray tooltip now includes the server's error message (e.g. "Rate limited") alongside the HTTP error
+
 ### Fixed
 
 - Context menu hover effect not showing on displays with DPI scaling above 100%

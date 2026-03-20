@@ -361,6 +361,16 @@ class TestFormatTooltip(unittest.TestCase):
         result = format_tooltip(data)
         self.assertEqual(result, 'Claude Session Expired\nPlease open Claude Code to refresh your session.')
 
+    def test_error_with_server_message(self):
+        data = {'error': 'API request failed (HTTP 429).', 'server_message': 'Rate limited.'}
+        result = format_tooltip(data)
+        self.assertEqual(result, 'Usage Monitor: Error\nAPI request failed (HTTP 429). Rate limited.')
+
+    def test_error_with_server_message_truncated_to_80_chars(self):
+        data = {'error': 'API request failed (HTTP 429).', 'server_message': 'x' * 200}
+        error_line = format_tooltip(data).split('\n')[1]
+        self.assertEqual(len(error_line), 80)
+
     def test_error_message_truncated_to_80_chars(self):
         result = format_tooltip({'error': 'x' * 200})
         error_line = result.split('\n')[1]
