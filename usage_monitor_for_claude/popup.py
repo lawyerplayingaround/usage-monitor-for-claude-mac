@@ -57,7 +57,8 @@ def _snapshot_to_dict(snap: CacheSnapshot, installations: list[dict[str, str]] |
     installations : list or None
         Pre-computed installation list, or None to detect now.
     """
-    # Profile
+    # Profile - truthiness check (not `is not None`): hides the account section when the API
+    # returns an empty or incomplete response, instead of rendering empty Email/Plan fields.
     profile = None
     if snap.profile:
         account = snap.profile.get('account', {})
