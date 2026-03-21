@@ -611,6 +611,89 @@ class TestSettingsValidation(unittest.TestCase):
         return result, mock_ctypes
 
 
+class TestIconFieldsValidation(unittest.TestCase):
+    """Tests for icon_fields setting validation."""
+
+    def _run_validate(self, data: dict) -> tuple[dict, MagicMock]:
+        """Run _validate with mocked ctypes and return (result, mock_ctypes)."""
+        mock_ctypes = MagicMock()
+        with patch.object(settings_mod, 'ctypes', mock_ctypes):
+            result = settings_mod._validate(dict(data), Path('/fake/settings.json'))
+        return result, mock_ctypes
+
+    def test_valid_two_strings(self):
+        """Valid array of exactly 2 non-empty strings passes through."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour', 'seven_day_sonnet']})
+        self.assertEqual(result['icon_fields'], ['five_hour', 'seven_day_sonnet'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_not_array_dropped(self):
+        """Non-array value is dropped."""
+        result, mock = self._run_validate({'icon_fields': 'five_hour'})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_one_entry_dropped(self):
+        """Array with only one entry is dropped."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour']})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_three_entries_dropped(self):
+        """Array with three entries is dropped."""
+        result, mock = self._run_validate({'icon_fields': ['a', 'b', 'c']})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_empty_array_dropped(self):
+        """Empty array is dropped."""
+        result, mock = self._run_validate({'icon_fields': []})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_non_string_entry_dropped(self):
+        """Array with non-string entry is dropped."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour', 42]})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_empty_string_entry_dropped(self):
+        """Array with empty string entry is dropped."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour', '']})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_unknown_field_names_accepted(self):
+        """Unknown field names are not rejected."""
+        result, mock = self._run_validate({'icon_fields': ['future_field', 'another_field']})
+        self.assertEqual(result['icon_fields'], ['future_field', 'another_field'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_bool_entry_dropped(self):
+        """Array with boolean entry is dropped."""
+        result, mock = self._run_validate({'icon_fields': [True, 'five_hour']})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+
+class TestIconFieldsDefault(unittest.TestCase):
+    """Tests for ICON_FIELDS default value."""
+
+    def test_default_without_settings(self):
+        """Default icon_fields is ['five_hour', 'seven_day'] when no settings file exists."""
+        with TemporaryDirectory() as app_tmp, TemporaryDirectory() as home_tmp:
+            loaded = _load(Path(app_tmp), Path(home_tmp))
+        self.assertNotIn('icon_fields', loaded)
+
+    def test_override_from_settings(self):
+        """icon_fields is loaded from settings file."""
+        with TemporaryDirectory() as app_tmp, TemporaryDirectory() as home_tmp:
+            settings = {'icon_fields': ['seven_day', 'five_hour']}
+            (Path(app_tmp) / settings_mod.SETTINGS_FILENAME).write_text(json.dumps(settings), encoding='utf-8')
+            loaded = _load(Path(app_tmp), Path(home_tmp))
+        self.assertEqual(loaded['icon_fields'], ['seven_day', 'five_hour'])
+
+
 class TestGetAlertThresholds(unittest.TestCase):
     """Tests for get_alert_thresholds() lookup logic."""
 

@@ -30,6 +30,26 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | `alert_time_aware` | `true` | Only alert when usage outpaces elapsed time |
 | `alert_time_aware_below` | `90` | Time-aware check applies only to thresholds below this value; thresholds at or above always fire |
 
+## Tray icon bars
+
+The tray icon displays two small progress bars. By default, these show the session (5h) and weekly (7d) quotas. Use `icon_fields` to choose which two API fields are displayed.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `icon_fields` | `["five_hour", "seven_day"]` | Which two usage fields to show as icon bars. The first entry is the top bar (also determines the icon text), the second is the bottom bar |
+
+Must be an array of exactly 2 non-empty strings. Unknown field names are accepted - if a field is `null` or missing from the API response, the bar shows 0%.
+
+**Known field names:** `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_cowork`, `seven_day_oauth_apps`
+
+**Example** - show session and Sonnet quota:
+
+```json
+{
+    "icon_fields": ["five_hour", "seven_day_sonnet"]
+}
+```
+
 ## Event commands
 
 Run a shell command when a usage event occurs. See [Event Commands](event-commands.md) for examples and available environment variables.

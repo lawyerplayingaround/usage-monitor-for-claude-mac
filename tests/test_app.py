@@ -805,6 +805,39 @@ class TestRenderTray(unittest.TestCase):
 
         mock_icon.assert_called_once_with(0, 0, False)
 
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['seven_day_sonnet', 'five_hour'])
+    def test_custom_icon_fields(self, mock_icon, _tooltip):
+        """Custom icon_fields setting changes which fields are shown in the icon."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 30.0},
+            'seven_day_sonnet': {'utilization': 75.0},
+        }
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(75.0, 30.0, False)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['unknown_field', 'five_hour'])
+    def test_icon_fields_missing_from_response_defaults_to_zero(self, mock_icon, _tooltip):
+        """Icon field not present in API response defaults to 0%."""
+        self.app._last_response = {'five_hour': {'utilization': 42.0}}
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(0, 42.0, False)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['seven_day_sonnet', 'five_hour'])
+    def test_icon_fields_null_in_response_defaults_to_zero(self, mock_icon, _tooltip):
+        """Icon field present but null in API response defaults to 0%."""
+        self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day_sonnet': None}
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(0, 42.0, False)
+
 
 # ---------------------------------------------------------------------------
 # _on_theme_changed

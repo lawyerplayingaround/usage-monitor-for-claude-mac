@@ -25,7 +25,7 @@ from .claude_cli import PROJECT_URL
 from .command import run_event_command
 from .idle import get_idle_seconds, is_workstation_locked
 from .settings import (
-    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, IDLE_PAUSE, ON_RESET_COMMAND, ON_THRESHOLD_COMMAND,
+    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, ICON_FIELDS, IDLE_PAUSE, ON_RESET_COMMAND, ON_THRESHOLD_COMMAND,
     POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds,
 )
 from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip
@@ -219,9 +219,9 @@ class UsageMonitorForClaude:
         if 'error' in data:
             self.icon.icon = create_status_image('C!' if data.get('auth_error') else '!', self._light_taskbar)
         else:
-            pct_5h = data.get('five_hour', {}).get('utilization', 0) or 0
-            pct_7d = data.get('seven_day', {}).get('utilization', 0) or 0
-            self.icon.icon = create_icon_image(pct_5h, pct_7d, self._light_taskbar)
+            pct_top = (data.get(ICON_FIELDS[0]) or {}).get('utilization', 0) or 0
+            pct_bottom = (data.get(ICON_FIELDS[1]) or {}).get('utilization', 0) or 0
+            self.icon.icon = create_icon_image(pct_top, pct_bottom, self._light_taskbar)
         self.icon.title = format_tooltip(data)
 
     def _on_theme_changed(self) -> None:

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Configurable tray icon bars - new `icon_fields` setting lets you choose which two usage fields are shown in the tray icon (e.g. `["five_hour", "seven_day_sonnet"]`)
 - Support for the `CLAUDE_CONFIG_DIR` environment variable - the app now reads credentials and settings from a custom Claude config directory when set, falling back to `~/.claude/` as before
 - Event commands now receive `USAGE_MONITOR_VERSION` with the running app version, so scripts can use it without hardcoding
 
