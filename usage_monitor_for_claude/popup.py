@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import webview  # type: ignore[import-untyped]  # no type stubs available
 
+from . import __version__
 from .claude_cli import CHANGELOG_URL, find_installations
 from .formatting import elapsed_pct, expand_popup_fields, field_period, format_credits, midnight_positions, popup_label, time_until
 from .i18n import T
@@ -155,6 +156,7 @@ def _init_config(snap: CacheSnapshot, next_poll_time: float | None = None) -> di
             'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
             'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
         },
+        'app_version': __version__,
         'data': _snapshot_to_dict(snap, next_poll_time=next_poll_time),
     }
 

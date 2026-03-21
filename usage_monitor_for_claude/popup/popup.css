@@ -157,7 +157,19 @@ dl > div {
 footer {
     font-size: 12px;
     color: var(--fg-dim);
-    word-wrap: break-word;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
 
-    &.error { color: var(--bar-fg-warn); }
+    & > #statusText {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    & > #appVersion { flex-shrink: 0; }
+
+    &.error > #statusText { color: var(--bar-fg-warn); }
 }

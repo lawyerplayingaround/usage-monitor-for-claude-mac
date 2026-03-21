@@ -431,9 +431,9 @@ class TestInitConfig(unittest.TestCase):
     """Tests for _init_config - builds the JS init() config object."""
 
     def test_top_level_keys(self):
-        """Config has colors, t (translations), and data."""
+        """Config has colors, t (translations), app_version, and data."""
         config = _init_config(_snap())
-        self.assertEqual(set(config.keys()), {'colors', 't', 'data'})
+        self.assertEqual(set(config.keys()), {'colors', 't', 'app_version', 'data'})
 
     def test_colors_from_settings(self):
         """Color values come from settings module constants."""
@@ -473,6 +473,13 @@ class TestInitConfig(unittest.TestCase):
         self.assertEqual(t['duration_hm'], T['duration_hm'])
         self.assertEqual(t['duration_m'], T['duration_m'])
         self.assertEqual(t['duration_s'], T['duration_s'])
+
+    def test_app_version(self):
+        """app_version matches the package version."""
+        from usage_monitor_for_claude import __version__
+
+        config = _init_config(_snap())
+        self.assertEqual(config['app_version'], __version__)
 
     def test_data_is_snapshot_to_dict_output(self):
         """The data key contains the output of _snapshot_to_dict."""

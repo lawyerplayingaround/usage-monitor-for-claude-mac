@@ -9,7 +9,7 @@ let textTimerId = null;
  * Called once by Python after the page loads.  Translations are set as
  * textContent on heading elements so the HTML file stays language-neutral.
  *
- * @param {object} config - { colors, t (translations), data (initial snapshot) }
+ * @param {object} config - { colors, t (translations), app_version, data (initial snapshot) }
  */
 function init(config) {
     const s = document.documentElement.style;
@@ -31,6 +31,8 @@ function init(config) {
     changelogLink.addEventListener('click', () => pywebview.api.open_url());
     document.getElementById('closeBtn').addEventListener('click', () => pywebview.api.close());
 
+    document.getElementById('appVersion').textContent = config.app_version;
+
     els = {
         accountSection: document.getElementById('accountSection'),
         emailRow: document.getElementById('emailRow'),
@@ -46,6 +48,7 @@ function init(config) {
         installSection: document.getElementById('installSection'),
         installRows: document.getElementById('installRows'),
         statusSection: document.getElementById('statusSection'),
+        statusText: document.getElementById('statusText'),
     };
 
     updateData(config.data);
@@ -129,7 +132,7 @@ function updateStatus(status) {
         textTimerId = setInterval(tickStatusText, 1000);
     } else {
         statusState = {};
-        els.statusSection.textContent = status.text || '';
+        els.statusText.textContent = status.text || '';
         els.statusSection.classList.toggle('error', !!status.is_error);
     }
 }
@@ -159,7 +162,7 @@ function tickStatusText() {
         }
     }
 
-    els.statusSection.textContent = parts.join(' \u00b7 ');
+    els.statusText.textContent = parts.join(' \u00b7 ');
 }
 
 /**

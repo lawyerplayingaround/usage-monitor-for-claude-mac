@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- [Show app version in popup](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/20) - the popup footer now shows the app version (e.g. "1.13.0") in the bottom-right corner
 - [Dynamic quota bars](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/12) - the popup now automatically detects and displays all usage fields from the API response; no code change needed when Anthropic adds new quota types. Includes configurable `popup_fields` setting and per-variant alert threshold overrides
 - [Configurable tray icon bars](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/11) - new `icon_fields` setting lets you choose which two usage fields are shown in the tray icon (e.g. `["five_hour", "seven_day_sonnet"]`)
 - [Configurable tooltip fields](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/10) - new `tooltip_fields` setting lets you choose which usage fields appear in the tray tooltip (e.g. `["five_hour", "seven_day_sonnet"]`)

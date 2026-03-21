@@ -147,7 +147,7 @@ function resolvePreset(name) {
 
 // Stub pywebview.api so popup.js doesn't throw
 function applyPreset(name) {
-    win().init({ colors: COLORS, t: T, data: resolvePreset(name) });
+    win().init({ colors: COLORS, t: T, app_version: '1.13.0', data: resolvePreset(name) });
 }
 
 let initialized = false;
