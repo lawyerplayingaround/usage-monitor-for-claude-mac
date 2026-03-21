@@ -45,7 +45,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 ## Requirements
 
 - **Windows 10 or Windows 11** (64-bit)
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`).
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`). If you have `CLAUDE_CONFIG_DIR` set, the app uses that directory instead.
 
 > [!TIP]
 > If the token expires, the app automatically runs `claude update` to refresh it. If the token is missing entirely, the app shows a notification and a "!" icon - log in to Claude Code and the monitor picks it up automatically.
@@ -101,7 +101,7 @@ All settings work out of the box - no configuration file is needed. To customize
 The app searches for this file in two locations (first match wins):
 
 1. **Next to the EXE** (or project root when running from source)
-2. **`~/.claude/usage-monitor-settings.json`**
+2. **`~/.claude/usage-monitor-settings.json`** (or `$CLAUDE_CONFIG_DIR/usage-monitor-settings.json` if set)
 
 The app never creates or modifies this file. See [Configuration](docs/configuration.md) for all available settings (alert thresholds, polling intervals, colors, language, and more).
 

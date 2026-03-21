@@ -12,10 +12,57 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.api import API_URL_USAGE, _extract_server_message, _parse_retry_after, fetch_usage, read_access_token
+from usage_monitor_for_claude.api import API_URL_USAGE, CLAUDE_CONFIG_DIR, CLAUDE_CREDENTIALS, _extract_server_message, _parse_retry_after, fetch_usage, read_access_token
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
+
+
+# ---------------------------------------------------------------------------
+# CLAUDE_CONFIG_DIR
+# ---------------------------------------------------------------------------
+
+class TestClaudeConfigDir(unittest.TestCase):
+    """Tests for CLAUDE_CONFIG_DIR resolution."""
+
+    def test_default_uses_home_claude(self):
+        """Without CLAUDE_CONFIG_DIR env var, defaults to ~/.claude/."""
+        with patch.dict('os.environ', {}, clear=False):
+            # Remove CLAUDE_CONFIG_DIR if it happens to be set
+            env = {k: v for k, v in __import__('os').environ.items() if k != 'CLAUDE_CONFIG_DIR'}
+            with patch.dict('os.environ', env, clear=True):
+                import importlib
+                import usage_monitor_for_claude.api as api_mod
+                importlib.reload(api_mod)
+                try:
+                    self.assertEqual(api_mod.CLAUDE_CONFIG_DIR, Path.home() / '.claude')
+                    self.assertEqual(api_mod.CLAUDE_CREDENTIALS, Path.home() / '.claude' / '.credentials.json')
+                finally:
+                    importlib.reload(api_mod)
+
+    def test_custom_config_dir(self):
+        """CLAUDE_CONFIG_DIR env var overrides the default path."""
+        with TemporaryDirectory() as tmp:
+            with patch.dict('os.environ', {'CLAUDE_CONFIG_DIR': tmp}):
+                import importlib
+                import usage_monitor_for_claude.api as api_mod
+                importlib.reload(api_mod)
+                try:
+                    self.assertEqual(api_mod.CLAUDE_CONFIG_DIR, Path(tmp))
+                    self.assertEqual(api_mod.CLAUDE_CREDENTIALS, Path(tmp) / '.credentials.json')
+                finally:
+                    importlib.reload(api_mod)
+
+    def test_empty_config_dir_uses_default(self):
+        """Empty CLAUDE_CONFIG_DIR env var falls back to default."""
+        with patch.dict('os.environ', {'CLAUDE_CONFIG_DIR': ''}):
+            import importlib
+            import usage_monitor_for_claude.api as api_mod
+            importlib.reload(api_mod)
+            try:
+                self.assertEqual(api_mod.CLAUDE_CONFIG_DIR, Path.home() / '.claude')
+            finally:
+                importlib.reload(api_mod)
 
 
 # ---------------------------------------------------------------------------
