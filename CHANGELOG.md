@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.13.0...HEAD)
+
+## [1.13.0] - 2026-03-21
+
 ### Added
 
 - [Show app version in popup](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/20) - the popup footer now shows the app version (e.g. "1.13.0") in the bottom-right corner
@@ -22,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved visibility of midnight dividers on weekly bars
 - Time marker color default changed from solid white to slightly transparent (`#fffc`) with a subtle shadow for better contrast on colored bars
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.12.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.12.0...v1.13.0)
 
 ## [1.12.0] - 2026-03-20
 
