@@ -16,6 +16,12 @@ Prioritize readability and auditability - users handle credentials and must be a
 - Never replace `resize()`/`move()` with direct `SetWindowPos` calls - the mixed coordinate spaces (physical size, logical position) make this error-prone
 - The taskbar icon is hidden via Win32 extended styles (`WS_EX_TOOLWINDOW` + remove `WS_EX_APPWINDOW`). Do **not** use WinForms `ShowInTaskbar = False` - it recreates the native window handle, which crashes WebView2 from background threads
 
+## Quota Fields
+- Never hardcode API quota field names (e.g. `five_hour`, `seven_day_sonnet`) in display logic, alert handling, or reset detection - new fields must be auto-detected from the API response structure
+- A quota field is any dict entry with `utilization` and `resets_at` keys; `extra_usage` has a separate structure and is handled independently
+- Labels, periods, and sort order are derived from the field name via `parse_field_name()` - no per-field mapping tables
+- Locale files use template keys (`session_label`, `weekly_label`, `notify_threshold_generic`) - never add per-field translation keys
+
 ## Security & Transparency
 - All URLs and API endpoints as top-level constants - no dynamic URL construction
 - Network communication exclusively with `api.anthropic.com` - no other destinations
@@ -91,6 +97,7 @@ Prioritize readability and auditability - users handle credentials and must be a
 - Add entries under the `## [Unreleased]` section, grouped by: Added, Changed, Fixed, Removed
 - Write entries from the user's perspective - describe what changed, not how the code changed
 - One bullet point per logical change; keep it concise (one sentence)
+- When a change implements a GitHub Discussion or resolves a GitHub Issue, link it on the entry text (e.g. `- [Feature name](https://github.com/.../discussions/12) - description`)
 - Changelog entries describe changes relative to the latest release tag, not intermediate commits - do not mention bugs that were introduced and fixed within the same unreleased period
 - Before writing a changelog entry for a fix, check `git log` to verify the bug existed in the latest release - if it was introduced after the release tag, it does not get a changelog entry
 
