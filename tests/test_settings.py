@@ -694,6 +694,89 @@ class TestIconFieldsDefault(unittest.TestCase):
         self.assertEqual(loaded['icon_fields'], ['seven_day', 'five_hour'])
 
 
+class TestTooltipFieldsValidation(unittest.TestCase):
+    """Tests for tooltip_fields setting validation."""
+
+    def _run_validate(self, data: dict) -> tuple[dict, MagicMock]:
+        """Run _validate with mocked ctypes and return (result, mock_ctypes)."""
+        mock_ctypes = MagicMock()
+        with patch.object(settings_mod, 'ctypes', mock_ctypes):
+            result = settings_mod._validate(dict(data), Path('/fake/settings.json'))
+        return result, mock_ctypes
+
+    def test_valid_list(self):
+        """Valid array of non-empty strings passes through."""
+        result, mock = self._run_validate({'tooltip_fields': ['five_hour', 'seven_day_sonnet']})
+        self.assertEqual(result['tooltip_fields'], ['five_hour', 'seven_day_sonnet'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_empty_list_valid(self):
+        """Empty list is valid (tooltip shows only the title)."""
+        result, mock = self._run_validate({'tooltip_fields': []})
+        self.assertEqual(result['tooltip_fields'], [])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_single_entry_valid(self):
+        """Single entry is valid."""
+        result, mock = self._run_validate({'tooltip_fields': ['five_hour']})
+        self.assertEqual(result['tooltip_fields'], ['five_hour'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_not_array_dropped(self):
+        """Non-array value is dropped."""
+        result, mock = self._run_validate({'tooltip_fields': 'five_hour'})
+        self.assertNotIn('tooltip_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_non_string_entry_dropped(self):
+        """Array with non-string entry is dropped."""
+        result, mock = self._run_validate({'tooltip_fields': ['five_hour', 42]})
+        self.assertNotIn('tooltip_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_empty_string_entry_dropped(self):
+        """Array with empty string entry is dropped."""
+        result, mock = self._run_validate({'tooltip_fields': ['five_hour', '']})
+        self.assertNotIn('tooltip_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_bool_entry_dropped(self):
+        """Array with boolean entry is dropped."""
+        result, mock = self._run_validate({'tooltip_fields': [True, 'five_hour']})
+        self.assertNotIn('tooltip_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_duplicates_removed(self):
+        """Duplicate entries are silently removed."""
+        result, mock = self._run_validate({'tooltip_fields': ['five_hour', 'seven_day', 'five_hour']})
+        self.assertEqual(result['tooltip_fields'], ['five_hour', 'seven_day'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_unknown_field_names_accepted(self):
+        """Unknown field names are not rejected."""
+        result, mock = self._run_validate({'tooltip_fields': ['future_field']})
+        self.assertEqual(result['tooltip_fields'], ['future_field'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+
+class TestTooltipFieldsDefault(unittest.TestCase):
+    """Tests for TOOLTIP_FIELDS default value."""
+
+    def test_default_without_settings(self):
+        """Default tooltip_fields is ['five_hour', 'seven_day'] when no settings file exists."""
+        with TemporaryDirectory() as app_tmp, TemporaryDirectory() as home_tmp:
+            loaded = _load(Path(app_tmp), Path(home_tmp))
+        self.assertNotIn('tooltip_fields', loaded)
+
+    def test_override_from_settings(self):
+        """tooltip_fields is loaded from settings file."""
+        with TemporaryDirectory() as app_tmp, TemporaryDirectory() as home_tmp:
+            settings = {'tooltip_fields': ['seven_day_sonnet']}
+            (Path(app_tmp) / settings_mod.SETTINGS_FILENAME).write_text(json.dumps(settings), encoding='utf-8')
+            loaded = _load(Path(app_tmp), Path(home_tmp))
+        self.assertEqual(loaded['tooltip_fields'], ['seven_day_sonnet'])
+
+
 class TestGetAlertThresholds(unittest.TestCase):
     """Tests for get_alert_thresholds() lookup logic."""
 

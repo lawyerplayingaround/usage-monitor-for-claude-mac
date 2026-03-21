@@ -12,12 +12,75 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .i18n import T
-from .settings import CURRENCY_SYMBOL, _SYSTEM_CURRENCY_SYMBOL
+from .settings import CURRENCY_SYMBOL, TOOLTIP_FIELDS, _SYSTEM_CURRENCY_SYMBOL
 
-__all__ = ['PERIOD_5H', 'PERIOD_7D', 'elapsed_pct', 'midnight_positions', 'time_until', 'format_credits', 'format_tooltip']
+__all__ = [
+    'PERIOD_5H', 'PERIOD_7D',
+    'elapsed_pct', 'format_credits', 'format_tooltip', 'midnight_positions', 'parse_field_name', 'time_until', 'tooltip_label',
+]
 
 PERIOD_5H = 5 * 3600
 PERIOD_7D = 7 * 24 * 3600
+
+_NUMBER_WORDS = {
+    'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6,
+    'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12,
+}
+_UNIT_SUFFIXES = {'hour': 'h', 'day': 'd'}
+
+
+def parse_field_name(field: str) -> tuple[int, str, str | None] | None:
+    """Parse an API field name into its numeric, unit, and variant components.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+
+    Returns
+    -------
+    tuple or None
+        ``(number, unit, variant)`` where *number* is the parsed digit,
+        *unit* is the raw unit word (e.g. ``'hour'``, ``'day'``), and
+        *variant* is the remaining suffix or ``None``.
+        Returns ``None`` if the number word or unit is not recognized.
+    """
+    parts = field.split('_', 2)
+    if len(parts) < 2:
+        return None
+
+    number = _NUMBER_WORDS.get(parts[0])
+    unit = parts[1]
+    if number is None or unit not in _UNIT_SUFFIXES:
+        return None
+
+    variant = parts[2] if len(parts) > 2 else None
+    return (number, unit, variant)
+
+
+def tooltip_label(field: str) -> str:
+    """Generate a short tooltip label from an API field name.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+
+    Returns
+    -------
+    str
+        Short label like ``'5h'``, ``'7d'``, or ``'7d Sonnet'``.
+        Falls back to title case of the full field name if unparseable.
+    """
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return field.replace('_', ' ').title()
+
+    number, unit, variant = parsed
+    label = f'{number}{_UNIT_SUFFIXES[unit]}'
+    if variant:
+        label += f' {variant.replace("_", " ").title()}'
+    return label
 
 
 def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
@@ -173,9 +236,10 @@ def format_tooltip(data: dict[str, Any]) -> str:
         return f"{T['error_label']}\n{error[:80]}"
 
     lines = [T['tooltip_title']]
-    for key, short in [('five_hour', '5h'), ('seven_day', '7d')]:
+    for key in TOOLTIP_FIELDS:
         entry = data.get(key)
         if entry and entry.get('utilization') is not None:
+            short = tooltip_label(key)
             pct = f"{entry['utilization']:.0f}%"
             reset = time_until(entry.get('resets_at', ''))
             line = f'{short}: {pct}'

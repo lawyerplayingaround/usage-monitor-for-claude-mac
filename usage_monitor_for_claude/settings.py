@@ -33,7 +33,7 @@ __all__ = [
     'LANGUAGE', 'MAX_BACKOFF',
     'ON_RESET_COMMAND', 'ON_THRESHOLD_COMMAND',
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
-    'SETTINGS_FILENAME',
+    'SETTINGS_FILENAME', 'TOOLTIP_FIELDS',
     'get_alert_thresholds',
 ]
 
@@ -54,6 +54,7 @@ _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
 _STRING_KEYS = frozenset({'currency_symbol', 'language'})
 _COMMAND_KEYS = frozenset({'on_reset_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
+_STRING_LIST_KEYS = frozenset({'tooltip_fields'})
 _FIXED_LENGTH_STRING_LIST_KEYS: dict[str, int] = {'icon_fields': 2}
 
 
@@ -163,6 +164,22 @@ def _validate(data: dict, path: Path) -> dict:
                 errors.append(f'  {key}: expected true or false, got {type(value).__name__}')
                 drop.append(key)
 
+        elif key in _STRING_LIST_KEYS:
+            if not isinstance(value, list):
+                errors.append(f'  {key}: expected an array, got {type(value).__name__}')
+                drop.append(key)
+            elif any(not isinstance(item, str) or not item for item in value):
+                errors.append(f'  {key}: all entries must be non-empty strings')
+                drop.append(key)
+            else:
+                seen: set[str] = set()
+                deduped: list[str] = []
+                for item in value:
+                    if item not in seen:
+                        seen.add(item)
+                        deduped.append(item)
+                data[key] = deduped
+
         elif key in _FIXED_LENGTH_STRING_LIST_KEYS:
             expected_len = _FIXED_LENGTH_STRING_LIST_KEYS[key]
             if not isinstance(value, list):
@@ -238,6 +255,9 @@ ICON_DARK = _icon_colors('icon_dark', {
 
 # Tray icon fields
 ICON_FIELDS: list[str] = _S.get('icon_fields', ['five_hour', 'seven_day'])
+
+# Tooltip fields
+TOOLTIP_FIELDS: list[str] = _S.get('tooltip_fields', ['five_hour', 'seven_day'])
 
 # Alert thresholds
 ALERT_THRESHOLDS_FIVE_HOUR: list[float] = _S.get('alert_thresholds_five_hour', [50, 80, 95])

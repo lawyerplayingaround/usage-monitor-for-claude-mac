@@ -2,7 +2,8 @@
 Formatting Tests
 =================
 
-Unit tests for elapsed_pct(), time_until(), and format_tooltip().
+Unit tests for parse_field_name(), tooltip_label(), elapsed_pct(),
+time_until(), format_tooltip(), and format_credits().
 """
 from __future__ import annotations
 
@@ -11,10 +12,108 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip, midnight_positions, time_until
+from usage_monitor_for_claude.formatting import (
+    PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip, midnight_positions, parse_field_name, time_until, tooltip_label,
+)
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
+
+
+# ---------------------------------------------------------------------------
+# parse_field_name
+# ---------------------------------------------------------------------------
+
+class TestParseFieldName(unittest.TestCase):
+    """Tests for parse_field_name()."""
+
+    def test_five_hour(self):
+        self.assertEqual(parse_field_name('five_hour'), (5, 'hour', None))
+
+    def test_seven_day(self):
+        self.assertEqual(parse_field_name('seven_day'), (7, 'day', None))
+
+    def test_seven_day_sonnet(self):
+        self.assertEqual(parse_field_name('seven_day_sonnet'), (7, 'day', 'sonnet'))
+
+    def test_seven_day_opus(self):
+        self.assertEqual(parse_field_name('seven_day_opus'), (7, 'day', 'opus'))
+
+    def test_three_day_cowork(self):
+        self.assertEqual(parse_field_name('three_day_cowork'), (3, 'day', 'cowork'))
+
+    def test_variant_with_underscores(self):
+        """Multi-word variant is preserved as a single string."""
+        self.assertEqual(parse_field_name('seven_day_oauth_apps'), (7, 'day', 'oauth_apps'))
+
+    def test_one_hour(self):
+        self.assertEqual(parse_field_name('one_hour'), (1, 'hour', None))
+
+    def test_twelve_day(self):
+        self.assertEqual(parse_field_name('twelve_day'), (12, 'day', None))
+
+    def test_unknown_number_word(self):
+        """Unrecognized number word returns None."""
+        self.assertIsNone(parse_field_name('iguana_day'))
+
+    def test_unknown_unit(self):
+        """Unrecognized unit returns None."""
+        self.assertIsNone(parse_field_name('one_year_cowork'))
+
+    def test_no_underscore(self):
+        """Word without underscore returns None."""
+        self.assertIsNone(parse_field_name('foobar'))
+
+    def test_unknown_number_and_unit(self):
+        """Both number word and unit unrecognized returns None."""
+        self.assertIsNone(parse_field_name('extra_usage'))
+
+    def test_empty_string(self):
+        self.assertIsNone(parse_field_name(''))
+
+
+# ---------------------------------------------------------------------------
+# tooltip_label
+# ---------------------------------------------------------------------------
+
+class TestTooltipLabel(unittest.TestCase):
+    """Tests for tooltip_label()."""
+
+    def test_five_hour(self):
+        self.assertEqual(tooltip_label('five_hour'), '5h')
+
+    def test_seven_day(self):
+        self.assertEqual(tooltip_label('seven_day'), '7d')
+
+    def test_seven_day_sonnet(self):
+        self.assertEqual(tooltip_label('seven_day_sonnet'), '7d Sonnet')
+
+    def test_seven_day_opus(self):
+        self.assertEqual(tooltip_label('seven_day_opus'), '7d Opus')
+
+    def test_three_day_cowork(self):
+        self.assertEqual(tooltip_label('three_day_cowork'), '3d Cowork')
+
+    def test_five_hour_something(self):
+        self.assertEqual(tooltip_label('five_hour_something'), '5h Something')
+
+    def test_multi_word_variant(self):
+        self.assertEqual(tooltip_label('seven_day_oauth_apps'), '7d Oauth Apps')
+
+    def test_unknown_number_fallback(self):
+        """Unrecognized number word falls back to title case."""
+        self.assertEqual(tooltip_label('iguana_necktie'), 'Iguana Necktie')
+
+    def test_unknown_unit_fallback(self):
+        """Unrecognized unit falls back to title case."""
+        self.assertEqual(tooltip_label('one_year_cowork'), 'One Year Cowork')
+
+    def test_no_underscore_fallback(self):
+        """Word without underscore falls back to title case."""
+        self.assertEqual(tooltip_label('foobar'), 'Foobar')
+
+    def test_unknown_number_and_unit_fallback(self):
+        self.assertEqual(tooltip_label('extra_usage'), 'Extra Usage')
 
 
 # ---------------------------------------------------------------------------
@@ -443,6 +542,38 @@ class TestFormatTooltip(unittest.TestCase):
             'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 420.0},
         }
         self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 26%')
+
+    @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
+    @patch('usage_monitor_for_claude.formatting.TOOLTIP_FIELDS', ['seven_day_sonnet', 'five_hour'])
+    def test_custom_fields_and_order(self, _mock_tu):
+        """Custom tooltip_fields controls which fields appear and in what order."""
+        data = {
+            'five_hour': {'utilization': 10.0, 'resets_at': ''},
+            'seven_day': {'utilization': 20.0, 'resets_at': ''},
+            'seven_day_sonnet': {'utilization': 30.0, 'resets_at': ''},
+        }
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n7d Sonnet: 30%\n5h: 10%')
+
+    @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
+    @patch('usage_monitor_for_claude.formatting.TOOLTIP_FIELDS', ['seven_day_sonnet'])
+    def test_custom_field_null_skipped(self, _mock_tu):
+        """Configured field that is null in API response is skipped."""
+        data = {'seven_day_sonnet': None, 'five_hour': {'utilization': 50.0, 'resets_at': ''}}
+        self.assertEqual(format_tooltip(data), 'Claude Usage')
+
+    @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
+    @patch('usage_monitor_for_claude.formatting.TOOLTIP_FIELDS', ['nonexistent_field'])
+    def test_custom_field_missing_from_response_skipped(self, _mock_tu):
+        """Configured field not present in API response is skipped."""
+        data = {'five_hour': {'utilization': 50.0, 'resets_at': ''}}
+        self.assertEqual(format_tooltip(data), 'Claude Usage')
+
+    @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
+    @patch('usage_monitor_for_claude.formatting.TOOLTIP_FIELDS', [])
+    def test_empty_fields_shows_title_only(self, _mock_tu):
+        """Empty tooltip_fields shows only the title."""
+        data = {'five_hour': {'utilization': 50.0, 'resets_at': ''}}
+        self.assertEqual(format_tooltip(data), 'Claude Usage')
 
 
 # ---------------------------------------------------------------------------

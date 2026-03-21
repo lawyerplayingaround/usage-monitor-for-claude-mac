@@ -30,6 +30,26 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | `alert_time_aware` | `true` | Only alert when usage outpaces elapsed time |
 | `alert_time_aware_below` | `90` | Time-aware check applies only to thresholds below this value; thresholds at or above always fire |
 
+## Tooltip fields
+
+The tray tooltip shows a quick usage summary when you hover over the icon. By default, it displays the session (5h) and weekly (7d) quotas. Use `tooltip_fields` to choose which usage fields appear in the tooltip.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `tooltip_fields` | `["five_hour", "seven_day"]` | Which usage fields to show in the tray tooltip, in order |
+
+Must be an array of non-empty strings. Duplicates are silently removed. An empty array `[]` is valid (tooltip shows only the title, no usage fields). Unknown field names are accepted - if a field is `null` or missing from the API response, it is simply skipped.
+
+**Known field names:** `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_cowork`, `seven_day_oauth_apps`
+
+**Example** - show session and Sonnet quota in the tooltip:
+
+```json
+{
+    "tooltip_fields": ["five_hour", "seven_day_sonnet"]
+}
+```
+
 ## Tray icon bars
 
 The tray icon displays two small progress bars. By default, these show the session (5h) and weekly (7d) quotas. Use `icon_fields` to choose which two API fields are displayed.
