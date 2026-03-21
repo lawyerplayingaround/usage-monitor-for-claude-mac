@@ -133,7 +133,7 @@ dl > div {
         top: 2px;
         bottom: 2px;
         width: 2px;
-        background: var(--bg);
+        background: var(--bar-divider);
         z-index: 2;
     }
 
@@ -143,6 +143,7 @@ dl > div {
         bottom: 1px;
         width: 2px;
         background: var(--bar-marker);
+        box-shadow: 0 0 2px 1px rgba(0, 0, 0, 0.3);
         z-index: 3;
         transition: left 1s linear;
     }

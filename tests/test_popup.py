@@ -437,7 +437,7 @@ class TestInitConfig(unittest.TestCase):
 
     def test_colors_from_settings(self):
         """Color values come from settings module constants."""
-        from usage_monitor_for_claude.settings import BAR_BG, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK
+        from usage_monitor_for_claude.settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK
 
         config = _init_config(_snap())
         colors = config['colors']
@@ -449,6 +449,7 @@ class TestInitConfig(unittest.TestCase):
         self.assertEqual(colors['bar_bg'], BAR_BG)
         self.assertEqual(colors['bar_fg'], BAR_FG)
         self.assertEqual(colors['bar_fg_warn'], BAR_FG_WARN)
+        self.assertEqual(colors['bar_divider'], BAR_DIVIDER)
         self.assertEqual(colors['bar_marker'], BAR_MARKER)
 
     def test_translations_from_i18n(self):

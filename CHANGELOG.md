@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Configurable tooltip fields](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/10) - new `tooltip_fields` setting lets you choose which usage fields appear in the tray tooltip (e.g. `["five_hour", "seven_day_sonnet"]`)
 - Support for the `CLAUDE_CONFIG_DIR` environment variable - the app now reads credentials and settings from a custom Claude config directory when set, falling back to `~/.claude/` as before
 - Event commands now receive `USAGE_MONITOR_VERSION` with the running app version, so scripts can use it without hardcoding
+- Configurable `bar_divider` color for midnight dividers on weekly progress bars
+
+### Changed
+
+- Improved visibility of midnight dividers on weekly bars
+- Time marker color default changed from solid white to slightly transparent (`#fffc`) with a subtle shadow for better contrast on colored bars
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.12.0...HEAD)
 
