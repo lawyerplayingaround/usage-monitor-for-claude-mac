@@ -42,6 +42,15 @@ class TestRunEventCommand(unittest.TestCase):
             self.assertEqual(passed_env[key], value)
 
     @patch('usage_monitor_for_claude.command.subprocess.Popen')
+    def test_version_env_var_always_present(self, mock_popen: MagicMock):
+        """USAGE_MONITOR_VERSION is always set from __version__."""
+        run_event_command(['test'], {'USAGE_MONITOR_EVENT': 'reset'})
+
+        passed_env = mock_popen.call_args[1]['env']
+        from usage_monitor_for_claude import __version__
+        self.assertEqual(passed_env['USAGE_MONITOR_VERSION'], __version__)
+
+    @patch('usage_monitor_for_claude.command.subprocess.Popen')
     def test_existing_env_preserved(self, mock_popen: MagicMock):
         """Existing environment variables are preserved alongside new ones."""
         with patch.dict('os.environ', {'PATH': '/usr/bin', 'HOME': '/home/user'}):

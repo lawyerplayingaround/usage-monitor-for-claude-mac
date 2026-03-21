@@ -120,6 +120,14 @@ if ($variant -eq "seven_day" -and $threshold -ge 95) {
 
 Commands receive event details as environment variables. Access them with `%VAR%` in cmd.exe or `$env:VAR` in PowerShell.
 
+### Common
+
+Available in all event commands:
+
+| Variable | Example | Description |
+|---|---|---|
+| `USAGE_MONITOR_VERSION` | `1.12.0` | Running app version |
+
 ### `on_reset_command`
 
 Fires whenever usage drops (not only when nearly exhausted).

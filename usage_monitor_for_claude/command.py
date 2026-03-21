@@ -16,6 +16,8 @@ import sys
 import traceback
 from pathlib import Path
 
+from . import __version__
+
 __all__ = ['run_event_command']
 
 
@@ -37,7 +39,7 @@ def run_event_command(commands: list[str], env_vars: dict[str, str]) -> None:
     if not commands:
         return
 
-    env = {**os.environ, **env_vars}
+    env = {**os.environ, 'USAGE_MONITOR_VERSION': __version__, **env_vars}
 
     # Pin working directory to the executable's folder so that relative paths
     # in commands resolve predictably - even when Windows autostart sets the

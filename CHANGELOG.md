@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Event commands now receive `USAGE_MONITOR_VERSION` with the running app version, so scripts can use it without hardcoding
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.12.0...HEAD)
 
 ## [1.12.0] - 2026-03-20
