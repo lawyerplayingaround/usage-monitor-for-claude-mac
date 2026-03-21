@@ -1,5 +1,10 @@
 # Usage Monitor for Claude
 
+[![Latest Release](https://img.shields.io/github/v/release/jens-duttke/usage-monitor-for-claude)](https://github.com/jens-duttke/usage-monitor-for-claude/releases/latest)
+[![Feature Ideas](https://img.shields.io/badge/Feature_Ideas-Vote_%26_Discuss-blue?logo=github)](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/categories/ideas)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ff69b4?logo=github)](https://github.com/sponsors/jens-duttke)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
 **Monitor your Claude rate limits in real time - right from your Windows system tray.**
 
 A native Windows tray app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, and its IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits you have left.
@@ -171,7 +176,7 @@ This starts a local server and opens the dev preview in your default browser. Us
 
 ## Contributing
 
-Contributions are welcome - whether it's bug reports, feature ideas, or pull requests. Feel free to [open an issue](https://github.com/jens-duttke/usage-monitor-for-claude/issues) to report bugs, suggest features, or ask questions.
+Contributions are welcome - whether it's bug reports, feature ideas, or pull requests. [Open an issue](https://github.com/jens-duttke/usage-monitor-for-claude/issues) to report bugs or ask questions. For feature ideas, browse and vote on existing proposals or submit your own in [Ideas](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/categories/ideas).
 
 <details>
 <summary>For developers who want to contribute to the project</summary>
