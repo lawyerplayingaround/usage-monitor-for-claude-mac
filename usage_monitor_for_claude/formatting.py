@@ -15,8 +15,8 @@ from .i18n import T
 from .settings import CURRENCY_SYMBOL, TOOLTIP_FIELDS, _SYSTEM_CURRENCY_SYMBOL
 
 __all__ = [
-    'PERIOD_5H', 'PERIOD_7D',
-    'elapsed_pct', 'format_credits', 'format_tooltip', 'midnight_positions', 'parse_field_name', 'time_until', 'tooltip_label',
+    'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits', 'format_tooltip',
+    'midnight_positions', 'parse_field_name', 'popup_label', 'time_until', 'tooltip_label',
 ]
 
 PERIOD_5H = 5 * 3600
@@ -27,6 +27,7 @@ _NUMBER_WORDS = {
     'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10, 'eleven': 11, 'twelve': 12,
 }
 _UNIT_SUFFIXES = {'hour': 'h', 'day': 'd'}
+_TITLE_CASE_EXCEPTIONS = {'oauth': 'OAuth', 'api': 'API', 'ai': 'AI'}
 
 
 def parse_field_name(field: str) -> tuple[int, str, str | None] | None:
@@ -58,6 +59,11 @@ def parse_field_name(field: str) -> tuple[int, str, str | None] | None:
     return (number, unit, variant)
 
 
+def _title_case_variant(text: str) -> str:
+    """Title-case a variant string, respecting abbreviation exceptions."""
+    return ' '.join(_TITLE_CASE_EXCEPTIONS.get(w.lower(), w.title()) for w in text.split('_'))
+
+
 def tooltip_label(field: str) -> str:
     """Generate a short tooltip label from an API field name.
 
@@ -74,13 +80,112 @@ def tooltip_label(field: str) -> str:
     """
     parsed = parse_field_name(field)
     if parsed is None:
-        return field.replace('_', ' ').title()
+        return _title_case_variant(field)
 
     number, unit, variant = parsed
     label = f'{number}{_UNIT_SUFFIXES[unit]}'
     if variant:
-        label += f' {variant.replace("_", " ").title()}'
+        label += f' {_title_case_variant(variant)}'
     return label
+
+
+def popup_label(field: str) -> str:
+    """Generate a popup bar label from an API field name using i18n templates.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+
+    Returns
+    -------
+    str
+        Localized label like ``'Session (5hr)'`` or ``'Weekly (Sonnet)'``.
+        Falls back to title case with abbreviation exceptions if unparseable.
+    """
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return _title_case_variant(field)
+
+    number, unit, variant = parsed
+    if variant:
+        suffix = _title_case_variant(variant)
+    elif unit == 'hour':
+        suffix = f'{number}hr'
+    else:
+        suffix = f'{number} {unit}'
+
+    template_key = 'session_label' if unit == 'hour' else 'weekly_label'
+    return T[template_key].format(suffix=suffix)
+
+
+def field_period(field: str) -> int | None:
+    """Return the period duration in seconds for a field, or None if unknown.
+
+    Parameters
+    ----------
+    field : str
+        API field name, e.g. ``'five_hour'``, ``'seven_day_sonnet'``.
+    """
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return None
+
+    number, unit, _ = parsed
+    if unit == 'hour':
+        return number * 3600
+    if unit == 'day':
+        return number * 24 * 3600
+    return None
+
+
+def _field_sort_key(field: str) -> tuple[int, int, int, str]:
+    """Sort key for default field ordering: shorter periods first, base before variants."""
+    parsed = parse_field_name(field)
+    if parsed is None:
+        return (2, 0, 0, field)
+
+    number, unit, variant = parsed
+    unit_order = 0 if unit == 'hour' else 1
+    variant_order = 0 if variant is None else 1
+    return (unit_order, number, variant_order, variant or '')
+
+
+def expand_popup_fields(popup_fields: list[str], usage_data: dict[str, Any]) -> list[str]:
+    """Expand a popup_fields setting into concrete field names based on API data.
+
+    Parameters
+    ----------
+    popup_fields : list[str]
+        User-configured field list, possibly containing ``'*'`` wildcard.
+    usage_data : dict
+        Raw API response dict.
+
+    Returns
+    -------
+    list[str]
+        Ordered list of field names to display, with null/missing fields removed.
+    """
+    available = {
+        key for key, value in usage_data.items()
+        if isinstance(value, dict) and 'utilization' in value and 'resets_at' in value
+        and value.get('utilization') is not None
+    }
+
+    result: list[str] = []
+    seen: set[str] = set()
+
+    for field in popup_fields:
+        if field == '*':
+            remaining = sorted((f for f in available if f not in seen), key=_field_sort_key)
+            for f in remaining:
+                seen.add(f)
+                result.append(f)
+        elif field in available and field not in seen:
+            seen.add(field)
+            result.append(field)
+
+    return result
 
 
 def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:

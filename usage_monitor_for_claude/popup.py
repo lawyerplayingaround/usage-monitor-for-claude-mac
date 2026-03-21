@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING, Any
 import webview  # type: ignore[import-untyped]  # no type stubs available
 
 from .claude_cli import CHANGELOG_URL, find_installations
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, midnight_positions, time_until
+from .formatting import elapsed_pct, expand_popup_fields, field_period, format_credits, midnight_positions, popup_label, time_until
 from .i18n import T
-from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK
+from .settings import BAR_BG, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK, POPUP_FIELDS
 
 _POPUP_DIR = Path(__file__).parent / 'popup'
 _BASELINE_DPI = 96
@@ -43,14 +43,10 @@ if TYPE_CHECKING:
 # Data helpers
 # ---------------------------------------------------------------------------
 
-def _usage_entries(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None, int]]:
+def _usage_entries(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None, int | None]]:
     """Return the list of usage entry tuples from the given usage data."""
-    return [
-        (T['session'], usage.get('five_hour'), PERIOD_5H),
-        (T['weekly'], usage.get('seven_day'), PERIOD_7D),
-        (T['weekly_sonnet'], usage.get('seven_day_sonnet'), PERIOD_7D),
-        (T['weekly_opus'], usage.get('seven_day_opus'), PERIOD_7D),
-    ]
+    fields = expand_popup_fields(POPUP_FIELDS, usage)
+    return [(popup_label(key), usage.get(key), field_period(key)) for key in fields]
 
 
 def _snapshot_to_dict(
@@ -86,7 +82,7 @@ def _snapshot_to_dict(
                 continue
             pct = entry.get('utilization', 0) or 0
             resets_at = entry.get('resets_at', '')
-            time_pct = elapsed_pct(resets_at, period)
+            time_pct = elapsed_pct(resets_at, period) if period else None
             warn = time_pct is not None and pct > time_pct
             marker_rel = max(0.0, min(1.0, time_pct / 100)) if time_pct is not None else None
 
@@ -96,7 +92,7 @@ def _snapshot_to_dict(
                 'fill_pct': max(0.0, min(1.0, pct / 100)),
                 'warn': warn,
                 'reset_text': time_until(resets_at) if resets_at else '',
-                'midnights': midnight_positions(resets_at, period),
+                'midnights': midnight_positions(resets_at, period) if period else [],
                 'marker_rel': marker_rel,
             })
 

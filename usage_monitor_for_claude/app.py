@@ -28,7 +28,7 @@ from .settings import (
     ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, ICON_FIELDS, IDLE_PAUSE, ON_RESET_COMMAND, ON_THRESHOLD_COMMAND,
     POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds,
 )
-from .formatting import PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip
+from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label
 from .i18n import T
 from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
@@ -39,20 +39,6 @@ __all__ = ['UsageMonitorForClaude', 'crash_log']
 def _future_iso(**kwargs: float) -> str:
     """Return an ISO 8601 timestamp offset from now by the given timedelta kwargs."""
     return (datetime.now(timezone.utc) + timedelta(**kwargs)).isoformat()
-
-
-_VARIANT_NOTIFY_KEYS = {
-    'five_hour': 'notify_threshold_five_hour',
-    'seven_day': 'notify_threshold_seven_day',
-    'seven_day_sonnet': 'notify_threshold_seven_day_sonnet',
-    'seven_day_opus': 'notify_threshold_seven_day_opus',
-}
-_VARIANT_PERIODS = {
-    'five_hour': PERIOD_5H,
-    'seven_day': PERIOD_7D,
-    'seven_day_sonnet': PERIOD_7D,
-    'seven_day_opus': PERIOD_7D,
-}
 
 
 class UsageMonitorForClaude:
@@ -67,8 +53,8 @@ class UsageMonitorForClaude:
         self._last_response: dict[str, Any] = {}
 
         # Notification state
-        self._prev_5h: float | None = None
-        self._prev_7d: float | None = None
+        self._prev_utilization: dict[str, float] = {}
+        self._first_update_done = False
         self._notified_thresholds: dict[str, float] = {}
 
         # Adaptive polling state
@@ -168,7 +154,7 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_THRESHOLD': '80',
             'USAGE_MONITOR_RESETS_AT': _future_iso(hours=3),
             'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
-            'USAGE_MONITOR_MESSAGE': T['notify_threshold_five_hour'].format(pct='82'),
+            'USAGE_MONITOR_MESSAGE': T['notify_threshold_generic'].format(label=popup_label('five_hour'), pct='82'),
         })
 
     def on_test_threshold_7d(self, icon: Any = None, item: Any = None) -> None:
@@ -179,7 +165,7 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_THRESHOLD': '80',
             'USAGE_MONITOR_RESETS_AT': _future_iso(days=4),
             'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
-            'USAGE_MONITOR_MESSAGE': T['notify_threshold_seven_day'].format(pct='81'),
+            'USAGE_MONITOR_MESSAGE': T['notify_threshold_generic'].format(label=popup_label('seven_day'), pct='81'),
         })
 
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
@@ -255,33 +241,52 @@ class UsageMonitorForClaude:
         if 'error' in result.data:
             return
 
-        pct_5h = result.data.get('five_hour', {}).get('utilization', 0) or 0
-        pct_7d = result.data.get('seven_day', {}).get('utilization', 0) or 0
+        # Collect all quota fields with utilization (extra_usage has a different structure)
+        quota_fields: dict[str, float] = {}
+        for key, value in result.data.items():
+            if key == 'extra_usage':
+                continue
+            if isinstance(value, dict) and 'utilization' in value:
+                quota_fields[key] = value.get('utilization', 0) or 0
 
-        # Notify when quota resets after being nearly exhausted, but only if the other quota isn't blocking usage.
+        # Notify when quota resets after being nearly exhausted, but only if no other quota is blocking usage.
         # While idle/locked, defer notifications until the user returns (avoids lock screen privacy concerns).
-        if self._prev_5h is not None and self._prev_5h > 95 and pct_5h < self._prev_5h and pct_7d < 99:
-            self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
-        if self._prev_7d is not None and self._prev_7d > 98 and pct_7d < self._prev_7d and pct_5h < 99:
-            self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
+        for key, pct in quota_fields.items():
+            prev = self._prev_utilization.get(key)
+            if prev is None:
+                continue
+
+            parsed = parse_field_name(key)
+            if parsed is None:
+                continue
+
+            _, unit, _ = parsed
+            reset_threshold = 95 if unit == 'hour' else 98
+            any_blocking = any(other_pct >= 99 for other_key, other_pct in quota_fields.items() if other_key != key)
+
+            if prev > reset_threshold and pct < prev and not any_blocking:
+                self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
 
         # Run reset command on any detected usage drop (independent of notification threshold)
-        if self._prev_5h is not None and pct_5h < self._prev_5h:
-            self._run_reset_command('five_hour', pct_5h, self._prev_5h, pct_5h=pct_5h, pct_7d=pct_7d, entry=result.data.get('five_hour', {}))
-            self._idle_reset_pending = False
-        if self._prev_7d is not None and pct_7d < self._prev_7d:
-            self._run_reset_command('seven_day', pct_7d, self._prev_7d, pct_5h=pct_5h, pct_7d=pct_7d, entry=result.data.get('seven_day', {}))
-            self._idle_reset_pending = False
+        for key, pct in quota_fields.items():
+            prev = self._prev_utilization.get(key)
+            if prev is not None and pct < prev:
+                self._run_reset_command(key, pct, prev, data=result.data, entry=result.data.get(key, {}))
+                self._idle_reset_pending = False
 
         self._check_threshold_alerts(result.data)
 
-        # Adaptive polling: speed up when session usage is increasing
-        if self._prev_5h is not None and pct_5h > self._prev_5h:
+        # Adaptive polling: speed up when icon top field usage is increasing
+        icon_top_key = ICON_FIELDS[0]
+        icon_top_pct = quota_fields.get(icon_top_key, 0)
+        icon_top_prev = self._prev_utilization.get(icon_top_key)
+        if icon_top_prev is not None and icon_top_pct > icon_top_prev:
             self._fast_polls_remaining = POLL_FAST_EXTRA + 1
         elif self._fast_polls_remaining > 0:
             self._fast_polls_remaining -= 1
-        self._prev_5h = pct_5h
-        self._prev_7d = pct_7d
+
+        self._prev_utilization = quota_fields
+        self._first_update_done = True
 
     # Notifications
 
@@ -313,15 +318,17 @@ class UsageMonitorForClaude:
     def _check_threshold_alerts(self, data: dict[str, Any]) -> None:
         """Show a notification when usage crosses a configured threshold.
 
-        For each variant, finds the highest threshold exceeded by current
+        Dynamically detects all quota fields in the API response.  For
+        each field, finds the highest threshold exceeded by current
         utilization.  If it exceeds a threshold not yet notified, shows a
         single notification with the current usage percentage.  When usage
         drops (e.g. after reset), tracking resets so thresholds can
         re-trigger in the next cycle.
         """
-        for variant_key, notify_key in _VARIANT_NOTIFY_KEYS.items():
-            entry = data.get(variant_key)
-            if not entry or entry.get('utilization') is None:
+        for variant_key, entry in data.items():
+            if variant_key == 'extra_usage':
+                continue
+            if not isinstance(entry, dict) or entry.get('utilization') is None:
                 continue
 
             pct = entry['utilization']
@@ -334,14 +341,17 @@ class UsageMonitorForClaude:
             last_notified = self._notified_thresholds.get(variant_key, 0)
 
             if ALERT_TIME_AWARE and highest_exceeded > last_notified and highest_exceeded < ALERT_TIME_AWARE_BELOW:
-                time_pct = elapsed_pct(entry.get('resets_at'), _VARIANT_PERIODS[variant_key])
-                if time_pct is not None and pct <= time_pct:
-                    self._notified_thresholds[variant_key] = highest_exceeded
-                    continue
+                period = field_period(variant_key)
+                if period:
+                    time_pct = elapsed_pct(entry.get('resets_at'), period)
+                    if time_pct is not None and pct <= time_pct:
+                        self._notified_thresholds[variant_key] = highest_exceeded
+                        continue
 
             if highest_exceeded > last_notified:
                 title = T['notify_threshold_title']
-                message = T[notify_key].format(pct=f'{pct:.0f}')
+                label = popup_label(variant_key)
+                message = T['notify_threshold_generic'].format(label=label, pct=f'{pct:.0f}')
                 self._notify_or_defer(f'threshold_{variant_key}', message, title)
                 self._run_threshold_command(variant_key, pct, highest_exceeded, entry, title, message)
                 self._notified_thresholds[variant_key] = highest_exceeded
@@ -393,12 +403,14 @@ class UsageMonitorForClaude:
     # Event commands
 
     def _run_reset_command(
-        self, variant: str, pct: float, prev_pct: float, *, pct_5h: float, pct_7d: float, entry: dict[str, Any],
+        self, variant: str, pct: float, prev_pct: float, *, data: dict[str, Any], entry: dict[str, Any],
     ) -> None:
         """Run the user-configured reset command if set."""
         if not ON_RESET_COMMAND:
             return
 
+        pct_5h = (data.get('five_hour') or {}).get('utilization', 0) or 0
+        pct_7d = (data.get('seven_day') or {}).get('utilization', 0) or 0
         run_event_command(ON_RESET_COMMAND, {
             'USAGE_MONITOR_EVENT': 'reset',
             'USAGE_MONITOR_VARIANT': variant,
@@ -418,11 +430,12 @@ class UsageMonitorForClaude:
     ) -> None:
         """Run the user-configured threshold command if set.
 
-        Skipped on the first update (before ``_prev_5h`` is set) so that
-        already-exceeded thresholds at app startup do not trigger commands.
-        Notifications still fire - commands react to *events*, not *state*.
+        Skipped on the first update (before ``_first_update_done`` is set)
+        so that already-exceeded thresholds at app startup do not trigger
+        commands.  Notifications still fire - commands react to *events*,
+        not *state*.
         """
-        if not ON_THRESHOLD_COMMAND or self._prev_5h is None:
+        if not ON_THRESHOLD_COMMAND or not self._first_update_done:
             return
 
         env_vars = {
@@ -447,9 +460,8 @@ class UsageMonitorForClaude:
         """Return seconds until the earliest upcoming quota reset, or None."""
         now = datetime.now(timezone.utc)
         earliest = None
-        for key in ('five_hour', 'seven_day', 'seven_day_sonnet', 'seven_day_opus'):
-            entry = self._last_response.get(key)
-            if not entry or not entry.get('resets_at'):
+        for key, entry in self._last_response.items():
+            if not isinstance(entry, dict) or not entry.get('resets_at'):
                 continue
             try:
                 reset_time = datetime.fromisoformat(entry['resets_at'])

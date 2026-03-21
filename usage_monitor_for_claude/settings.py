@@ -24,7 +24,6 @@ import sys
 from pathlib import Path
 
 __all__ = [
-    'ALERT_THRESHOLDS_EXTRA_USAGE', 'ALERT_THRESHOLDS_FIVE_HOUR', 'ALERT_THRESHOLDS_SEVEN_DAY',
     'ALERT_TIME_AWARE', 'ALERT_TIME_AWARE_BELOW',
     'BAR_BG', 'BAR_FG', 'BAR_FG_WARN', 'BAR_MARKER', 'BG',
     'CURRENCY_SYMBOL',
@@ -33,7 +32,7 @@ __all__ = [
     'LANGUAGE', 'MAX_BACKOFF',
     'ON_RESET_COMMAND', 'ON_THRESHOLD_COMMAND',
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
-    'SETTINGS_FILENAME', 'TOOLTIP_FIELDS',
+    'POPUP_FIELDS', 'SETTINGS_FILENAME', 'TOOLTIP_FIELDS',
     'get_alert_thresholds',
 ]
 
@@ -49,12 +48,13 @@ _NUMERIC_BOUNDS: dict[str, int] = {
 }
 _COLOR_KEYS = frozenset({'bg', 'fg', 'fg_dim', 'fg_heading', 'fg_link', 'bar_bg', 'bar_fg', 'bar_fg_warn', 'bar_marker'})
 _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
-_THRESHOLD_KEYS = frozenset({'alert_thresholds_five_hour', 'alert_thresholds_seven_day', 'alert_thresholds_extra_usage'})
+_THRESHOLD_KEY_PREFIX = 'alert_thresholds_'
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
 _STRING_KEYS = frozenset({'currency_symbol', 'language'})
 _COMMAND_KEYS = frozenset({'on_reset_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 _STRING_LIST_KEYS = frozenset({'tooltip_fields'})
+_WILDCARD_STRING_LIST_KEYS = frozenset({'popup_fields'})
 _FIXED_LENGTH_STRING_LIST_KEYS: dict[str, int] = {'icon_fields': 2}
 
 
@@ -123,7 +123,7 @@ def _validate(data: dict, path: Path) -> dict:
                 errors.append(f'  {key}: expected a color string, got {type(value).__name__}')
                 drop.append(key)
 
-        elif key in _THRESHOLD_KEYS:
+        elif key.startswith(_THRESHOLD_KEY_PREFIX):
             if not isinstance(value, list):
                 errors.append(f'  {key}: expected an array, got {type(value).__name__}')
                 drop.append(key)
@@ -179,6 +179,25 @@ def _validate(data: dict, path: Path) -> dict:
                         seen.add(item)
                         deduped.append(item)
                 data[key] = deduped
+
+        elif key in _WILDCARD_STRING_LIST_KEYS:
+            if not isinstance(value, list):
+                errors.append(f'  {key}: expected an array, got {type(value).__name__}')
+                drop.append(key)
+            elif any(not isinstance(item, str) or not item for item in value):
+                errors.append(f'  {key}: all entries must be non-empty strings')
+                drop.append(key)
+            elif value.count('*') > 1:
+                errors.append(f'  {key}: "*" may appear at most once')
+                drop.append(key)
+            else:
+                seen_wc: set[str] = set()
+                deduped_wc: list[str] = []
+                for item in value:
+                    if item == '*' or item not in seen_wc:
+                        seen_wc.add(item)
+                        deduped_wc.append(item)
+                data[key] = deduped_wc
 
         elif key in _FIXED_LENGTH_STRING_LIST_KEYS:
             expected_len = _FIXED_LENGTH_STRING_LIST_KEYS[key]
@@ -259,10 +278,10 @@ ICON_FIELDS: list[str] = _S.get('icon_fields', ['five_hour', 'seven_day'])
 # Tooltip fields
 TOOLTIP_FIELDS: list[str] = _S.get('tooltip_fields', ['five_hour', 'seven_day'])
 
+# Popup fields
+POPUP_FIELDS: list[str] = _S.get('popup_fields', ['*'])
+
 # Alert thresholds
-ALERT_THRESHOLDS_FIVE_HOUR: list[float] = _S.get('alert_thresholds_five_hour', [50, 80, 95])
-ALERT_THRESHOLDS_SEVEN_DAY: list[float] = _S.get('alert_thresholds_seven_day', [95])
-ALERT_THRESHOLDS_EXTRA_USAGE: list[float] = _S.get('alert_thresholds_extra_usage', [50, 80, 95])
 ALERT_TIME_AWARE: bool = _S.get('alert_time_aware', True)
 ALERT_TIME_AWARE_BELOW: float = _S.get('alert_time_aware_below', 90)
 
@@ -287,21 +306,19 @@ LANGUAGE: str = _S.get('language', '')
 ON_RESET_COMMAND: list[str] = _S.get('on_reset_command', [])
 ON_THRESHOLD_COMMAND: list[str] = _S.get('on_threshold_command', [])
 
-_ALERT_THRESHOLDS = {
-    'five_hour': ALERT_THRESHOLDS_FIVE_HOUR,
-    'seven_day': ALERT_THRESHOLDS_SEVEN_DAY,
-    'seven_day_sonnet': ALERT_THRESHOLDS_SEVEN_DAY,
-    'seven_day_opus': ALERT_THRESHOLDS_SEVEN_DAY,
-    'extra_usage': ALERT_THRESHOLDS_EXTRA_USAGE,
+_ALERT_THRESHOLDS: dict[str, list[float]] = {
+    'five_hour': [50, 80, 95],
+    'seven_day': [95],
+    'extra_usage': [50, 80, 95],
 }
 
 
 def get_alert_thresholds(variant_key: str) -> list[float]:
     """Return the alert thresholds for a usage variant.
 
-    Session (5h), weekly (7d), and extra usage quotas each use separate
-    threshold lists.  All weekly variants (general, Sonnet, Opus) share
-    the same thresholds.  An empty list means alerts are disabled.
+    Uses a fallback chain: exact user override, built-in default for
+    the exact key, user override for the base period, built-in default
+    for the base period, then empty list (alerts disabled).
 
     Parameters
     ----------
@@ -309,4 +326,21 @@ def get_alert_thresholds(variant_key: str) -> list[float]:
         API variant key, e.g. ``'five_hour'``, ``'seven_day_sonnet'``,
         or ``'extra_usage'``.
     """
-    return _ALERT_THRESHOLDS.get(variant_key, [])
+    exact_settings_key = f'{_THRESHOLD_KEY_PREFIX}{variant_key}'
+    if exact_settings_key in _S:
+        return _S[exact_settings_key]
+
+    if variant_key in _ALERT_THRESHOLDS:
+        return _ALERT_THRESHOLDS[variant_key]
+
+    # Fallback to base period (strip variant suffix)
+    parts = variant_key.split('_', 2)
+    if len(parts) >= 3:
+        base_key = f'{parts[0]}_{parts[1]}'
+        base_settings_key = f'{_THRESHOLD_KEY_PREFIX}{base_key}'
+        if base_settings_key in _S:
+            return _S[base_settings_key]
+        if base_key in _ALERT_THRESHOLDS:
+            return _ALERT_THRESHOLDS[base_key]
+
+    return []

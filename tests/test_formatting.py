@@ -13,7 +13,9 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.formatting import (
-    PERIOD_5H, PERIOD_7D, elapsed_pct, format_credits, format_tooltip, midnight_positions, parse_field_name, time_until, tooltip_label,
+    PERIOD_5H, PERIOD_7D,
+    elapsed_pct, expand_popup_fields, field_period, format_credits, format_tooltip,
+    midnight_positions, parse_field_name, popup_label, time_until, tooltip_label,
 )
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
@@ -98,7 +100,7 @@ class TestTooltipLabel(unittest.TestCase):
         self.assertEqual(tooltip_label('five_hour_something'), '5h Something')
 
     def test_multi_word_variant(self):
-        self.assertEqual(tooltip_label('seven_day_oauth_apps'), '7d Oauth Apps')
+        self.assertEqual(tooltip_label('seven_day_oauth_apps'), '7d OAuth Apps')
 
     def test_unknown_number_fallback(self):
         """Unrecognized number word falls back to title case."""
@@ -114,6 +116,205 @@ class TestTooltipLabel(unittest.TestCase):
 
     def test_unknown_number_and_unit_fallback(self):
         self.assertEqual(tooltip_label('extra_usage'), 'Extra Usage')
+
+    def test_abbreviation_oauth(self):
+        """oauth is title-cased as OAuth."""
+        self.assertEqual(tooltip_label('seven_day_oauth'), '7d OAuth')
+
+    def test_abbreviation_api(self):
+        """api is title-cased as API."""
+        self.assertEqual(tooltip_label('seven_day_api'), '7d API')
+
+
+# ---------------------------------------------------------------------------
+# popup_label
+# ---------------------------------------------------------------------------
+
+@patch('usage_monitor_for_claude.formatting.T', EN)
+class TestPopupLabel(unittest.TestCase):
+    """Tests for popup_label()."""
+
+    def test_five_hour(self):
+        self.assertEqual(popup_label('five_hour'), 'Session (5hr)')
+
+    def test_seven_day(self):
+        self.assertEqual(popup_label('seven_day'), 'Weekly (7 day)')
+
+    def test_seven_day_sonnet(self):
+        self.assertEqual(popup_label('seven_day_sonnet'), 'Weekly (Sonnet)')
+
+    def test_seven_day_opus(self):
+        self.assertEqual(popup_label('seven_day_opus'), 'Weekly (Opus)')
+
+    def test_seven_day_cowork(self):
+        self.assertEqual(popup_label('seven_day_cowork'), 'Weekly (Cowork)')
+
+    def test_seven_day_oauth_apps(self):
+        self.assertEqual(popup_label('seven_day_oauth_apps'), 'Weekly (OAuth Apps)')
+
+    def test_three_day_foo(self):
+        self.assertEqual(popup_label('three_day_foo'), 'Weekly (Foo)')
+
+    def test_unknown_fallback(self):
+        self.assertEqual(popup_label('extra_usage'), 'Extra Usage')
+
+    def test_unknown_with_abbreviation(self):
+        self.assertEqual(popup_label('some_api_thing'), 'Some API Thing')
+
+
+# ---------------------------------------------------------------------------
+# field_period
+# ---------------------------------------------------------------------------
+
+class TestFieldPeriod(unittest.TestCase):
+    """Tests for field_period()."""
+
+    def test_five_hour(self):
+        self.assertEqual(field_period('five_hour'), 5 * 3600)
+
+    def test_seven_day(self):
+        self.assertEqual(field_period('seven_day'), 7 * 24 * 3600)
+
+    def test_seven_day_sonnet(self):
+        self.assertEqual(field_period('seven_day_sonnet'), 7 * 24 * 3600)
+
+    def test_three_day(self):
+        self.assertEqual(field_period('three_day'), 3 * 24 * 3600)
+
+    def test_unknown_returns_none(self):
+        self.assertIsNone(field_period('extra_usage'))
+
+    def test_unknown_unit_returns_none(self):
+        self.assertIsNone(field_period('one_year'))
+
+
+# ---------------------------------------------------------------------------
+# expand_popup_fields
+# ---------------------------------------------------------------------------
+
+class TestExpandPopupFields(unittest.TestCase):
+    """Tests for expand_popup_fields()."""
+
+    def _usage(self, **kwargs):
+        """Build a usage dict with given field names as active quota fields."""
+        return {k: {'utilization': v, 'resets_at': ''} for k, v in kwargs.items()}
+
+    def test_wildcard_only(self):
+        """Wildcard returns all fields in default order."""
+        usage = self._usage(seven_day=20, five_hour=10, seven_day_sonnet=30)
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['five_hour', 'seven_day', 'seven_day_sonnet'])
+
+    def test_explicit_fields(self):
+        """Explicit field names shown in listed order."""
+        usage = self._usage(five_hour=10, seven_day=20, seven_day_sonnet=30)
+        result = expand_popup_fields(['seven_day_sonnet', 'five_hour'], usage)
+        self.assertEqual(result, ['seven_day_sonnet', 'five_hour'])
+
+    def test_wildcard_after_explicit(self):
+        """Wildcard fills in remaining fields after explicit ones."""
+        usage = self._usage(five_hour=10, seven_day=20, seven_day_sonnet=30)
+        result = expand_popup_fields(['seven_day_sonnet', '*'], usage)
+        self.assertEqual(result, ['seven_day_sonnet', 'five_hour', 'seven_day'])
+
+    def test_null_fields_skipped(self):
+        """Fields with None utilization are skipped."""
+        usage = {'five_hour': {'utilization': 10, 'resets_at': ''}, 'seven_day': {'utilization': None, 'resets_at': ''}}
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['five_hour'])
+
+    def test_missing_fields_skipped(self):
+        """Explicitly listed fields missing from API are skipped."""
+        usage = self._usage(five_hour=10)
+        result = expand_popup_fields(['five_hour', 'seven_day_sonnet'], usage)
+        self.assertEqual(result, ['five_hour'])
+
+    def test_duplicates_removed(self):
+        """Explicit field followed by wildcard does not duplicate."""
+        usage = self._usage(five_hour=10, seven_day=20)
+        result = expand_popup_fields(['five_hour', '*'], usage)
+        self.assertEqual(result, ['five_hour', 'seven_day'])
+
+    def test_empty_setting(self):
+        """Empty field list returns nothing."""
+        usage = self._usage(five_hour=10)
+        result = expand_popup_fields([], usage)
+        self.assertEqual(result, [])
+
+    def test_default_order_hour_before_day(self):
+        """Default order puts hour fields before day fields."""
+        usage = self._usage(seven_day=20, five_hour=10)
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result[0], 'five_hour')
+        self.assertEqual(result[1], 'seven_day')
+
+    def test_default_order_base_before_variant(self):
+        """Default order puts base field before variants."""
+        usage = self._usage(seven_day_sonnet=30, seven_day=20)
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['seven_day', 'seven_day_sonnet'])
+
+    def test_default_order_variants_alphabetical(self):
+        """Default order sorts variants alphabetically."""
+        usage = self._usage(seven_day_opus=30, seven_day_cowork=20, seven_day_sonnet=10)
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['seven_day_cowork', 'seven_day_opus', 'seven_day_sonnet'])
+
+    def test_misspelled_field_skipped(self):
+        """Misspelled field names are silently skipped."""
+        usage = self._usage(five_hour=10, seven_day=20)
+        result = expand_popup_fields(['fve_hour', 'seven_day'], usage)
+        self.assertEqual(result, ['seven_day'])
+
+    def test_non_dict_values_ignored(self):
+        """Non-dict values in usage data (e.g. error strings) are ignored."""
+        usage = {'error': 'Connection failed', 'five_hour': {'utilization': 42, 'resets_at': ''}}
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['five_hour'])
+
+    def test_extra_usage_excluded(self):
+        """extra_usage is excluded (no resets_at key, different structure)."""
+        usage = {
+            'five_hour': {'utilization': 10, 'resets_at': ''},
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 500, 'utilization': 50},
+        }
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['five_hour'])
+
+    def test_field_with_utilization_none_skipped(self):
+        """Fields where utilization is None are skipped even when explicitly listed."""
+        usage = {'five_hour': {'utilization': None, 'resets_at': '2026-01-01T00:00:00Z'}}
+        result = expand_popup_fields(['five_hour'], usage)
+        self.assertEqual(result, [])
+
+    def test_field_without_resets_at_skipped(self):
+        """Fields without resets_at key are skipped (not a quota bar)."""
+        usage = {'five_hour': {'utilization': 42}}
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, [])
+
+    def test_all_fields_null(self):
+        """All quota fields null returns empty list."""
+        usage = {'five_hour': None, 'seven_day': None, 'seven_day_sonnet': None}
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, [])
+
+    def test_wildcard_with_all_misspelled(self):
+        """Wildcard with no matching fields returns empty list."""
+        usage = self._usage(five_hour=10)
+        result = expand_popup_fields(['typo_field', 'another_typo'], usage)
+        self.assertEqual(result, [])
+
+    def test_empty_usage_data(self):
+        """Empty usage data returns empty list."""
+        result = expand_popup_fields(['*'], {})
+        self.assertEqual(result, [])
+
+    def test_utilization_zero_included(self):
+        """Fields with utilization 0 are included (0 is a valid value, not null)."""
+        usage = {'five_hour': {'utilization': 0, 'resets_at': ''}}
+        result = expand_popup_fields(['*'], usage)
+        self.assertEqual(result, ['five_hour'])
 
 
 # ---------------------------------------------------------------------------

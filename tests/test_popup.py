@@ -36,24 +36,37 @@ def _snap(
 class TestUsageEntries(unittest.TestCase):
     """Tests for _usage_entries - extracts labelled tuples from usage dict."""
 
-    def test_all_four_entries_returned(self):
-        """Always returns exactly four entries regardless of content."""
-        entries = _usage_entries({})
-        self.assertEqual(len(entries), 4)
+    def test_returns_entries_for_active_fields(self):
+        """Returns entries only for non-null fields with utilization."""
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T00:00:00Z'},
+            'seven_day': {'utilization': 10, 'resets_at': '2026-01-07T00:00:00Z'},
+            'seven_day_sonnet': None,
+        }
+        entries = _usage_entries(usage)
+        self.assertEqual(len(entries), 2)
 
-    def test_labels_match_translation_keys(self):
-        """Each entry's label comes from the translation dict."""
-        from usage_monitor_for_claude.i18n import T
+    def test_labels_use_popup_label(self):
+        """Each entry's label is generated via popup_label."""
+        from usage_monitor_for_claude.formatting import popup_label
 
-        entries = _usage_entries({})
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T00:00:00Z'},
+            'seven_day': {'utilization': 10, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        entries = _usage_entries(usage)
         labels = [e[0] for e in entries]
-        self.assertEqual(labels, [T['session'], T['weekly'], T['weekly_sonnet'], T['weekly_opus']])
+        self.assertEqual(labels, [popup_label('five_hour'), popup_label('seven_day')])
 
-    def test_periods_are_correct(self):
-        """5h entry uses 18000s, 7d entries use 604800s."""
-        entries = _usage_entries({})
+    def test_periods_derived_from_field_name(self):
+        """Period is derived from the field name via field_period."""
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T00:00:00Z'},
+            'seven_day': {'utilization': 10, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        entries = _usage_entries(usage)
         periods = [e[2] for e in entries]
-        self.assertEqual(periods, [5 * 3600, 7 * 24 * 3600, 7 * 24 * 3600, 7 * 24 * 3600])
+        self.assertEqual(periods, [5 * 3600, 7 * 24 * 3600])
 
     def test_data_extraction(self):
         """Entry data is pulled from the correct usage dict keys."""
@@ -62,10 +75,65 @@ class TestUsageEntries(unittest.TestCase):
         usage = {'five_hour': five_hour, 'seven_day': seven_day}
 
         entries = _usage_entries(usage)
+        self.assertEqual(len(entries), 2)
         self.assertIs(entries[0][1], five_hour)
         self.assertIs(entries[1][1], seven_day)
-        self.assertIsNone(entries[2][1])  # seven_day_sonnet missing
-        self.assertIsNone(entries[3][1])  # seven_day_opus missing
+
+    def test_empty_usage_returns_empty(self):
+        """Empty usage dict returns no entries."""
+        self.assertEqual(_usage_entries({}), [])
+
+    def test_all_null_fields_returns_empty(self):
+        """All-null fields return no entries."""
+        usage = {'five_hour': None, 'seven_day': None, 'seven_day_sonnet': None}
+        self.assertEqual(_usage_entries(usage), [])
+
+    def test_null_utilization_skipped(self):
+        """Fields with utilization None are skipped."""
+        usage = {
+            'five_hour': {'utilization': None, 'resets_at': '2026-01-01T05:00:00Z'},
+            'seven_day': {'utilization': 20, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        entries = _usage_entries(usage)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1]['utilization'], 20)
+
+    @patch('usage_monitor_for_claude.popup.POPUP_FIELDS', ['fve_hour', 'seven_day'])
+    def test_misspelled_popup_field_skipped(self):
+        """Misspelled popup_fields entry is skipped, valid one shown."""
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'},
+            'seven_day': {'utilization': 20, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        entries = _usage_entries(usage)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1]['utilization'], 20)
+
+    @patch('usage_monitor_for_claude.popup.POPUP_FIELDS', ['seven_day_sonnet'])
+    def test_popup_field_pointing_to_null_skipped(self):
+        """popup_fields entry pointing to a null field produces no entries."""
+        usage = {'seven_day_sonnet': None, 'five_hour': {'utilization': 42, 'resets_at': ''}}
+        entries = _usage_entries(usage)
+        self.assertEqual(entries, [])
+
+    def test_non_dict_values_in_usage_ignored(self):
+        """Non-dict values (like error strings) in usage are ignored."""
+        usage = {
+            'error': 'server down',
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'},
+        }
+        entries = _usage_entries(usage)
+        self.assertEqual(len(entries), 1)
+
+    def test_extra_usage_not_shown_as_bar(self):
+        """extra_usage is excluded from dynamic bars (different structure)."""
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'},
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 500, 'utilization': 50},
+        }
+        entries = _usage_entries(usage)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0][1]['utilization'], 42)
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +274,40 @@ class TestSnapshotToDict(unittest.TestCase):
         self.assertEqual(len(result['usage']), 3)
         pcts = [b['pct_text'] for b in result['usage']]
         self.assertEqual(pcts, ['10%', '20%', '30%'])
+
+    @patch('usage_monitor_for_claude.popup.POPUP_FIELDS', ['typo_field', 'seven_day'])
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
+    def test_misspelled_popup_field_skipped_in_dict(self, _mock_mid, _mock_tu, _mock_ep):
+        """Misspelled popup_fields entry produces no bar, valid one shown."""
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'},
+            'seven_day': {'utilization': 20, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+        self.assertEqual(len(result['usage']), 1)
+        self.assertEqual(result['usage'][0]['pct_text'], '20%')
+
+    def test_all_null_fields_no_bars(self):
+        """All-null quota fields produce no usage bars."""
+        usage = {'five_hour': None, 'seven_day': None, 'seven_day_sonnet': None}
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+        self.assertEqual(result['usage'], [])
+
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
+    def test_non_dict_values_in_response_ignored(self, _mock_mid, _mock_tu, _mock_ep):
+        """Non-dict values in the API response are not shown as bars."""
+        usage = {
+            'error': 'temporary',
+            'rate_limited': True,
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'},
+        }
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+        self.assertEqual(len(result['usage']), 1)
+        self.assertEqual(result['usage'][0]['pct_text'], '42%')
 
     # -- extra usage --
 

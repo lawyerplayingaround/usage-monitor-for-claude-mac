@@ -782,38 +782,151 @@ class TestGetAlertThresholds(unittest.TestCase):
 
     def test_five_hour_returns_session_thresholds(self):
         """five_hour variant returns session thresholds."""
-        thresholds = {'five_hour': [70, 90], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
-        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+        thresholds = {'five_hour': [70, 90], 'seven_day': [80, 95], 'extra_usage': [50]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', {}):
             self.assertEqual(settings_mod.get_alert_thresholds('five_hour'), [70, 90])
 
     def test_seven_day_returns_weekly_thresholds(self):
         """seven_day variant returns weekly thresholds."""
-        thresholds = {'five_hour': [70, 90], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
-        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+        thresholds = {'five_hour': [70, 90], 'seven_day': [80, 95], 'extra_usage': [50]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', {}):
             self.assertEqual(settings_mod.get_alert_thresholds('seven_day'), [80, 95])
 
-    def test_seven_day_sonnet_shares_weekly_thresholds(self):
-        """seven_day_sonnet uses the same thresholds as seven_day."""
-        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
-        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+    def test_seven_day_sonnet_falls_back_to_weekly(self):
+        """seven_day_sonnet falls back to seven_day thresholds."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'extra_usage': [50]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', {}):
             self.assertEqual(settings_mod.get_alert_thresholds('seven_day_sonnet'), [80, 95])
 
-    def test_seven_day_opus_shares_weekly_thresholds(self):
-        """seven_day_opus uses the same thresholds as seven_day."""
-        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95]}
-        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+    def test_seven_day_opus_falls_back_to_weekly(self):
+        """seven_day_opus falls back to seven_day thresholds."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'extra_usage': [50]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', {}):
             self.assertEqual(settings_mod.get_alert_thresholds('seven_day_opus'), [80, 95])
+
+    def test_exact_settings_override(self):
+        """Per-variant settings override takes priority over built-in defaults."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'extra_usage': [50]}
+        settings = {'alert_thresholds_seven_day_opus': [50, 80]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', settings):
+            self.assertEqual(settings_mod.get_alert_thresholds('seven_day_opus'), [50, 80])
+
+    def test_base_period_settings_override(self):
+        """Base period settings override applies to variants."""
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'extra_usage': [50]}
+        settings = {'alert_thresholds_seven_day': [60, 90]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', settings):
+            self.assertEqual(settings_mod.get_alert_thresholds('seven_day_cowork'), [60, 90])
 
     def test_extra_usage_returns_own_thresholds(self):
         """extra_usage variant returns its own thresholds."""
-        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'seven_day_sonnet': [80, 95], 'seven_day_opus': [80, 95], 'extra_usage': [50, 80, 95]}
-        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds):
+        thresholds = {'five_hour': [70], 'seven_day': [80, 95], 'extra_usage': [50, 80, 95]}
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', thresholds), \
+             patch.object(settings_mod, '_S', {}):
             self.assertEqual(settings_mod.get_alert_thresholds('extra_usage'), [50, 80, 95])
 
     def test_unknown_variant_returns_empty(self):
         """Unknown variant key returns empty list."""
-        with patch.object(settings_mod, '_ALERT_THRESHOLDS', {'five_hour': [80], 'seven_day': [80], 'seven_day_sonnet': [80], 'seven_day_opus': [80]}):
+        with patch.object(settings_mod, '_ALERT_THRESHOLDS', {'five_hour': [80], 'seven_day': [80]}), \
+             patch.object(settings_mod, '_S', {}):
             self.assertEqual(settings_mod.get_alert_thresholds('unknown'), [])
+
+
+class TestPopupFieldsValidation(unittest.TestCase):
+    """Tests for popup_fields setting validation."""
+
+    def _run_validate(self, data: dict) -> tuple[dict, MagicMock]:
+        mock_ctypes = MagicMock()
+        with patch.object(settings_mod, 'ctypes', mock_ctypes):
+            result = settings_mod._validate(dict(data), Path('/fake/settings.json'))
+        return result, mock_ctypes
+
+    def test_valid_list_with_wildcard(self):
+        """Array with field names and wildcard passes through."""
+        result, mock = self._run_validate({'popup_fields': ['five_hour', '*']})
+        self.assertEqual(result['popup_fields'], ['five_hour', '*'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_wildcard_only(self):
+        """Array with only wildcard passes through."""
+        result, mock = self._run_validate({'popup_fields': ['*']})
+        self.assertEqual(result['popup_fields'], ['*'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_no_wildcard(self):
+        """Array without wildcard passes through."""
+        result, mock = self._run_validate({'popup_fields': ['five_hour', 'seven_day']})
+        self.assertEqual(result['popup_fields'], ['five_hour', 'seven_day'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_empty_list_valid(self):
+        """Empty list is valid (no bars shown)."""
+        result, mock = self._run_validate({'popup_fields': []})
+        self.assertEqual(result['popup_fields'], [])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_multiple_wildcards_dropped(self):
+        """Multiple wildcards cause the key to be dropped."""
+        result, mock = self._run_validate({'popup_fields': ['*', 'five_hour', '*']})
+        self.assertNotIn('popup_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_not_array_dropped(self):
+        """Non-array value is dropped."""
+        result, mock = self._run_validate({'popup_fields': 'five_hour'})
+        self.assertNotIn('popup_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_non_string_entry_dropped(self):
+        """Array with non-string entry is dropped."""
+        result, mock = self._run_validate({'popup_fields': ['five_hour', 42]})
+        self.assertNotIn('popup_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_empty_string_entry_dropped(self):
+        """Array with empty string entry is dropped."""
+        result, mock = self._run_validate({'popup_fields': ['five_hour', '']})
+        self.assertNotIn('popup_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_duplicates_removed(self):
+        """Duplicate entries are silently removed (wildcard preserved)."""
+        result, mock = self._run_validate({'popup_fields': ['five_hour', 'seven_day', 'five_hour', '*']})
+        self.assertEqual(result['popup_fields'], ['five_hour', 'seven_day', '*'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+
+class TestDynamicThresholdValidation(unittest.TestCase):
+    """Tests for dynamic alert_thresholds_* key validation."""
+
+    def _run_validate(self, data: dict) -> tuple[dict, MagicMock]:
+        mock_ctypes = MagicMock()
+        with patch.object(settings_mod, 'ctypes', mock_ctypes):
+            result = settings_mod._validate(dict(data), Path('/fake/settings.json'))
+        return result, mock_ctypes
+
+    def test_per_variant_threshold_valid(self):
+        """Per-variant threshold key is validated as threshold array."""
+        result, mock = self._run_validate({'alert_thresholds_seven_day_opus': [50, 80, 95]})
+        self.assertEqual(result['alert_thresholds_seven_day_opus'], [50, 80, 95])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_per_variant_threshold_invalid_dropped(self):
+        """Invalid per-variant threshold value is dropped."""
+        result, mock = self._run_validate({'alert_thresholds_seven_day_opus': 'bad'})
+        self.assertNotIn('alert_thresholds_seven_day_opus', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_per_variant_threshold_sorted_deduped(self):
+        """Per-variant thresholds are sorted and deduplicated."""
+        result, _ = self._run_validate({'alert_thresholds_seven_day_cowork': [95, 50, 80, 50]})
+        self.assertEqual(result['alert_thresholds_seven_day_cowork'], [50, 80, 95])
 
 
 if __name__ == '__main__':

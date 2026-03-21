@@ -25,10 +25,18 @@ Configure usage percentage thresholds that trigger Windows notifications. Sessio
 | Key | Default | Description |
 |-----|---------|-------------|
 | `alert_thresholds_five_hour` | `[50, 80, 95]` | Thresholds (%) for Session (5hr) |
-| `alert_thresholds_seven_day` | `[95]` | Thresholds (%) for all Weekly quotas (7 day, Sonnet, Opus) |
+| `alert_thresholds_seven_day` | `[95]` | Thresholds (%) for Weekly quotas (7 day and all variants) |
 | `alert_thresholds_extra_usage` | `[50, 80, 95]` | Thresholds (%) for Extra Usage (paid overage) |
 | `alert_time_aware` | `true` | Only alert when usage outpaces elapsed time |
 | `alert_time_aware_below` | `90` | Time-aware check applies only to thresholds below this value; thresholds at or above always fire |
+
+Threshold lookup uses a fallback chain: exact match (e.g. `alert_thresholds_seven_day_opus`), then base period (e.g. `alert_thresholds_seven_day`), then no alerts. This lets you configure stricter thresholds per variant when needed:
+
+```json
+{
+    "alert_thresholds_seven_day_opus": [50, 80, 95]
+}
+```
 
 ## Tooltip fields
 
@@ -47,6 +55,35 @@ Must be an array of non-empty strings. Duplicates are silently removed. An empty
 ```json
 {
     "tooltip_fields": ["five_hour", "seven_day_sonnet"]
+}
+```
+
+## Popup fields
+
+The popup shows usage bars for all active quota types by default. Use `popup_fields` to control which bars appear and in what order.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `popup_fields` | `["*"]` | Which usage fields to show in the popup, in order. `"*"` is a wildcard meaning "all remaining non-null fields in default order" |
+
+Must be an array of non-empty strings. `"*"` may appear at most once. Duplicates are silently removed. Unknown field names are accepted - if a field is `null` or missing from the API response, it is simply skipped.
+
+**Known field names:** `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_cowork`, `seven_day_oauth_apps`
+
+**Default order** (used for `"*"` and when no setting is present): shorter periods first (`hour` before `day`), base field before variants, variants alphabetically.
+
+**Examples:**
+
+| Setting | Result |
+|---------|--------|
+| *(not set)* | All non-null fields in default order |
+| `["five_hour", "seven_day_sonnet", "*"]` | Session first, then Sonnet, then all remaining |
+| `["five_hour", "seven_day"]` | Only these two, everything else hidden |
+| `["*"]` | Same as not set |
+
+```json
+{
+    "popup_fields": ["five_hour", "seven_day_sonnet", "*"]
 }
 ```
 

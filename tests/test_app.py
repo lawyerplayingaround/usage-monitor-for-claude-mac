@@ -171,6 +171,56 @@ class TestCheckThresholdAlerts(unittest.TestCase):
 
         self.app.icon.notify.assert_not_called()
 
+    def test_non_dict_entries_skipped(self):
+        """Non-dict entries in response (strings, booleans) are silently skipped."""
+        self.app._check_threshold_alerts({
+            'error': 'server down',
+            'rate_limited': True,
+            'five_hour': {'utilization': 82},
+        })
+
+        self.app.icon.notify.assert_called_once()
+
+    def test_extra_usage_excluded_from_regular_alerts(self):
+        """extra_usage is handled separately, not by the regular threshold loop."""
+        _cleanup(self.app)
+        self.app = _make_app(thresholds=[50])
+
+        with patch.object(self.app, '_check_extra_usage_alerts'):
+            self.app._check_threshold_alerts({
+                'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 800, 'utilization': 80},
+            })
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_null_entry_skipped(self):
+        """Null entry value is silently skipped."""
+        self.app._check_threshold_alerts({'five_hour': None, 'seven_day': {'utilization': 82}})
+
+        self.app.icon.notify.assert_called_once()
+
+    def test_entry_without_utilization_key_skipped(self):
+        """Entry dict without utilization key is silently skipped."""
+        self.app._check_threshold_alerts({'five_hour': {'resets_at': '2026-01-01T05:00:00Z'}})
+
+        self.app.icon.notify.assert_not_called()
+
+    def test_unknown_dynamic_variant_uses_fallback_thresholds(self):
+        """Dynamically discovered variant uses base period fallback thresholds."""
+        _cleanup(self.app)
+        self.app = _make_app()
+
+        # seven_day_cowork is not in the hardcoded thresholds but falls back to seven_day
+        self.app._check_threshold_alerts({'seven_day_cowork': {'utilization': 96}})
+
+        self.app.icon.notify.assert_called_once()
+
+    def test_field_without_resets_at_alerts_normally(self):
+        """Field missing resets_at still triggers threshold alert (time-aware falls back gracefully)."""
+        self.app._check_threshold_alerts({'five_hour': {'utilization': 82}})
+
+        self.app.icon.notify.assert_called_once()
+
 
 # ---------------------------------------------------------------------------
 # Time-aware alerts
@@ -498,23 +548,22 @@ class TestUpdateOrchestration(unittest.TestCase):
 
         self.app.update()
 
-        self.assertEqual(self.app._prev_5h, 42.0)
-        self.assertEqual(self.app._prev_7d, 15.0)
+        self.assertEqual(self.app._prev_utilization.get('five_hour'), 42.0)
+        self.assertEqual(self.app._prev_utilization.get('seven_day'), 15.0)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_status_image')
     def test_error_does_not_update_previous_values(self, _status, _tooltip):
         """Error response does not change tracked previous values."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 20.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 20.0}
         data = {'error': 'fail'}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
 
         self.app.update()
 
-        self.assertEqual(self.app._prev_5h, 50.0)
-        self.assertEqual(self.app._prev_7d, 20.0)
+        self.assertEqual(self.app._prev_utilization.get('five_hour'), 50.0)
+        self.assertEqual(self.app._prev_utilization.get('seven_day'), 20.0)
 
 
 # ---------------------------------------------------------------------------
@@ -537,8 +586,7 @@ class TestResetNotifications(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_5h_reset_notification(self, _icon, _tooltip):
         """Notification fires when 5h usage drops from >95% with 7d not blocking."""
-        self.app._prev_5h = 97.0
-        self.app._prev_7d = 50.0
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 50.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -551,8 +599,7 @@ class TestResetNotifications(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_5h_reset_suppressed_when_7d_blocking(self, _icon, _tooltip):
         """No 5h reset notification when 7d is at 99%+."""
-        self.app._prev_5h = 97.0
-        self.app._prev_7d = 50.0
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 50.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 99.5}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -566,8 +613,7 @@ class TestResetNotifications(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_7d_reset_notification(self, _icon, _tooltip):
         """Notification fires when 7d usage drops from >98% with 5h not blocking."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 99.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 99.0}
         data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -590,10 +636,55 @@ class TestResetNotifications(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_update_ignores_non_dict_entries(self, _icon, _tooltip):
+        """Non-dict entries in API response don't affect quota tracking."""
+        self.app._prev_utilization = {'five_hour': 50.0}
+        data = {
+            'error_code': 'temporary',
+            'rate_limited': False,
+            'five_hour': {'utilization': 55.0},
+        }
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._prev_utilization.get('five_hour'), 55.0)
+        self.assertNotIn('error_code', self.app._prev_utilization)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_update_excludes_extra_usage_from_quota_tracking(self, _icon, _tooltip):
+        """extra_usage is not tracked as a quota field for resets or fast polling."""
+        data = {
+            'five_hour': {'utilization': 42.0},
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 500, 'utilization': 50.0},
+        }
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertIn('five_hour', self.app._prev_utilization)
+        self.assertNotIn('extra_usage', self.app._prev_utilization)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_update_handles_all_null_fields(self, _icon, _tooltip):
+        """All-null quota fields produce empty tracking state."""
+        data = {'five_hour': None, 'seven_day': None}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._prev_utilization, {})
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_7d_reset_suppressed_when_5h_blocking(self, _icon, _tooltip):
         """No 7d reset notification when 5h is at 99%+."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 99.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 99.0}
         data = {'five_hour': {'utilization': 99.5}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -608,8 +699,7 @@ class TestResetNotifications(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_5h_reset_notification_deferred_while_idle(self, _icon, _tooltip, _locked):
         """Reset notification is deferred (not shown) while user is away."""
-        self.app._prev_5h = 97.0
-        self.app._prev_7d = 50.0
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 50.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -624,8 +714,7 @@ class TestResetNotifications(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_deferred_notification_shown_on_flush(self, _icon, _tooltip, _locked):
         """Deferred notifications are shown when flushed."""
-        self.app._prev_5h = 97.0
-        self.app._prev_7d = 50.0
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 50.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -646,14 +735,13 @@ class TestResetNotifications(unittest.TestCase):
         self.app.cache = MagicMock()
 
         # First reset cycle: 97% -> 10%
-        self.app._prev_5h = 97.0
-        self.app._prev_7d = 50.0
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 50.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
         self.app.cache.update.return_value = UpdateResult(data=data)
         self.app.update()
 
         # Second reset cycle: usage went back up on another device, then reset again
-        self.app._prev_5h = 96.0
+        self.app._prev_utilization['five_hour'] = 96.0
         data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 50.0}}
         self.app.cache.update.return_value = UpdateResult(data=data)
         self.app.update()
@@ -670,8 +758,7 @@ class TestResetNotifications(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_threshold_notifications_deferred_and_deduplicated(self, _icon, _tooltip, _locked):
         """Successive threshold crossings while idle keep only the latest notification per variant."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 10.0}
         self.app.cache = MagicMock()
 
         # Cross 80% threshold
@@ -680,7 +767,7 @@ class TestResetNotifications(unittest.TestCase):
         self.app.update()
 
         # Cross 95% threshold
-        self.app._prev_5h = 82.0
+        self.app._prev_utilization['five_hour'] = 82.0
         data = {'five_hour': {'utilization': 96.0, 'resets_at': '2025-01-15T18:00:00Z'}, 'seven_day': {'utilization': 10.0}}
         self.app.cache.update.return_value = UpdateResult(data=data)
         self.app.update()
@@ -714,8 +801,7 @@ class TestFastPolling(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_fast_polling_starts_on_usage_increase(self, _icon, _tooltip):
         """Fast polls start when 5h usage is increasing."""
-        self.app._prev_5h = 40.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 40.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 45.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -728,8 +814,7 @@ class TestFastPolling(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_fast_polling_decrements(self, _icon, _tooltip):
         """Fast poll counter decrements when usage is stable."""
-        self.app._prev_5h = 40.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 40.0, 'seven_day': 10.0}
         self.app._fast_polls_remaining = 2
         data = {'five_hour': {'utilization': 40.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
@@ -743,8 +828,7 @@ class TestFastPolling(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_fast_polling_not_below_zero(self, _icon, _tooltip):
         """Fast poll counter does not go below zero."""
-        self.app._prev_5h = 40.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 40.0, 'seven_day': 10.0}
         self.app._fast_polls_remaining = 0
         data = {'five_hour': {'utilization': 40.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
@@ -1236,8 +1320,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_reset_command_fires_on_5h_drop(self, _icon, _tooltip, mock_cmd):
         """Reset command fires when 5h usage drops."""
-        self.app._prev_5h = 98.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 98.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 20.0, 'resets_at': '2025-01-15T18:00:00Z'}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1261,8 +1344,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_reset_command_fires_on_7d_drop(self, _icon, _tooltip, mock_cmd):
         """Reset command fires when 7d usage drops."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 60.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 60.0}
         data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0, 'resets_at': '2025-01-20T00:00:00Z'}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1282,8 +1364,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_reset_command_fires_on_any_drop_not_just_exhausted(self, _icon, _tooltip, mock_cmd):
         """Reset command fires on any usage drop, not just from near-exhaustion."""
-        self.app._prev_5h = 30.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 30.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1301,8 +1382,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_reset_command_missing_resets_at(self, _icon, _tooltip, mock_cmd):
         """USAGE_MONITOR_RESETS_AT is empty string when resets_at is absent from data."""
-        self.app._prev_5h = 80.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 80.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1319,8 +1399,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_no_command_when_setting_empty(self, _icon, _tooltip, mock_cmd):
         """No command executed when on_reset_command is empty."""
-        self.app._prev_5h = 98.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 98.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 20.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1335,8 +1414,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_no_command_when_usage_increases(self, _icon, _tooltip, mock_cmd):
         """No command when usage is increasing."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 55.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1351,8 +1429,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_both_quotas_drop_fires_two_commands(self, _icon, _tooltip, mock_cmd):
         """Two commands fire when both 5h and 7d usage drop simultaneously."""
-        self.app._prev_5h = 95.0
-        self.app._prev_7d = 80.0
+        self.app._prev_utilization = {'five_hour': 95.0, 'seven_day': 80.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 20.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1383,8 +1460,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_no_command_when_usage_stable(self, _icon, _tooltip, mock_cmd):
         """No command when usage stays the same."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1400,8 +1476,7 @@ class TestResetCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_reset_command_fires_while_notification_deferred(self, _icon, _tooltip, _locked, mock_cmd):
         """Reset command fires immediately even when notification is deferred due to idle/lock."""
-        self.app._prev_5h = 97.0
-        self.app._prev_7d = 50.0
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 50.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 50.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1419,7 +1494,8 @@ class TestThresholdCommand(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
-        self.app._prev_5h = 0.0  # simulate past first update so commands are not suppressed
+        self.app._prev_utilization = {'five_hour': 0.0}
+        self.app._first_update_done = True
 
     def tearDown(self):
         _cleanup(self.app)
@@ -1499,7 +1575,7 @@ class TestThresholdCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.run_event_command')
     def test_no_command_on_first_update(self, mock_cmd):
         """Threshold command is suppressed on first update (notification still fires)."""
-        self.app._prev_5h = None  # first update - no previous values yet
+        self.app._first_update_done = False
 
         self.app._check_threshold_alerts({'five_hour': {'utilization': 85.0, 'resets_at': '2025-01-15T18:00:00Z'}})
 
@@ -1515,8 +1591,7 @@ class TestThresholdCommand(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.create_icon_image')
     def test_threshold_command_fires_while_notification_deferred(self, _icon, _tooltip, _locked, mock_cmd):
         """Threshold command fires immediately even when notification is deferred due to idle/lock."""
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 85.0, 'resets_at': '2025-01-15T18:00:00Z'}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1534,7 +1609,8 @@ class TestExtraUsageCommand(unittest.TestCase):
 
     def setUp(self):
         self.app = _make_app()
-        self.app._prev_5h = 0.0  # simulate past first update so commands are not suppressed
+        self.app._prev_utilization = {'five_hour': 0.0}
+        self.app._first_update_done = True
 
     def tearDown(self):
         _cleanup(self.app)
@@ -1924,8 +2000,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
     def test_5h_drop_clears_idle_reset_pending(self, _icon, _tooltip, _cmd):
         """_idle_reset_pending is cleared when a 5h usage drop is detected."""
         self.app._idle_reset_pending = True
-        self.app._prev_5h = 80.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 80.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1941,8 +2016,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
     def test_7d_drop_clears_idle_reset_pending(self, _icon, _tooltip, _cmd):
         """_idle_reset_pending is cleared when a 7d usage drop is detected."""
         self.app._idle_reset_pending = True
-        self.app._prev_5h = 10.0
-        self.app._prev_7d = 60.0
+        self.app._prev_utilization = {'five_hour': 10.0, 'seven_day': 60.0}
         data = {'five_hour': {'utilization': 10.0}, 'seven_day': {'utilization': 5.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1958,8 +2032,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
     def test_no_drop_keeps_idle_reset_pending(self, _icon, _tooltip, _cmd):
         """_idle_reset_pending persists when usage stays stable (no drop)."""
         self.app._idle_reset_pending = True
-        self.app._prev_5h = 50.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 10.0}
         data = {'five_hour': {'utilization': 55.0}, 'seven_day': {'utilization': 10.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
@@ -1973,8 +2046,7 @@ class TestIdleResetPendingCleared(unittest.TestCase):
     def test_error_response_keeps_idle_reset_pending(self, _icon, _tooltip):
         """_idle_reset_pending persists on API error (network failure)."""
         self.app._idle_reset_pending = True
-        self.app._prev_5h = 80.0
-        self.app._prev_7d = 10.0
+        self.app._prev_utilization = {'five_hour': 80.0, 'seven_day': 10.0}
         data = {'error': 'server down'}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)

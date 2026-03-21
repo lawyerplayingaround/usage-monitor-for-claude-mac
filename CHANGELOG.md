@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dynamic quota bars - the popup now automatically detects and displays all usage fields from the API response; no code change needed when Anthropic adds new quota types
+- Configurable popup fields - new `popup_fields` setting lets you choose which usage bars appear in the popup and in what order (e.g. `["five_hour", "seven_day_sonnet", "*"]`)
+- Per-variant alert thresholds - threshold lookup now supports exact field overrides (e.g. `alert_thresholds_seven_day_opus`) with automatic fallback to the base period thresholds
 - Configurable tray icon bars - new `icon_fields` setting lets you choose which two usage fields are shown in the tray icon (e.g. `["five_hour", "seven_day_sonnet"]`)
 - Configurable tooltip fields - new `tooltip_fields` setting lets you choose which usage fields appear in the tray tooltip (e.g. `["five_hour", "seven_day_sonnet"]`)
 - Support for the `CLAUDE_CONFIG_DIR` environment variable - the app now reads credentials and settings from a custom Claude config directory when set, falling back to `~/.claude/` as before
