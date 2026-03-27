@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Verbose mode (`--verbose`) - prints system diagnostics (OS, DPI, WebView2, .NET, Python, dependencies, credentials) to the terminal, making it easy to troubleshoot startup issues without a Python installation
+
+### Changed
+
+- Running from source (`python -m usage_monitor_for_claude`) no longer shows log output by default - use `--verbose` to enable diagnostics
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.13.1...HEAD)
 
 ## [1.13.1] - 2026-03-27
