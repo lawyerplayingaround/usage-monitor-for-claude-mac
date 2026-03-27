@@ -155,13 +155,14 @@ This starts a local server and opens the dev preview in your default browser. Us
 
 1. Update dependencies: `pip install --upgrade -r requirements.txt`
 2. Update `__version__` in [`usage_monitor_for_claude/__init__.py`](usage_monitor_for_claude/__init__.py) and the version in [`version_info.py`](version_info.py) (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
-3. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [1.x.x] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it
-4. Run the test suite: `python -m unittest discover -s tests`
-5. Smoke test: `python -m usage_monitor_for_claude` - verify tray icon, popup, and settings
-6. Build the EXE with `python build.py`
-7. Smoke test: `dist\UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
-8. Stage the changes from steps 2 and 3
-9. Commit, tag, push, and publish:
+3. Update `_FALLBACK_USER_AGENT` in [`usage_monitor_for_claude/api.py`](usage_monitor_for_claude/api.py) to the current Claude Code version
+4. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [1.x.x] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it
+5. Run the test suite: `python -m unittest discover -s tests`
+6. Smoke test: `python -m usage_monitor_for_claude` - verify tray icon, popup, and settings
+7. Build the EXE with `python build.py`
+8. Smoke test: `dist\UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
+9. Stage the changes from steps 2 to 4
+10. Commit, tag, push, and publish:
 
    ```bash
    git commit -m "Release v1.x.x"
