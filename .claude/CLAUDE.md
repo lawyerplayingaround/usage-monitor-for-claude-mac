@@ -19,6 +19,7 @@ Prioritize readability and auditability - users handle credentials and must be a
 ## Quota Fields
 - Never hardcode API quota field names (e.g. `five_hour`, `seven_day_sonnet`) in display logic, alert handling, or reset detection - new fields must be auto-detected from the API response structure
 - A quota field is any dict entry with `utilization` and `resets_at` keys; `extra_usage` has a separate structure and is handled independently
+- Quota fields can be `null` in the API response (e.g. when a quota type is not enabled for the account) - always use `(data.get('key') or {})` instead of `data.get('key', {})` when chaining `.get()` calls, because the latter returns `None` when the key exists with a `null` value
 - Labels, periods, and sort order are derived from the field name via `parse_field_name()` - no per-field mapping tables
 - Locale files use template keys (`session_label`, `weekly_label`, `notify_threshold_generic`) - never add per-field translation keys
 

@@ -231,8 +231,8 @@ class UsageCache:
                 self._version += 1
             return UpdateResult(data=data, token_refresh=token_refresh)
 
-        pct_5h = data.get('five_hour', {}).get('utilization')
-        pct_7d = data.get('seven_day', {}).get('utilization')
+        pct_5h = (data.get('five_hour') or {}).get('utilization')
+        pct_7d = (data.get('seven_day') or {}).get('utilization')
         log.info('fetch_usage -> OK (5h: %s%%, 7d: %s%%)', pct_5h if pct_5h is not None else '?', pct_7d if pct_7d is not None else '?')
         self._record_success(data)
         return UpdateResult(data=data)

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- App no longer crashes when the API returns `null` instead of an object for a quota field, e.g. `five_hour: null` (thanks to [@2wplayer](https://github.com/2wplayer) for reporting [#26](https://github.com/jens-duttke/usage-monitor-for-claude/issues/26))
+
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.13.0...HEAD)
 
 ## [1.13.0] - 2026-03-21

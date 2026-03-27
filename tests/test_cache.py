@@ -744,5 +744,38 @@ class TestUpdateResult(unittest.TestCase):
         self.assertTrue(result.token_refresh.updated)
 
 
+# ---------------------------------------------------------------------------
+# API response edge cases
+# ---------------------------------------------------------------------------
+
+class TestNullQuotaFields(unittest.TestCase):
+    """Tests for API responses with null/None quota field values (issue #26)."""
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value={'five_hour': None, 'seven_day': None})
+    def test_null_quota_fields_do_not_crash(self, _mock):
+        """update() succeeds when quota fields are explicitly None."""
+        cache = _make_cache()
+        result = cache.update()
+        self.assertIsNotNone(result.data)
+        self.assertEqual(cache.usage, {'five_hour': None, 'seven_day': None})
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value={'five_hour': None, 'seven_day': {'utilization': 30.0}})
+    def test_mixed_null_and_valid_quota_fields(self, _mock):
+        """update() succeeds when some quota fields are None and others are valid."""
+        cache = _make_cache()
+        result = cache.update()
+        self.assertIsNotNone(result.data)
+        self.assertEqual(cache.usage, {'five_hour': None, 'seven_day': {'utilization': 30.0}})
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value={})
+    def test_empty_response_treated_as_success(self, _mock):
+        """Empty dict without 'error' key is treated as success."""
+        cache = _make_cache()
+        result = cache.update()
+        self.assertIsNotNone(result.data)
+        self.assertIsNone(cache.last_error)
+        self.assertEqual(cache.consecutive_errors, 0)
+
+
 if __name__ == '__main__':
     unittest.main()
