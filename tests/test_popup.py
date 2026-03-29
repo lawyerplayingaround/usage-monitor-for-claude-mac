@@ -242,11 +242,30 @@ class TestSnapshotToDict(unittest.TestCase):
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
     @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
+    def test_warn_at_100_without_time_period(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+        """Bar at 100% is warn even when no time period (time_pct is None)."""
+        usage = {'five_hour': {'utilization': 100, 'resets_at': ''}}
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+        self.assertTrue(result['usage'][0]['warn'])
+
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=100.0)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
+    def test_warn_at_100_when_time_also_100(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+        """Bar at 100% is warn even when elapsed time is also 100% (strict > would miss this)."""
+        usage = {'five_hour': {'utilization': 100, 'resets_at': '2026-01-01T05:00:00Z'}}
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+        self.assertTrue(result['usage'][0]['warn'])
+
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
     def test_fill_pct_clamped_to_0_1(self, _mock_midnights, _mock_time_until, _mock_elapsed):
-        """Fill percentage is clamped between 0.0 and 1.0."""
+        """Fill percentage is clamped between 0.0 and 1.0, and over-quota is always warn."""
         usage = {'five_hour': {'utilization': 150, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
         self.assertEqual(result['usage'][0]['fill_pct'], 1.0)
+        self.assertTrue(result['usage'][0]['warn'])
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')

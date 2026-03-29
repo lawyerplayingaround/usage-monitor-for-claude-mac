@@ -84,7 +84,7 @@ def _snapshot_to_dict(
             pct = entry.get('utilization', 0) or 0
             resets_at = entry.get('resets_at', '')
             time_pct = elapsed_pct(resets_at, period) if period else None
-            warn = time_pct is not None and pct > time_pct
+            warn = pct >= 100 or (time_pct is not None and pct > time_pct)
             marker_rel = max(0.0, min(1.0, time_pct / 100)) if time_pct is not None else None
 
             usage.append({
