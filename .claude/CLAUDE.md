@@ -90,6 +90,15 @@ Prioritize readability and auditability - users handle credentials and must be a
 
 ## README
 - Keep the feature list and descriptions in `README.md` in sync when adding, changing, or removing user-facing features
+- The feature list follows the user's decision journey - place new features in the appropriate tier:
+  1. **Getting started** (barrier to entry): Portable, Zero configuration
+  2. **Daily visible value** (what the user sees every day): Live tray icon, Detail popup, Claude Code versions
+  3. **Proactive protection** (alerts and automation): Smart alerts, Event commands
+  4. **Visual quality** (richer understanding of data): Time marker
+  5. **Reliability** (it just keeps working): Automatic token refresh, Adaptive polling
+  6. **Reach and preferences** (secondary concerns): 13 languages, Customizable
+- Write feature descriptions from the user's perspective - lead with the problem solved or value gained, not the implementation. Ask: "why would someone choose this tool because of this feature?"
+- Unique features (no competing tool has them) deserve a standalone bullet; convenience improvements that could be described as sub-details of an existing feature belong in that feature's description instead
 
 ## Changelog
 - Update `CHANGELOG.md` for every user-facing change (new features, bug fixes, behavior changes, UI changes)
