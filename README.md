@@ -1,9 +1,7 @@
 # Usage Monitor for Claude
 
-[![Latest Release](https://img.shields.io/github/v/release/jens-duttke/usage-monitor-for-claude?style=for-the-badge)](https://github.com/jens-duttke/usage-monitor-for-claude/releases/latest)
 [![Feature Ideas](https://img.shields.io/badge/Feature_Ideas-Vote_%26_Discuss-blue?style=for-the-badge&logo=github)](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/categories/ideas)
 [![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ff69b4?style=for-the-badge&logo=github)](https://github.com/sponsors/jens-duttke)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 **Monitor your Claude rate limits in real time - right from your Windows system tray.**
 
