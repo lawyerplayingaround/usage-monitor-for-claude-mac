@@ -149,6 +149,10 @@ function tickStatusText() {
 
     const now = Date.now() / 1000;
     const secondsAgo = Math.max(0, Math.floor(now - statusState.lastSuccessTime));
+    const isStale = !!statusState.nextPollTime && (now > statusState.nextPollTime + 30);
+    els.usageSection.classList.toggle('stale', isStale);
+    els.extraSection.classList.toggle('stale', isStale);
+
     const parts = [formatDuration(secondsAgo)];
 
     if (statusState.refreshing) {
