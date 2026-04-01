@@ -54,6 +54,7 @@ class UsageMonitorForClaude:
 
         # Notification state
         self._prev_utilization: dict[str, float] = {}
+        self._prev_account_uuid: str | None = None
         self._first_update_done = False
         self._notified_thresholds: dict[str, float] = {}
 
@@ -240,6 +241,22 @@ class UsageMonitorForClaude:
 
         if 'error' in result.data:
             return
+
+        # Detect account switch: re-fetch profile if the access token changed, then compare UUIDs.
+        # When the user runs 'claude auth login', the token changes and the next profile fetch
+        # returns a different account UUID, preventing a false quota-reset notification.
+        self.cache.ensure_profile()
+        current_profile = self.cache.profile
+        current_account_uuid = current_profile.get('account', {}).get('uuid') if isinstance(current_profile, dict) else None
+        if self._prev_account_uuid is not None and current_account_uuid is not None and current_account_uuid != self._prev_account_uuid:
+            email = current_profile.get('account', {}).get('email', '')
+            message = T['notify_account_switched'].format(email=email) if email else T['notify_account_switched_title']
+            self._notify_or_defer('account_switched', message, T['notify_account_switched_title'])
+            self._prev_utilization = {}
+            self._notified_thresholds = {}
+            self._prev_account_uuid = current_account_uuid
+            return
+        self._prev_account_uuid = current_account_uuid
 
         # Collect all quota fields with utilization (extra_usage has a different structure)
         quota_fields: dict[str, float] = {}

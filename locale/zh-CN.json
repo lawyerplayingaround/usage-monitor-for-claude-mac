@@ -44,6 +44,8 @@
     "warn_login": "请先安装并登录 Claude Code：",
     "notify_reset_title": "配额重置",
     "notify_reset": "您的配额已重置。Claude 已可再次使用。",
+    "notify_account_switched_title": "账号已切换",
+    "notify_account_switched": "已登录为 {email}。",
     "notify_threshold_title": "用量提醒",
     "notify_threshold_generic": "您的{label}用量已达到 {pct}%。",
     "notify_threshold_extra_usage": "您的额外用量已达到 {pct}% ({used} / {limit})。",

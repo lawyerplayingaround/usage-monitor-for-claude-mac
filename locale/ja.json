@@ -44,6 +44,8 @@
     "warn_login": "Claude Codeをインストールしてログインしてください：",
     "notify_reset_title": "クォータリセット",
     "notify_reset": "クォータがリセットされました。Claudeが再び利用可能です。",
+    "notify_account_switched_title": "アカウント切替",
+    "notify_account_switched": "{email} としてサインインしました。",
     "notify_threshold_title": "使用状況のお知らせ",
     "notify_threshold_generic": "{label}の使用量が{pct}%に達しました。",
     "notify_threshold_extra_usage": "追加使用量が{pct}%に達しました ({used} / {limit})。",

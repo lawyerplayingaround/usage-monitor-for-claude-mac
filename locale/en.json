@@ -36,6 +36,8 @@
     "warn_login": "Please install and log in to Claude Code first:",
     "notify_reset_title": "Quota Reset",
     "notify_reset": "Your quota has been reset. Claude is ready to use again.",
+    "notify_account_switched_title": "Account Switched",
+    "notify_account_switched": "Signed in as {email}.",
     "notify_threshold_title": "Usage Notice",
     "notify_threshold_generic": "Your {label} usage has reached {pct}%.",
     "notify_threshold_extra_usage": "Your extra usage has reached {pct}% ({used} / {limit}).",

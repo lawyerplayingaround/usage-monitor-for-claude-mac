@@ -2056,5 +2056,153 @@ class TestIdleResetPendingCleared(unittest.TestCase):
         self.assertTrue(self.app._idle_reset_pending)
 
 
+# ---------------------------------------------------------------------------
+# Account switch detection
+# ---------------------------------------------------------------------------
+
+class TestAccountSwitchDetection(unittest.TestCase):
+    """Tests for account switch detection and notification in update()."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self._cmd_patch = patch('usage_monitor_for_claude.app.run_event_command')
+        self._cmd_patch.start()
+
+    def tearDown(self):
+        self._cmd_patch.stop()
+        _cleanup(self.app)
+
+    def _make_cache_mock(self, uuid, email, data):
+        """Return a configured cache mock with given profile and usage data."""
+        mock = MagicMock()
+        mock.update.return_value = UpdateResult(data=data)
+        mock.profile = {'account': {'uuid': uuid, 'email': email}}
+        return mock
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_account_switch_shows_notification(self, _icon, _tooltip):
+        """Notification fires when account UUID changes between updates."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', data)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_called_once()
+        args = self.app.icon.notify.call_args[0]
+        self.assertIn('new@example.com', args[0])
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_notification_on_first_update(self, _icon, _tooltip):
+        """No account switch notification on first update (_prev_account_uuid is None)."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app.cache = self._make_cache_mock('uuid-1', 'user@example.com', data)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_account_switch_clears_prev_utilization(self, _icon, _tooltip):
+        """Account switch resets _prev_utilization to prevent false reset notifications."""
+        data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 5.0}}
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 99.0}
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', data)
+
+        self.app.update()
+
+        # prev_utilization must be cleared so reset detection cannot fire on next cycle
+        self.assertEqual(self.app._prev_utilization, {})
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_account_switch_clears_notified_thresholds(self, _icon, _tooltip):
+        """Account switch resets _notified_thresholds so threshold alerts re-arm for new account."""
+        data = {'five_hour': {'utilization': 85.0}}
+        self.app._notified_thresholds = {'five_hour': 80.0}
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._notified_thresholds, {})
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_account_switch_no_reset_notification(self, _icon, _tooltip):
+        """No quota reset notification fires when account switches (even if utilization dropped from high)."""
+        # Old account was near limit; new account has low utilization
+        data = {'five_hour': {'utilization': 5.0}, 'seven_day': {'utilization': 5.0}}
+        self.app._prev_utilization = {'five_hour': 97.0, 'seven_day': 99.0}
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', data)
+
+        self.app.update()
+
+        # Only the account switch notification - no reset notification
+        self.assertEqual(self.app.icon.notify.call_count, 1)
+        title_arg = self.app.icon.notify.call_args[0][1]
+        self.assertNotIn('Reset', title_arg)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_same_account_no_notification(self, _icon, _tooltip):
+        """No account switch notification when UUID is unchanged."""
+        data = {'five_hour': {'utilization': 50.0}}
+        self.app._prev_account_uuid = 'uuid-same'
+        self.app.cache = self._make_cache_mock('uuid-same', 'user@example.com', data)
+
+        with patch.object(self.app, '_check_threshold_alerts'):
+            self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=True)
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_account_switch_notification_deferred_while_idle(self, _icon, _tooltip, _locked):
+        """Account switch notification is deferred when user is away."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', data)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+        self.assertIn('account_switched', self.app._deferred_notifications)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_account_switch_updates_prev_account_uuid(self, _icon, _tooltip):
+        """After account switch, _prev_account_uuid is updated to the new UUID."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', data)
+
+        self.app.update()
+
+        self.assertEqual(self.app._prev_account_uuid, 'uuid-new')
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_notification_when_profile_unavailable(self, _icon, _tooltip):
+        """No account switch notification when profile could not be loaded (UUID unknown)."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app._prev_account_uuid = 'uuid-old'
+        mock = MagicMock()
+        mock.update.return_value = UpdateResult(data=data)
+        mock.profile = None
+        self.app.cache = mock
+
+        with patch.object(self.app, '_check_threshold_alerts'):
+            self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

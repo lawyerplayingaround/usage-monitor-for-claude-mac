@@ -44,6 +44,8 @@
     "warn_login": "Будь ласка, спочатку встановіть та увійдіть у Claude Code:",
     "notify_reset_title": "Квоту скинуто",
     "notify_reset": "Вашу квоту було скинуто. Claude знову готовий до використання.",
+    "notify_account_switched_title": "Обліковий запис змінено",
+    "notify_account_switched": "Вхід виконано як {email}.",
     "notify_threshold_title": "Сповіщення про використання",
     "notify_threshold_generic": "Ваше використання {label} досягло {pct}%.",
     "notify_threshold_extra_usage": "Ваше додаткове використання досягло {pct}% ({used} / {limit}).",

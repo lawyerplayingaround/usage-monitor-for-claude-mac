@@ -44,6 +44,8 @@
     "warn_login": "Silakan instal dan masuk ke Claude Code terlebih dahulu:",
     "notify_reset_title": "Kuota Direset",
     "notify_reset": "Kuota Anda telah direset. Claude siap digunakan kembali.",
+    "notify_account_switched_title": "Akun Diganti",
+    "notify_account_switched": "Masuk sebagai {email}.",
     "notify_threshold_title": "Pemberitahuan Penggunaan",
     "notify_threshold_generic": "Penggunaan {label} Anda telah mencapai {pct}%.",
     "notify_threshold_extra_usage": "Penggunaan ekstra Anda telah mencapai {pct}% ({used} / {limit}).",

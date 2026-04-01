@@ -44,6 +44,8 @@
     "warn_login": "कृपया पहले Claude Code इंस्टॉल करें और लॉग इन करें:",
     "notify_reset_title": "कोटा रीसेट",
     "notify_reset": "आपका कोटा रीसेट हो गया है। Claude फिर से उपयोग के लिए तैयार है।",
+    "notify_account_switched_title": "खाता बदला",
+    "notify_account_switched": "{email} के रूप में साइन इन किया।",
     "notify_threshold_title": "उपयोग सूचना",
     "notify_threshold_generic": "आपका {label} उपयोग {pct}% तक पहुँच गया है।",
     "notify_threshold_extra_usage": "आपका अतिरिक्त उपयोग {pct}% तक पहुँच गया है ({used} / {limit})।",

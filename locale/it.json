@@ -44,6 +44,8 @@
     "warn_login": "Installa e accedi prima a Claude Code:",
     "notify_reset_title": "Quota ripristinata",
     "notify_reset": "La tua quota è stata ripristinata. Claude è di nuovo pronto all'uso.",
+    "notify_account_switched_title": "Account cambiato",
+    "notify_account_switched": "Accesso effettuato come {email}.",
     "notify_threshold_title": "Avviso di utilizzo",
     "notify_threshold_generic": "Il tuo utilizzo {label} ha raggiunto il {pct}%.",
     "notify_threshold_extra_usage": "Il tuo utilizzo extra ha raggiunto il {pct}% ({used} / {limit}).",

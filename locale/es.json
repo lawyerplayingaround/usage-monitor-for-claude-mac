@@ -44,6 +44,8 @@
     "warn_login": "Instala e inicia sesión en Claude Code primero:",
     "notify_reset_title": "Cuota restablecida",
     "notify_reset": "Tu cuota ha sido restablecida. Claude está listo para usar de nuevo.",
+    "notify_account_switched_title": "Cuenta cambiada",
+    "notify_account_switched": "Sesión iniciada como {email}.",
     "notify_threshold_title": "Aviso de uso",
     "notify_threshold_generic": "Tu uso de {label} ha alcanzado el {pct}%.",
     "notify_threshold_extra_usage": "Tu uso extra ha alcanzado el {pct}% ({used} / {limit}).",

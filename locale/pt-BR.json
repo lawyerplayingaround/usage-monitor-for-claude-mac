@@ -44,6 +44,8 @@
     "warn_login": "Instale e faça login no Claude Code primeiro:",
     "notify_reset_title": "Cota redefinida",
     "notify_reset": "Sua cota foi redefinida. O Claude está pronto para uso novamente.",
+    "notify_account_switched_title": "Conta alterada",
+    "notify_account_switched": "Conectado como {email}.",
     "notify_threshold_title": "Aviso de uso",
     "notify_threshold_generic": "Seu uso de {label} atingiu {pct}%.",
     "notify_threshold_extra_usage": "Seu uso extra atingiu {pct}% ({used} / {limit}).",

@@ -44,6 +44,8 @@
     "warn_login": "Claude Code를 설치하고 로그인하세요:",
     "notify_reset_title": "할당량 재설정",
     "notify_reset": "할당량이 재설정되었습니다. Claude를 다시 사용할 수 있습니다.",
+    "notify_account_switched_title": "계정 전환됨",
+    "notify_account_switched": "{email}(으)로 로그인했습니다.",
     "notify_threshold_title": "사용량 알림",
     "notify_threshold_generic": "{label} 사용량이 {pct}%에 도달했습니다.",
     "notify_threshold_extra_usage": "추가 사용량이 {pct}%에 도달했습니다 ({used} / {limit}).",

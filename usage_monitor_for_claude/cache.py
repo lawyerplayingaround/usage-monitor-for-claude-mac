@@ -66,6 +66,7 @@ class UsageCache:
         self._profile_lock = threading.Lock()
         self._usage: dict[str, Any] = {}
         self._profile: dict[str, Any] | None = None
+        self._profile_token: str | None = None
         self._last_success_time: float | None = None
         self._refreshing = False
         self._last_error: str | None = None
@@ -127,22 +128,25 @@ class UsageCache:
     # Public methods
 
     def ensure_profile(self) -> None:
-        """Fetch the account profile if not yet loaded (thread-safe).
+        """Fetch the account profile if not yet loaded, or re-fetch if the access token changed (thread-safe).
 
         Acquires ``_lock`` around the HTTP call to prevent concurrent
         API requests with ``update()``.
         """
-        if self._profile is not None:
+        current_token = read_access_token()
+        if self._profile is not None and self._profile_token == current_token:
             return
 
         with self._profile_lock:
-            if self._profile is not None:
+            current_token = read_access_token()
+            if self._profile is not None and self._profile_token == current_token:
                 return
             log.info('fetch_profile started')
             with self._lock:
                 profile = fetch_profile()
             with self._state_lock:
                 self._profile = profile
+                self._profile_token = current_token
                 self._version += 1
             log.info('fetch_profile -> %s', 'OK' if profile else 'failed')
 

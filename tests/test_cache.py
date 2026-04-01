@@ -692,10 +692,12 @@ class TestEnsureProfile(unittest.TestCase):
         self.assertEqual(cache.profile, {'name': 'Test User'})
         mock_fetch.assert_called_once()
 
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='token-x')
     @patch('usage_monitor_for_claude.cache.fetch_profile')
-    def test_skips_when_already_loaded(self, mock_fetch):
+    def test_skips_when_already_loaded(self, mock_fetch, _mock_token):
         cache = _make_cache()
         cache._profile = {'name': 'Cached'}
+        cache._profile_token = 'token-x'
         cache.ensure_profile()
         mock_fetch.assert_not_called()
 
@@ -775,6 +777,69 @@ class TestNullQuotaFields(unittest.TestCase):
         self.assertIsNotNone(result.data)
         self.assertIsNone(cache.last_error)
         self.assertEqual(cache.consecutive_errors, 0)
+
+
+# ---------------------------------------------------------------------------
+# ensure_profile token-change re-fetch
+# ---------------------------------------------------------------------------
+
+class TestEnsureProfileTokenChange(unittest.TestCase):
+    """Tests for ensure_profile() re-fetching when the access token changes."""
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'account': {'uuid': 'uuid-1'}})
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='token-a')
+    def test_initial_fetch(self, _mock_token, mock_profile):
+        """ensure_profile() fetches profile on first call."""
+        cache = _make_cache()
+        cache.ensure_profile()
+        mock_profile.assert_called_once()
+        self.assertEqual(cache.profile, {'account': {'uuid': 'uuid-1'}})
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'account': {'uuid': 'uuid-1'}})
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='token-a')
+    def test_no_refetch_when_token_unchanged(self, _mock_token, mock_profile):
+        """ensure_profile() does not re-fetch when profile is loaded and token unchanged."""
+        cache = _make_cache()
+        cache.ensure_profile()
+        mock_profile.reset_mock()
+
+        cache.ensure_profile()
+
+        mock_profile.assert_not_called()
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile')
+    @patch('usage_monitor_for_claude.cache.read_access_token')
+    def test_refetch_when_token_changes(self, mock_token, mock_profile):
+        """ensure_profile() re-fetches profile when the access token has changed."""
+        mock_token.return_value = 'token-a'
+        mock_profile.return_value = {'account': {'uuid': 'uuid-1'}}
+        cache = _make_cache()
+        cache.ensure_profile()
+
+        mock_token.return_value = 'token-b'
+        mock_profile.return_value = {'account': {'uuid': 'uuid-2'}}
+        cache.ensure_profile()
+
+        self.assertEqual(mock_profile.call_count, 2)
+        self.assertEqual(cache.profile, {'account': {'uuid': 'uuid-2'}})
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile')
+    @patch('usage_monitor_for_claude.cache.read_access_token')
+    def test_profile_token_updated_after_refetch(self, mock_token, mock_profile):
+        """After re-fetching, the new token is stored so subsequent calls are skipped."""
+        mock_token.return_value = 'token-a'
+        mock_profile.return_value = {'account': {'uuid': 'uuid-1'}}
+        cache = _make_cache()
+        cache.ensure_profile()
+
+        mock_token.return_value = 'token-b'
+        mock_profile.return_value = {'account': {'uuid': 'uuid-2'}}
+        cache.ensure_profile()
+        mock_profile.reset_mock()
+
+        # Third call: same token-b, should not re-fetch
+        cache.ensure_profile()
+        mock_profile.assert_not_called()
 
 
 if __name__ == '__main__':

@@ -44,6 +44,8 @@
     "warn_login": "Bitte Claude Code installieren und anmelden:",
     "notify_reset_title": "Kontingent zurückgesetzt",
     "notify_reset": "Ihr Kontingent wurde zurückgesetzt. Claude ist wieder einsatzbereit.",
+    "notify_account_switched_title": "Konto gewechselt",
+    "notify_account_switched": "Angemeldet als {email}.",
     "notify_threshold_title": "Nutzungshinweis",
     "notify_threshold_generic": "Ihre {label}-Nutzung hat {pct}% erreicht.",
     "notify_threshold_extra_usage": "Ihre Zusatznutzung hat {pct}% erreicht ({used} / {limit}).",
