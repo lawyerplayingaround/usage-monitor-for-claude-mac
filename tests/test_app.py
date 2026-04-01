@@ -859,7 +859,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day': {'utilization': 10.0}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(42.0, 10.0, False)
+        mock_icon.assert_called_once_with(42.0, 10.0, False, time_pct_top=None, time_pct_bottom=None)
         self.assertEqual(self.app.icon.title, 'Usage: 42%')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='Error')
@@ -887,7 +887,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {}, 'seven_day': {'utilization': None}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 0, False)
+        mock_icon.assert_called_once_with(0, 0, False, time_pct_top=None, time_pct_bottom=None)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -900,7 +900,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(75.0, 30.0, False)
+        mock_icon.assert_called_once_with(75.0, 30.0, False, time_pct_top=None, time_pct_bottom=None)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -910,7 +910,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 42.0, False)
+        mock_icon.assert_called_once_with(0, 42.0, False, time_pct_top=None, time_pct_bottom=None)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -920,7 +920,50 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day_sonnet': None}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 42.0, False)
+        mock_icon.assert_called_once_with(0, 42.0, False, time_pct_top=None, time_pct_bottom=None)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.elapsed_pct', return_value=40.0)
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['five_hour:overage', 'seven_day'])
+    def test_overage_mode_passes_time_pct(self, mock_elapsed, mock_icon, _tooltip):
+        """Overage mode passes elapsed time pct to create_icon_image for the top bar."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 60.0, 'resets_at': '2025-01-15T18:00:00Z'},
+            'seven_day': {'utilization': 20.0},
+        }
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(60.0, 20.0, False, time_pct_top=40.0, time_pct_bottom=None)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.elapsed_pct', return_value=50.0)
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['five_hour:overage', 'seven_day:overage'])
+    def test_both_overage_mode_passes_both_time_pcts(self, mock_elapsed, mock_icon, _tooltip):
+        """Both bars in overage mode pass elapsed time pct for both top and bottom."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 30.0, 'resets_at': '2025-01-15T18:00:00Z'},
+            'seven_day': {'utilization': 10.0, 'resets_at': '2025-01-20T00:00:00Z'},
+        }
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(30.0, 10.0, False, time_pct_top=50.0, time_pct_bottom=50.0)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['five_hour:overage', 'seven_day'])
+    def test_overage_mode_field_parsed_as_dict_key(self, mock_icon, _tooltip):
+        """Field name in overage mode is correctly stripped of mode suffix for data lookup."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 55.0, 'resets_at': '2025-01-15T18:00:00Z'},
+            'seven_day': {'utilization': 25.0},
+        }
+        self.app._render_tray()
+
+        # pct_top should be 55.0 (not 0), confirming 'five_hour' was used as dict key not 'five_hour:overage'
+        call_args = mock_icon.call_args
+        self.assertEqual(call_args[0][0], 55.0)
 
 
 # ---------------------------------------------------------------------------
@@ -947,7 +990,7 @@ class TestOnThemeChanged(unittest.TestCase):
         self.app._on_theme_changed()
 
         self.assertTrue(self.app._light_taskbar)
-        mock_icon.assert_called_once_with(50.0, 20.0, True)
+        mock_icon.assert_called_once_with(50.0, 20.0, True, time_pct_top=None, time_pct_bottom=None)
 
     @patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=False)
     def test_same_theme_no_render(self, _theme):

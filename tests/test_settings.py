@@ -675,6 +675,36 @@ class TestIconFieldsValidation(unittest.TestCase):
         self.assertNotIn('icon_fields', result)
         mock.windll.user32.MessageBoxW.assert_called_once()
 
+    def test_valid_mode_suffix_utilization(self):
+        """Field with ':utilization' suffix is accepted."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour:utilization', 'seven_day']})
+        self.assertEqual(result['icon_fields'], ['five_hour:utilization', 'seven_day'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_valid_mode_suffix_overage(self):
+        """Field with ':overage' suffix is accepted."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour:overage', 'seven_day:overage']})
+        self.assertEqual(result['icon_fields'], ['five_hour:overage', 'seven_day:overage'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
+    def test_invalid_mode_suffix_dropped(self):
+        """Field with unknown mode suffix is dropped."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour:bogus', 'seven_day']})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_mixed_valid_and_invalid_mode_dropped(self):
+        """Any invalid mode suffix causes the entire icon_fields to be dropped."""
+        result, mock = self._run_validate({'icon_fields': ['five_hour:overage', 'seven_day:invalid']})
+        self.assertNotIn('icon_fields', result)
+        mock.windll.user32.MessageBoxW.assert_called_once()
+
+    def test_mode_suffix_on_unknown_field_accepted(self):
+        """Valid mode suffix on unknown field name is accepted."""
+        result, mock = self._run_validate({'icon_fields': ['future_field:overage', 'another:utilization']})
+        self.assertEqual(result['icon_fields'], ['future_field:overage', 'another:utilization'])
+        mock.windll.user32.MessageBoxW.assert_not_called()
+
 
 class TestIconFieldsDefault(unittest.TestCase):
     """Tests for ICON_FIELDS default value."""

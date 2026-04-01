@@ -55,7 +55,7 @@ _COMMAND_KEYS = frozenset({'on_reset_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 _STRING_LIST_KEYS = frozenset({'tooltip_fields'})
 _WILDCARD_STRING_LIST_KEYS = frozenset({'popup_fields'})
-_FIXED_LENGTH_STRING_LIST_KEYS: dict[str, int] = {'icon_fields': 2}
+_VALID_BAR_MODES = frozenset({'utilization', 'overage'})
 
 
 def _load_settings() -> dict:
@@ -199,17 +199,27 @@ def _validate(data: dict, path: Path) -> dict:
                         deduped_wc.append(item)
                 data[key] = deduped_wc
 
-        elif key in _FIXED_LENGTH_STRING_LIST_KEYS:
-            expected_len = _FIXED_LENGTH_STRING_LIST_KEYS[key]
+        elif key == 'icon_fields':
             if not isinstance(value, list):
                 errors.append(f'  {key}: expected an array, got {type(value).__name__}')
                 drop.append(key)
-            elif len(value) != expected_len:
-                errors.append(f'  {key}: expected exactly {expected_len} entries, got {len(value)}')
+            elif len(value) != 2:
+                errors.append(f'  {key}: expected exactly 2 entries, got {len(value)}')
                 drop.append(key)
             elif any(not isinstance(item, str) or not item for item in value):
                 errors.append(f'  {key}: all entries must be non-empty strings')
                 drop.append(key)
+            else:
+                invalid_modes = [
+                    item for item in value
+                    if ':' in item and item.split(':', 1)[1] not in _VALID_BAR_MODES
+                ]
+                if invalid_modes:
+                    errors.append(
+                        f'  {key}: unknown bar mode in: {", ".join(invalid_modes)}'
+                        f' (valid: {", ".join(sorted(_VALID_BAR_MODES))})'
+                    )
+                    drop.append(key)
 
         elif key in _ICON_KEYS:
             if not isinstance(value, dict):

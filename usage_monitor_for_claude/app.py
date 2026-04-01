@@ -206,9 +206,17 @@ class UsageMonitorForClaude:
         if 'error' in data:
             self.icon.icon = create_status_image('C!' if data.get('auth_error') else '!', self._light_taskbar)
         else:
-            pct_top = (data.get(ICON_FIELDS[0]) or {}).get('utilization', 0) or 0
-            pct_bottom = (data.get(ICON_FIELDS[1]) or {}).get('utilization', 0) or 0
-            self.icon.icon = create_icon_image(pct_top, pct_bottom, self._light_taskbar)
+            top_field, top_mode = ICON_FIELDS[0].split(':', 1) if ':' in ICON_FIELDS[0] else (ICON_FIELDS[0], 'utilization')
+            bottom_field, bottom_mode = ICON_FIELDS[1].split(':', 1) if ':' in ICON_FIELDS[1] else (ICON_FIELDS[1], 'utilization')
+            top_entry = data.get(top_field) or {}
+            bottom_entry = data.get(bottom_field) or {}
+            pct_top = top_entry.get('utilization', 0) or 0
+            pct_bottom = bottom_entry.get('utilization', 0) or 0
+            top_period = field_period(top_field)
+            bottom_period = field_period(bottom_field)
+            time_pct_top = elapsed_pct(top_entry.get('resets_at', ''), top_period) if top_mode == 'overage' and top_period else None
+            time_pct_bottom = elapsed_pct(bottom_entry.get('resets_at', ''), bottom_period) if bottom_mode == 'overage' and bottom_period else None
+            self.icon.icon = create_icon_image(pct_top, pct_bottom, self._light_taskbar, time_pct_top=time_pct_top, time_pct_bottom=time_pct_bottom)
         self.icon.title = format_tooltip(data)
 
     def _on_theme_changed(self) -> None:
@@ -294,7 +302,7 @@ class UsageMonitorForClaude:
         self._check_threshold_alerts(result.data)
 
         # Adaptive polling: speed up when icon top field usage is increasing
-        icon_top_key = ICON_FIELDS[0]
+        icon_top_key = ICON_FIELDS[0].split(':', 1)[0]
         icon_top_pct = quota_fields.get(icon_top_key, 0)
         icon_top_prev = self._prev_utilization.get(icon_top_key)
         if icon_top_prev is not None and icon_top_pct > icon_top_prev:

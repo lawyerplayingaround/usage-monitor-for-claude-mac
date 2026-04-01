@@ -99,7 +99,24 @@ Must be an array of exactly 2 non-empty strings. Unknown field names are accepte
 
 **Known field names:** `five_hour`, `seven_day`, `seven_day_sonnet`, `seven_day_opus`, `seven_day_cowork`, `seven_day_oauth_apps`
 
-**Example** - show session and Sonnet quota:
+Each entry can optionally include a display mode suffix using colon syntax: `"field_name:mode"`.
+
+**Available bar display modes:**
+
+| Mode | Description |
+|------|-------------|
+| `utilization` | *(default)* Fills left-to-right proportional to current usage |
+| `overage` | Shows how far usage has entered the over-budget zone: empty when usage is at or below the time marker (on pace or ahead), half-filled when usage is halfway between the time marker and 100%, full when usage reaches 100% |
+
+**Example** - show session in overage mode and weekly in default mode:
+
+```json
+{
+    "icon_fields": ["five_hour:overage", "seven_day"]
+}
+```
+
+**Example** - show session and Sonnet quota (default utilization mode):
 
 ```json
 {
