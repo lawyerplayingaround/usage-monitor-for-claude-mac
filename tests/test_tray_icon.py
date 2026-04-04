@@ -269,14 +269,14 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
 
     def test_overage_mode_returns_64x64_rgba(self):
         """Overage mode still produces a 64x64 RGBA image."""
-        img = tray_icon_mod.create_icon_image(80, 80, time_pct_top=60, time_pct_bottom=60)
+        img = tray_icon_mod.create_icon_image(80, 80, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         self.assertEqual(img.size, (64, 64))
         self.assertEqual(img.mode, 'RGBA')
 
     def test_overage_mode_time_pct_at_100_falls_back_to_utilization(self):
         """time_pct=100 (period over) falls back to normal utilization display."""
-        img_fallback = tray_icon_mod.create_icon_image(50, 50, time_pct_top=100, time_pct_bottom=100)
+        img_fallback = tray_icon_mod.create_icon_image(50, 50, mode_top='overage', mode_bottom='overage', time_pct_top=100, time_pct_bottom=100)
         img_util = tray_icon_mod.create_icon_image(50, 50)
 
         self.assertEqual(img_fallback.tobytes(), img_util.tobytes())
@@ -284,7 +284,7 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
     def test_on_pace_produces_empty_bar(self):
         """Usage exactly at time_pct means on pace - bar pixels are not fully opaque (no fill)."""
         # pct=60, time_pct=60 -> overage=0 -> fill_ratio=0 -> no fill
-        img = tray_icon_mod.create_icon_image(60, 60, time_pct_top=60, time_pct_bottom=60)
+        img = tray_icon_mod.create_icon_image(60, 60, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
         bar_h = 9
@@ -306,7 +306,7 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         bar2_y = S - bar_h
         bar1_y = bar2_y - gap - bar_h
 
-        img_ahead = tray_icon_mod.create_icon_image(40, 40, time_pct_top=60, time_pct_bottom=60)
+        img_ahead = tray_icon_mod.create_icon_image(40, 40, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
         pixels = img_ahead.load()
         for bar_y in (bar1_y, bar2_y):
             mid_y = bar_y + bar_h // 2
@@ -315,7 +315,7 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
     def test_half_fill_at_midpoint_of_over_budget_range(self):
         """pct halfway between time_pct and 100% produces a half-filled bar."""
         # time_pct=60, pct=80 -> (80-60)/(100-60) = 0.5 -> fill_w = 32px
-        img = tray_icon_mod.create_icon_image(80, 80, time_pct_top=60, time_pct_bottom=60)
+        img = tray_icon_mod.create_icon_image(80, 80, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
         bar_h = 9
@@ -333,7 +333,7 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
     def test_full_bar_at_100_percent_usage(self):
         """100% usage fills the entire bar regardless of time_pct."""
         # time_pct=60, pct=100 -> (100-60)/(100-60) = 1.0 -> full bar
-        img = tray_icon_mod.create_icon_image(100, 100, time_pct_top=60, time_pct_bottom=60)
+        img = tray_icon_mod.create_icon_image(100, 100, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
         bar_h = 9
@@ -347,7 +347,7 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
 
     def test_mixed_modes_top_overage_bottom_utilization(self):
         """Top bar in overage mode, bottom bar in utilization mode produces valid image."""
-        img = tray_icon_mod.create_icon_image(80, 50, time_pct_top=60, time_pct_bottom=None)
+        img = tray_icon_mod.create_icon_image(80, 50, mode_top='overage', mode_bottom='utilization', time_pct_top=60, time_pct_bottom=None)
 
         self.assertEqual(img.size, (64, 64))
         self.assertEqual(img.mode, 'RGBA')

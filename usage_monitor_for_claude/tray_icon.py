@@ -72,7 +72,8 @@ def watch_theme_change(callback: Callable[[], None]) -> None:
 
 def create_icon_image(
     pct_top: float, pct_bottom: float, light_taskbar: bool = False,
-    *, time_pct_top: float | None = None, time_pct_bottom: float | None = None,
+    *, mode_top: str = 'utilization', mode_bottom: str = 'utilization',
+    time_pct_top: float | None = None, time_pct_bottom: float | None = None,
 ) -> Image.Image:
     """Create monochrome tray icon: 'C' letter + two usage bars.
 
@@ -84,11 +85,14 @@ def create_icon_image(
         Utilization percentage (0-100) for the lower bar.
     light_taskbar : bool
         Use dark-on-light colors for a light taskbar.
+    mode_top : str
+        Display mode for the upper bar: ``'utilization'`` (linear fill)
+        or ``'overage'`` (fills as usage exceeds the time marker).
+    mode_bottom : str
+        Display mode for the lower bar.  Same semantics as *mode_top*.
     time_pct_top : float or None
-        Elapsed-time percentage for the upper bar.  When provided, the bar
-        renders in ``overage`` mode: empty when usage is at or below the
-        elapsed-time percentage (on pace or ahead), filling left-to-right
-        as usage climbs toward 100%.
+        Elapsed-time percentage for the upper bar.  Required for ``overage``
+        mode; ignored otherwise.
     time_pct_bottom : float or None
         Elapsed-time percentage for the lower bar.  Same semantics as
         *time_pct_top*.
@@ -120,9 +124,12 @@ def create_icon_image(
     bar2_y = S - bar_h
     bar1_y = bar2_y - gap - bar_h
 
-    for y, pct, time_pct in ((bar1_y, pct_top, time_pct_top), (bar2_y, pct_bottom, time_pct_bottom)):
+    for y, pct, mode, time_pct in (
+        (bar1_y, pct_top, mode_top, time_pct_top),
+        (bar2_y, pct_bottom, mode_bottom, time_pct_bottom),
+    ):
         draw.rectangle([0, y, S - 1, y + bar_h - 1], fill=fg_half)
-        if time_pct is not None and time_pct < 100:
+        if mode == 'overage' and time_pct is not None and time_pct < 100:
             overage = max(0.0, pct - time_pct)
             fill_ratio = min(1.0, overage / (100 - time_pct))
             fill_w = max(0, int(S * fill_ratio))
