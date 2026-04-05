@@ -40,6 +40,18 @@ When `on_reset_command` is configured, the app briefly wakes from idle/lock paus
 
 `--continue` resumes the most recent conversation. Use `--resume <name>` to target a specific named session.
 
+### Target a specific quota variant
+
+Use `USAGE_MONITOR_VARIANT` to run a command only when a specific quota resets. This example sends a minimal Claude Code ping the moment the 5-hour session resets, so the next cooldown window starts immediately instead of waiting for your first real message:
+
+```json
+{
+  "on_reset_command": "if \"%USAGE_MONITOR_VARIANT%\"==\"five_hour\" claude -p \"ok\" --tools \"\" --no-session-persistence --system-prompt \"Reply with only: ok\" --output-format text"
+}
+```
+
+The same pattern works for any variant (`seven_day`, `seven_day_sonnet`, etc.) and for `on_threshold_command`.
+
 ### Only resume when both quotas have enough headroom
 
 ```json
