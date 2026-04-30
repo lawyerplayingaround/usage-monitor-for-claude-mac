@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [Dim usage bars when data is stale](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/28) - the usage section fades to 40% opacity when no successful update has been received for longer than the poll interval, clearly indicating that the displayed data may be outdated
 - Account switch notification - switching to a different Claude account now shows an "Account Switched" notification with the new account's email address instead of a misleading "Quota Reset" notification
 - Overage bar mode for tray icon bars - each entry in `icon_fields` now accepts an optional `:overage` suffix (e.g. `"five_hour:overage"`) to switch that bar to an over-budget view: the bar is empty when usage is at or below the time marker (on pace or ahead) and fills proportionally as usage climbs toward 100%, making it immediately visible how far you have overrun your expected pace
+- Tray icon now distinguishes between "blocked" and "pay-as-you-go" states: a `$` replaces the `C`/percentage when any displayed quota is at 100% but your account still has paid extra-usage credits available, warning that further requests will now consume credits; a `✕` appears only when you are fully blocked (either no extra usage enabled or all credits spent). The `✕` also triggers when the bottom bar reaches 100%, not only the top bar
 
 ### Fixed
 

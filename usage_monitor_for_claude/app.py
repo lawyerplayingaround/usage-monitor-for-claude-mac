@@ -216,10 +216,15 @@ class UsageMonitorForClaude:
             bottom_period = field_period(bottom_field)
             time_pct_top = elapsed_pct(top_entry.get('resets_at', ''), top_period) if top_mode == 'overage' and top_period else None
             time_pct_bottom = elapsed_pct(bottom_entry.get('resets_at', ''), bottom_period) if bottom_mode == 'overage' and bottom_period else None
+            extra = data.get('extra_usage') or {}
+            extra_limit = extra.get('monthly_limit') or 0
+            extra_used = extra.get('used_credits') or 0
+            extra_usage_available = bool(extra.get('is_enabled')) and extra_limit > 0 and extra_used < extra_limit
             self.icon.icon = create_icon_image(
                 pct_top, pct_bottom, self._light_taskbar,
                 mode_top=top_mode, mode_bottom=bottom_mode,
                 time_pct_top=time_pct_top, time_pct_bottom=time_pct_bottom,
+                extra_usage_available=extra_usage_available,
             )
         self.icon.title = format_tooltip(data)
 

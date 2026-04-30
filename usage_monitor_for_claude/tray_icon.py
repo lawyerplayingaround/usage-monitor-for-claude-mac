@@ -74,6 +74,7 @@ def create_icon_image(
     pct_top: float, pct_bottom: float, light_taskbar: bool = False,
     *, mode_top: str = 'utilization', mode_bottom: str = 'utilization',
     time_pct_top: float | None = None, time_pct_bottom: float | None = None,
+    extra_usage_available: bool = False,
 ) -> Image.Image:
     """Create monochrome tray icon: 'C' letter + two usage bars.
 
@@ -96,6 +97,10 @@ def create_icon_image(
     time_pct_bottom : float or None
         Elapsed-time percentage for the lower bar.  Same semantics as
         *time_pct_top*.
+    extra_usage_available : bool
+        True if the account has paid extra-usage credits still available.
+        When a quota is fully exhausted, this decides whether to show ``$``
+        (continuing costs money) or ``✕`` (fully blocked).
     """
     colors = ICON_DARK if light_taskbar else ICON_LIGHT
     fg, fg_half = colors['fg'], colors['fg_half']
@@ -104,10 +109,16 @@ def create_icon_image(
     img = Image.new('RGBA', (S, S), TRANSPARENT)
     draw = ImageDraw.Draw(img)
 
-    # Top text: "C", percentage when usage > 50%, or "✕" at 100%
+    # Top glyph: "✕" when any quota exhausted and no extra credits left,
+    # "$" when exhausted but paid extra-usage still available,
+    # percentage when usage > 50%, otherwise "C".
     stroke_width = 0
-    if pct_top >= 100:
+    any_exhausted = pct_top >= 100 or pct_bottom >= 100
+    if any_exhausted and not extra_usage_available:
         text, font = '\u2715', load_font(36, symbol=True)
+        stroke_width = 2
+    elif any_exhausted:
+        text, font = '$', load_font(42)
         stroke_width = 2
     elif pct_top > 50:
         text, font = f'{pct_top:.0f}', load_font(40)

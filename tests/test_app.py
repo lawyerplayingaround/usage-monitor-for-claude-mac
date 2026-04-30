@@ -859,7 +859,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day': {'utilization': 10.0}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(42.0, 10.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(42.0, 10.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
         self.assertEqual(self.app.icon.title, 'Usage: 42%')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='Error')
@@ -887,7 +887,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {}, 'seven_day': {'utilization': None}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(0, 0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -900,7 +900,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(75.0, 30.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(75.0, 30.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -910,7 +910,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -920,7 +920,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day_sonnet': None}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -934,7 +934,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(60.0, 20.0, False, mode_top='overage', mode_bottom='utilization', time_pct_top=40.0, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(60.0, 20.0, False, mode_top='overage', mode_bottom='utilization', time_pct_top=40.0, time_pct_bottom=None, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -948,7 +948,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(30.0, 10.0, False, mode_top='overage', mode_bottom='overage', time_pct_top=50.0, time_pct_bottom=50.0)
+        mock_icon.assert_called_once_with(30.0, 10.0, False, mode_top='overage', mode_bottom='overage', time_pct_top=50.0, time_pct_bottom=50.0, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -964,6 +964,61 @@ class TestRenderTray(unittest.TestCase):
         # pct_top should be 55.0 (not 0), confirming 'five_hour' was used as dict key not 'five_hour:overage'
         call_args = mock_icon.call_args
         self.assertEqual(call_args[0][0], 55.0)
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_extra_usage_available_true_when_credits_remain(self, mock_icon, _tooltip):
+        """extra_usage_available is True when extra-usage is enabled and credits are not exhausted."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 100.0},
+            'seven_day': {'utilization': 80.0},
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 250.0},
+        }
+        self.app._render_tray()
+
+        self.assertTrue(mock_icon.call_args.kwargs['extra_usage_available'])
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_extra_usage_available_false_when_disabled(self, mock_icon, _tooltip):
+        """extra_usage_available is False when the account has not enabled extra usage."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 100.0},
+            'extra_usage': {'is_enabled': False, 'monthly_limit': 0, 'used_credits': 0},
+        }
+        self.app._render_tray()
+
+        self.assertFalse(mock_icon.call_args.kwargs['extra_usage_available'])
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_extra_usage_available_false_when_credits_exhausted(self, mock_icon, _tooltip):
+        """extra_usage_available is False when all credits have been spent."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 100.0},
+            'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 1000.0},
+        }
+        self.app._render_tray()
+
+        self.assertFalse(mock_icon.call_args.kwargs['extra_usage_available'])
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_extra_usage_available_false_when_no_extra_usage_key(self, mock_icon, _tooltip):
+        """extra_usage_available is False when the API response omits the extra_usage object entirely."""
+        self.app._last_response = {'five_hour': {'utilization': 100.0}}
+        self.app._render_tray()
+
+        self.assertFalse(mock_icon.call_args.kwargs['extra_usage_available'])
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_extra_usage_available_false_when_extra_usage_null(self, mock_icon, _tooltip):
+        """extra_usage_available is False when the extra_usage field is explicitly null."""
+        self.app._last_response = {'five_hour': {'utilization': 100.0}, 'extra_usage': None}
+        self.app._render_tray()
+
+        self.assertFalse(mock_icon.call_args.kwargs['extra_usage_available'])
 
 
 # ---------------------------------------------------------------------------
@@ -990,7 +1045,7 @@ class TestOnThemeChanged(unittest.TestCase):
         self.app._on_theme_changed()
 
         self.assertTrue(self.app._light_taskbar)
-        mock_icon.assert_called_once_with(50.0, 20.0, True, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None)
+        mock_icon.assert_called_once_with(50.0, 20.0, True, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
 
     @patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=False)
     def test_same_theme_no_render(self, _theme):

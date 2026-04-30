@@ -7,7 +7,7 @@ Unit tests for tray icon rendering and theme detection.
 from __future__ import annotations
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import usage_monitor_for_claude.tray_icon as tray_icon_mod
 
@@ -251,6 +251,43 @@ class TestCreateIconImage(unittest.TestCase):
         tray_icon_mod.create_icon_image(100, 20)
 
         mock_font.assert_any_call(36, symbol=True)
+
+    @patch.object(tray_icon_mod, 'load_font')
+    def test_bottom_bar_at_100_also_triggers_cross(self, mock_font):
+        """Bottom bar at 100% triggers the cross glyph even when top bar is low."""
+        mock_font.return_value = _real_font()
+
+        tray_icon_mod.create_icon_image(20, 100)
+
+        mock_font.assert_any_call(36, symbol=True)
+
+    @patch.object(tray_icon_mod, 'load_font')
+    def test_extra_usage_available_shows_dollar_when_exhausted(self, mock_font):
+        """When a quota is exhausted but paid extra-usage is available, show '$' instead of '✕'."""
+        mock_font.return_value = _real_font()
+
+        tray_icon_mod.create_icon_image(100, 20, extra_usage_available=True)
+
+        # Dollar sign uses the regular size-42 font, not the symbol font
+        mock_font.assert_any_call(42)
+        self.assertNotIn(call(36, symbol=True), mock_font.call_args_list)
+
+    @patch.object(tray_icon_mod, 'load_font')
+    def test_extra_usage_available_irrelevant_when_no_quota_exhausted(self, mock_font):
+        """extra_usage_available has no effect while every quota is below 100%."""
+        mock_font.return_value = _real_font()
+
+        tray_icon_mod.create_icon_image(75, 20, extra_usage_available=True)
+
+        # Still shows the percentage, not '$'
+        mock_font.assert_any_call(40)
+
+    def test_dollar_and_cross_states_produce_different_images(self):
+        """'$' (extra usage available) and '✕' (fully blocked) render differently."""
+        img_cross = tray_icon_mod.create_icon_image(100, 20, extra_usage_available=False)
+        img_dollar = tray_icon_mod.create_icon_image(100, 20, extra_usage_available=True)
+
+        self.assertNotEqual(img_cross.tobytes(), img_dollar.tobytes())
 
 
 class TestCreateIconImageOverageMode(unittest.TestCase):
