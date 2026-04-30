@@ -111,7 +111,7 @@ def create_icon_image(
 
     # Top glyph: "✕" when any quota exhausted and no extra credits left,
     # "$" when exhausted but paid extra-usage still available,
-    # percentage when usage > 50%, otherwise "C".
+    # "C" while usage is still zero, otherwise the percentage.
     stroke_width = 0
     any_exhausted = pct_top >= 100 or pct_bottom >= 100
     if any_exhausted and not extra_usage_available:
@@ -120,7 +120,7 @@ def create_icon_image(
     elif any_exhausted:
         text, font = '$', load_font(42)
         stroke_width = 2
-    elif pct_top > 50:
+    elif pct_top > 0:
         text, font = f'{pct_top:.0f}', load_font(40)
     else:
         text, font = 'C', load_font(42)

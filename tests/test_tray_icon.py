@@ -218,28 +218,28 @@ class TestCreateIconImage(unittest.TestCase):
         # The bar area pixels should differ between 0% and 100%
         self.assertNotEqual(img_full.tobytes(), img_zero.tobytes())
 
-    def test_boundary_50_differs_from_51(self):
-        """50% and 51% produce different icons (text mode switch)."""
-        img_50 = tray_icon_mod.create_icon_image(50, 0)
-        img_51 = tray_icon_mod.create_icon_image(51, 0)
+    def test_boundary_zero_differs_from_one(self):
+        """0% (shows 'C') and 1% (shows percentage) produce different icons."""
+        img_zero = tray_icon_mod.create_icon_image(0, 0)
+        img_one = tray_icon_mod.create_icon_image(1, 0)
 
-        self.assertNotEqual(img_50.tobytes(), img_51.tobytes())
+        self.assertNotEqual(img_zero.tobytes(), img_one.tobytes())
 
     @patch.object(tray_icon_mod, 'load_font')
-    def test_low_usage_calls_font_size_42(self, mock_font):
-        """Usage <= 50% requests size 42 font for 'C' letter."""
+    def test_zero_usage_calls_font_size_42(self, mock_font):
+        """Usage of 0% requests size 42 font for 'C' letter."""
         mock_font.return_value = _real_font()
 
-        tray_icon_mod.create_icon_image(30, 20)
+        tray_icon_mod.create_icon_image(0, 0)
 
         mock_font.assert_any_call(42)
 
     @patch.object(tray_icon_mod, 'load_font')
-    def test_high_usage_calls_font_size_40(self, mock_font):
-        """Usage > 50% requests size 40 font for percentage."""
+    def test_nonzero_usage_calls_font_size_40(self, mock_font):
+        """Any usage > 0% requests size 40 font for percentage."""
         mock_font.return_value = _real_font()
 
-        tray_icon_mod.create_icon_image(75, 20)
+        tray_icon_mod.create_icon_image(30, 20)
 
         mock_font.assert_any_call(40)
 
