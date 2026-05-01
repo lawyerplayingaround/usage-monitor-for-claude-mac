@@ -17,6 +17,7 @@
     "test_reset_7d": "Reset (7 giorni)",
     "test_threshold_5h": "Soglia (5 ore)",
     "test_threshold_7d": "Soglia (7 giorni)",
+    "test_startup": "Avvio",
     "resets_in": "Si ripristina tra {duration} ({clock})",
     "resets_tomorrow": "Si ripristina domani, {clock}",
     "resets_weekday": "Si ripristina {day}, {clock}",

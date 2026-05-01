@@ -25,7 +25,8 @@ from .claude_cli import PROJECT_URL
 from .command import run_event_command
 from .idle import get_idle_seconds, is_workstation_locked
 from .settings import (
-    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, ICON_FIELDS, IDLE_PAUSE, ON_RESET_COMMAND, ON_THRESHOLD_COMMAND,
+    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, ICON_FIELDS, IDLE_PAUSE,
+    ON_RESET_COMMAND, ON_STARTUP_COMMAND, ON_THRESHOLD_COMMAND,
     POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds,
 )
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label
@@ -91,7 +92,8 @@ class UsageMonitorForClaude:
                     pystray.MenuItem(T['test_reset_7d'], self.on_test_reset_7d, enabled=bool(ON_RESET_COMMAND)),
                     pystray.MenuItem(T['test_threshold_5h'], self.on_test_threshold_5h, enabled=bool(ON_THRESHOLD_COMMAND)),
                     pystray.MenuItem(T['test_threshold_7d'], self.on_test_threshold_7d, enabled=bool(ON_THRESHOLD_COMMAND)),
-                ), enabled=bool(ON_RESET_COMMAND or ON_THRESHOLD_COMMAND)),
+                    pystray.MenuItem(T['test_startup'], self.on_test_startup, enabled=bool(ON_STARTUP_COMMAND)),
+                ), enabled=bool(ON_RESET_COMMAND or ON_STARTUP_COMMAND or ON_THRESHOLD_COMMAND)),
                 pystray.MenuItem(T['restart'], self.on_restart),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['menu_project'], self.on_open_project),
@@ -167,6 +169,15 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_RESETS_AT': _future_iso(days=4),
             'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
             'USAGE_MONITOR_MESSAGE': T['notify_threshold_generic'].format(label=popup_label('seven_day'), pct='81'),
+        })
+
+    def on_test_startup(self, icon: Any = None, item: Any = None) -> None:
+        run_event_command(ON_STARTUP_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'startup',
+            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '0',
+            'USAGE_MONITOR_RESETS_AT_FIVE_HOUR': '',
+            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '45',
+            'USAGE_MONITOR_RESETS_AT_SEVEN_DAY': _future_iso(days=3),
         })
 
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
@@ -320,6 +331,10 @@ class UsageMonitorForClaude:
             self._fast_polls_remaining -= 1
 
         self._prev_utilization = quota_fields
+
+        if not self._first_update_done:
+            self._run_startup_command(result.data)
+
         self._first_update_done = True
 
     # Notifications
@@ -435,6 +450,34 @@ class UsageMonitorForClaude:
             self._notified_thresholds['extra_usage'] = highest_exceeded
 
     # Event commands
+
+    def _run_startup_command(self, data: dict[str, Any]) -> None:
+        """Run the user-configured startup command if set.
+
+        Fires once after the first successful API update.  Receives the
+        full quota state so the command can decide what to do (e.g. only
+        ping Claude when no five-hour session is active).
+        """
+        if not ON_STARTUP_COMMAND:
+            return
+
+        env_vars: dict[str, str] = {
+            'USAGE_MONITOR_EVENT': 'startup',
+        }
+        for key, entry in data.items():
+            if key == 'extra_usage' or not isinstance(entry, dict) or 'utilization' not in entry:
+                continue
+            env_vars[f'USAGE_MONITOR_UTILIZATION_{key.upper()}'] = str(round(entry.get('utilization', 0) or 0))
+            env_vars[f'USAGE_MONITOR_RESETS_AT_{key.upper()}'] = entry.get('resets_at') or ''
+
+        extra = data.get('extra_usage') or {}
+        if extra.get('is_enabled'):
+            limit = extra.get('monthly_limit', 0) or 0
+            used = extra.get('used_credits', 0) or 0
+            env_vars['USAGE_MONITOR_EXTRA_USED'] = format_credits(used)
+            env_vars['USAGE_MONITOR_EXTRA_LIMIT'] = format_credits(limit)
+
+        run_event_command(ON_STARTUP_COMMAND, env_vars)
 
     def _run_reset_command(
         self, variant: str, pct: float, prev_pct: float, *, data: dict[str, Any], entry: dict[str, Any],

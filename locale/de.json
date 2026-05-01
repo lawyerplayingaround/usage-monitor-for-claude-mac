@@ -17,6 +17,7 @@
     "test_reset_7d": "Reset (7-Tage)",
     "test_threshold_5h": "Schwellenwert (5-Stunden)",
     "test_threshold_7d": "Schwellenwert (7-Tage)",
+    "test_startup": "Start",
     "resets_in": "Zurücksetzung in {duration} ({clock})",
     "resets_tomorrow": "Zurücksetzung morgen, {clock}",
     "resets_weekday": "Zurücksetzung am {day}, {clock}",

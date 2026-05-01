@@ -17,6 +17,7 @@
     "test_reset_7d": "重置 (7天)",
     "test_threshold_5h": "閾值 (5小時)",
     "test_threshold_7d": "閾值 (7天)",
+    "test_startup": "啟動",
     "resets_in": "{duration}後重置 ({clock})",
     "resets_tomorrow": "明天重置，{clock}",
     "resets_weekday": "{day}重置，{clock}",

@@ -17,6 +17,7 @@
     "test_reset_7d": "Reset (7 jours)",
     "test_threshold_5h": "Seuil (5 heures)",
     "test_threshold_7d": "Seuil (7 jours)",
+    "test_startup": "Démarrage",
     "resets_in": "Réinitialisation dans {duration} ({clock})",
     "resets_tomorrow": "Réinitialisation demain, {clock}",
     "resets_weekday": "Réinitialisation {day}, {clock}",

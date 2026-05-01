@@ -30,7 +30,7 @@ __all__ = [
     'FG', 'FG_DIM', 'FG_HEADING', 'FG_LINK',
     'ICON_DARK', 'ICON_FIELDS', 'ICON_LIGHT', 'IDLE_PAUSE',
     'LANGUAGE', 'MAX_BACKOFF',
-    'ON_RESET_COMMAND', 'ON_THRESHOLD_COMMAND',
+    'ON_RESET_COMMAND', 'ON_STARTUP_COMMAND', 'ON_THRESHOLD_COMMAND',
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
     'POPUP_FIELDS', 'SETTINGS_FILENAME', 'TOOLTIP_FIELDS',
     'get_alert_thresholds',
@@ -51,7 +51,7 @@ _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEY_PREFIX = 'alert_thresholds_'
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
 _STRING_KEYS = frozenset({'currency_symbol', 'language'})
-_COMMAND_KEYS = frozenset({'on_reset_command', 'on_threshold_command'})
+_COMMAND_KEYS = frozenset({'on_reset_command', 'on_startup_command', 'on_threshold_command'})
 _BOOL_KEYS = frozenset({'alert_time_aware'})
 _STRING_LIST_KEYS = frozenset({'tooltip_fields'})
 _WILDCARD_STRING_LIST_KEYS = frozenset({'popup_fields'})
@@ -315,6 +315,7 @@ LANGUAGE: str = _S.get('language', '')
 
 # Event commands
 ON_RESET_COMMAND: list[str] = _S.get('on_reset_command', [])
+ON_STARTUP_COMMAND: list[str] = _S.get('on_startup_command', [])
 ON_THRESHOLD_COMMAND: list[str] = _S.get('on_threshold_command', [])
 
 _ALERT_THRESHOLDS: dict[str, list[float]] = {

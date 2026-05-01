@@ -17,6 +17,7 @@
     "test_reset_7d": "Reset (7-hari)",
     "test_threshold_5h": "Ambang batas (5-jam)",
     "test_threshold_7d": "Ambang batas (7-hari)",
+    "test_startup": "Mulai",
     "resets_in": "Reset dalam {duration} ({clock})",
     "resets_tomorrow": "Reset besok, {clock}",
     "resets_weekday": "Reset {day}, {clock}",

@@ -2302,5 +2302,171 @@ class TestAccountSwitchDetection(unittest.TestCase):
         self.app.icon.notify.assert_not_called()
 
 
+# ---------------------------------------------------------------------------
+# on_startup_command
+# ---------------------------------------------------------------------------
+
+class TestStartupCommand(unittest.TestCase):
+    """Tests for on_startup_command firing on the first successful update."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app.cache = MagicMock()
+        self.app.cache.profile = {'account': {'uuid': 'uuid-1', 'email': 'a@b'}}
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_fires_on_first_successful_update(self, _icon, _tooltip, mock_cmd):
+        """Startup command fires once on the first successful update."""
+        data = {
+            'five_hour': {'utilization': 0.0, 'resets_at': None},
+            'seven_day': {'utilization': 45.0, 'resets_at': '2025-01-20T12:00:00Z'},
+        }
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, ['echo startup'])
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'startup')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '0')
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT_FIVE_HOUR'], '')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '45')
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT_SEVEN_DAY'], '2025-01-20T12:00:00Z')
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_fires_only_once_across_multiple_updates(self, _icon, _tooltip, mock_cmd):
+        """Startup command does not fire again on subsequent updates."""
+        data = {'five_hour': {'utilization': 0.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+        self.app.update()
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', [])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_fire_when_command_unset(self, _icon, _tooltip, mock_cmd):
+        """Startup command is not invoked when ON_STARTUP_COMMAND is empty."""
+        data = {'five_hour': {'utilization': 0.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_fire_on_error_response(self, _icon, _tooltip, mock_cmd):
+        """Startup command is skipped when the first update returns an error."""
+        self.app.cache.update.return_value = UpdateResult(data={'error': 'connection failed'})
+
+        self.app.update()
+
+        mock_cmd.assert_not_called()
+        self.assertFalse(self.app._first_update_done)
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_fires_after_initial_error_then_success(self, _icon, _tooltip, mock_cmd):
+        """Startup command fires on the first SUCCESSFUL update, even after errors."""
+        ok_data = {'five_hour': {'utilization': 0.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache.update.side_effect = [
+            UpdateResult(data={'error': 'offline'}),
+            UpdateResult(data=ok_data),
+        ]
+
+        self.app.update()
+        self.assertEqual(mock_cmd.call_count, 0)
+
+        self.app.update()
+        self.assertEqual(mock_cmd.call_count, 1)
+        self.assertEqual(mock_cmd.call_args[0][1]['USAGE_MONITOR_EVENT'], 'startup')
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_extra_usage_env_vars_when_enabled(self, _icon, _tooltip, mock_cmd):
+        """Extra usage env vars are emitted when extra_usage is enabled."""
+        data = {
+            'five_hour': {'utilization': 10.0, 'resets_at': '2025-01-15T18:00:00Z'},
+            'extra_usage': {'is_enabled': True, 'used_credits': 8.20, 'monthly_limit': 10.0},
+        }
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        env = mock_cmd.call_args[0][1]
+        self.assertIn('USAGE_MONITOR_EXTRA_USED', env)
+        self.assertIn('USAGE_MONITOR_EXTRA_LIMIT', env)
+        self.assertNotIn('USAGE_MONITOR_UTILIZATION_EXTRA_USAGE', env)
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_extra_usage_env_vars_when_disabled(self, _icon, _tooltip, mock_cmd):
+        """Extra usage env vars are not emitted when extra_usage is disabled."""
+        data = {
+            'five_hour': {'utilization': 10.0},
+            'extra_usage': {'is_enabled': False, 'used_credits': 0, 'monthly_limit': 0},
+        }
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        env = mock_cmd.call_args[0][1]
+        self.assertNotIn('USAGE_MONITOR_EXTRA_USED', env)
+        self.assertNotIn('USAGE_MONITOR_EXTRA_LIMIT', env)
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_handles_null_quota_field(self, _icon, _tooltip, mock_cmd):
+        """Quota fields with value None (feature not enabled) are skipped without error."""
+        data = {'five_hour': {'utilization': 10.0}, 'seven_day': None}
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        mock_cmd.assert_called_once()
+        env = mock_cmd.call_args[0][1]
+        self.assertIn('USAGE_MONITOR_UTILIZATION_FIVE_HOUR', env)
+        self.assertNotIn('USAGE_MONITOR_UTILIZATION_SEVEN_DAY', env)
+
+    @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_test_menu_handler_passes_expected_env(self, mock_cmd):
+        """on_test_startup passes the documented env vars."""
+        self.app.on_test_startup()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, ['echo startup'])
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'startup')
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT_FIVE_HOUR'], '')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '0')
+        self.assertNotEqual(env['USAGE_MONITOR_RESETS_AT_SEVEN_DAY'], '')
+
+
 if __name__ == '__main__':
     unittest.main()
