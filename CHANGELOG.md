@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Usage bars are now always shown in red when they reach 100%, regardless of the time marker position
+- Auto-refresh of the OAuth token now works for users who installed Claude Code via npm - the CLI is discovered via PATH and `%APPDATA%\npm`, not only the native Anthropic installer path (thanks to [@timyjsong](https://github.com/timyjsong) for the contribution)
 
 [Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.14.0...HEAD)
 
