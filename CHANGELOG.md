@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.15.0...HEAD)
+
+## [1.15.0] - 2026-05-01
+
 ### Added
 
 - `on_startup_command` event - run a custom command once after the first successful API update following app start (also after using the **Restart** menu option). Receives per-quota utilization and reset timestamps as environment variables, so a command can decide what to do based on which sessions are active - for example, send a Claude Code ping when no five-hour session is running yet
@@ -24,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Usage bars are now always shown in red when they reach 100%, regardless of the time marker position
 - Auto-refresh of the OAuth token now works for users who installed Claude Code via npm - the CLI is discovered via PATH and `%APPDATA%\npm`, not only the native Anthropic installer path (thanks to [@timyjsong](https://github.com/timyjsong) for the contribution)
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.14.0...HEAD)
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.14.0...v1.15.0)
 
 ## [1.14.0] - 2026-03-27
 
