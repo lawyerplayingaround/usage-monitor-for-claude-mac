@@ -7,6 +7,7 @@ Unit tests for read_access_token() and fetch_usage().
 from __future__ import annotations
 
 import json
+import sys
 import unittest
 from tempfile import TemporaryDirectory
 from pathlib import Path
@@ -14,6 +15,9 @@ from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.api import API_URL_USAGE, _extract_server_message, _parse_retry_after, fetch_usage, read_access_token
 from usage_monitor_for_claude.i18n import LOCALE_DIR
+
+_IS_DARWIN = sys.platform == 'darwin'
+_FILE_BASED_SKIP_REASON = 'file-based credentials path is not used on macOS (Keychain is used instead)'
 
 EN = json.loads((LOCALE_DIR / 'en.json').read_text(encoding='utf-8'))
 
@@ -69,8 +73,9 @@ class TestClaudeConfigDir(unittest.TestCase):
 # read_access_token
 # ---------------------------------------------------------------------------
 
+@unittest.skipIf(_IS_DARWIN, _FILE_BASED_SKIP_REASON)
 class TestReadAccessToken(unittest.TestCase):
-    """Tests for read_access_token()."""
+    """Tests for read_access_token() on platforms that use the credentials file."""
 
     def test_file_missing(self):
         """Missing credentials file returns None."""
@@ -415,6 +420,92 @@ class TestParseRetryAfter(unittest.TestCase):
         resp = MagicMock()
         resp.headers = {'Retry-After': 'Wed, 21 Oct 2026 07:28:00 GMT'}
         self.assertIsNone(_parse_retry_after(resp))
+
+
+# ---------------------------------------------------------------------------
+# read_access_token (macOS Keychain branch)
+# ---------------------------------------------------------------------------
+
+@unittest.skipUnless(_IS_DARWIN, 'macOS-only branch')
+class TestReadAccessTokenMacOS(unittest.TestCase):
+    """Tests for the Keychain-backed branch of read_access_token() on macOS."""
+
+    def setUp(self):
+        import usage_monitor_for_claude.api as api_mod
+        api_mod._resolved_keychain_service = None
+
+    def _completed(self, stdout: str, returncode: int = 0):
+        result = MagicMock()
+        result.stdout = stdout
+        result.returncode = returncode
+        return result
+
+    def test_returns_token_from_legacy_service(self):
+        """Legacy service name 'Claude Code-credentials' returns the access token."""
+        creds = {'claudeAiOauth': {'accessToken': 'sk-keychain-legacy'}}
+        with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+            run.return_value = self._completed(json.dumps(creds))
+            with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+                self.assertEqual(read_access_token(), 'sk-keychain-legacy')
+
+    def test_returns_token_from_hashed_service(self):
+        """Hashed service name 'Claude Code-credentials-<HASH>' is discovered and used."""
+        creds = {'claudeAiOauth': {'accessToken': 'sk-keychain-hashed'}}
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value='Claude Code-credentials-abc123'):
+            with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+                run.return_value = self._completed(json.dumps(creds))
+                self.assertEqual(read_access_token(), 'sk-keychain-hashed')
+
+    def test_security_command_missing_returns_none(self):
+        """If /usr/bin/security fails, read_access_token() returns None instead of raising."""
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run', side_effect=OSError):
+                self.assertIsNone(read_access_token())
+
+    def test_security_command_nonzero_exit_returns_none(self):
+        """Non-zero exit code from security (e.g. item not found) returns None."""
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+                run.return_value = self._completed('', returncode=44)
+                self.assertIsNone(read_access_token())
+
+    def test_security_command_empty_stdout_returns_none(self):
+        """Empty stdout returns None."""
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+                run.return_value = self._completed('')
+                self.assertIsNone(read_access_token())
+
+    def test_security_command_malformed_json_returns_none(self):
+        """Malformed Keychain payload returns None instead of raising."""
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+                run.return_value = self._completed('not json')
+                self.assertIsNone(read_access_token())
+
+    def test_security_command_missing_oauth_key_returns_none(self):
+        """Keychain payload without claudeAiOauth.accessToken returns None."""
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+                run.return_value = self._completed('{"otherKey": {}}')
+                self.assertIsNone(read_access_token())
+
+    def test_security_command_timeout_returns_none(self):
+        """A hung security subprocess returns None (timeout caught, not propagated)."""
+        import subprocess
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run', side_effect=subprocess.TimeoutExpired(cmd='security', timeout=3)):
+                self.assertIsNone(read_access_token())
+
+    def test_token_never_written_to_disk(self):
+        """The Mac branch never writes the token (or any other data) to disk."""
+        creds = {'claudeAiOauth': {'accessToken': 'sk-no-write'}}
+        with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None):
+            with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+                run.return_value = self._completed(json.dumps(creds))
+                with patch('builtins.open') as open_mock:
+                    read_access_token()
+                    open_mock.assert_not_called()
 
 
 if __name__ == '__main__':

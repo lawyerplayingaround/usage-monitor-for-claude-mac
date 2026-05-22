@@ -2,14 +2,15 @@
 Tray Icon
 ==========
 
-Creates monochrome system tray icons and detects the Windows taskbar theme.
+Creates monochrome system tray icons and detects the host taskbar/menu bar theme.
 """
 from __future__ import annotations
 
-import ctypes
 import functools
 import os
-import winreg
+import subprocess
+import sys
+import time
 from typing import Callable
 
 from PIL import Image, ImageDraw, ImageFont
@@ -18,37 +19,92 @@ from .settings import ICON_DARK, ICON_LIGHT
 
 __all__ = ['load_font', 'taskbar_uses_light_theme', 'watch_theme_change', 'create_icon_image', 'create_status_image']
 
-# Theme registry
+# Windows theme registry
 THEME_REG_KEY = r'Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 THEME_REG_VALUE = 'SystemUsesLightTheme'
 REG_NOTIFY_CHANGE_LAST_SET = 0x00000004
 
+# macOS theme detection
+_MACOS_DEFAULTS_BIN = '/usr/bin/defaults'
+_MACOS_THEME_POLL_SECONDS = 5.0
+
 TRANSPARENT = (0, 0, 0, 0)
+
+# Icon canvas layout - tuned per platform.  The Mac menu bar gives the icon
+# only ~22 logical points of height, so the number font is enlarged and the
+# bars thickened to survive the LANCZOS downsample applied by pystray.
+if sys.platform == 'darwin':
+    # SF Pro Semibold matches the look of the macOS system clock in the menu bar
+    # while remaining bold enough to read against busy wallpapers.
+    _ICON_LAYOUT = {'font_num': 32, 'font_letter': 34, 'font_symbol': 30, 'bar_h': 8, 'bar_gap': 2, 'status_font': 40, 'weight': 'Semibold', 'center_text': True}
+else:
+    _ICON_LAYOUT = {'font_num': 40, 'font_letter': 42, 'font_symbol': 36, 'bar_h': 9, 'bar_gap': 3, 'status_font': 46, 'weight': None, 'center_text': False}
 
 
 @functools.lru_cache(maxsize=None)
-def load_font(size: int, symbol: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    """Load font at given size. Use symbol=True for Unicode glyphs not in Arial."""
-    windir = os.environ.get('WINDIR', 'C:\\Windows')
-    if symbol:
-        names = (f'{windir}\\Fonts\\seguisym.ttf', 'seguisym.ttf')
+def load_font(size: int, symbol: bool = False, weight: str | None = None) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Load font at given size. Use symbol=True for Unicode glyphs not in Arial.
+
+    Parameters
+    ----------
+    size : int
+        Font size in points.
+    symbol : bool
+        If True, load a font with broad Unicode symbol coverage.
+    weight : str or None
+        Named weight to apply to variable fonts (e.g. SFNS on macOS).  Accepted
+        values include ``'Regular'``, ``'Medium'``, ``'Semibold'``, ``'Bold'``.
+        Ignored on platforms whose fonts do not expose a named variation axis.
+    """
+    if sys.platform == 'darwin':
+        if symbol:
+            names = (
+                '/System/Library/Fonts/Apple Symbols.ttf',
+                '/System/Library/Fonts/Symbol.ttf',
+                '/System/Library/Fonts/SFNS.ttf',
+            )
+        else:
+            names = (
+                '/System/Library/Fonts/SFNS.ttf',
+                '/System/Library/Fonts/Supplemental/Arial Bold.ttf',
+                '/System/Library/Fonts/HelveticaNeue.ttc',
+            )
     else:
-        names = (f'{windir}\\Fonts\\arialbd.ttf', 'arialbd.ttf', f'{windir}\\Fonts\\arial.ttf', 'arial.ttf')
+        windir = os.environ.get('WINDIR', 'C:\\Windows')
+        if symbol:
+            names = (f'{windir}\\Fonts\\seguisym.ttf', 'seguisym.ttf')
+        else:
+            names = (f'{windir}\\Fonts\\arialbd.ttf', 'arialbd.ttf', f'{windir}\\Fonts\\arial.ttf', 'arial.ttf')
+
     for name in names:
         try:
-            return ImageFont.truetype(name, size)
+            font = ImageFont.truetype(name, size)
         except OSError:
             continue
+        if weight and 'SFNS' in name:
+            try:
+                font.set_variation_by_name(weight)
+            except (AttributeError, OSError):
+                pass
+        return font
 
     return ImageFont.load_default()
 
 
 def taskbar_uses_light_theme() -> bool:
-    """Return True if the Windows taskbar uses the light theme.
+    """Return True if the host taskbar/menu bar uses the light theme.
 
-    Reads ``SystemUsesLightTheme`` from the Personalize registry key.
-    Returns False (dark) if the value cannot be read.
+    On Windows, reads ``SystemUsesLightTheme`` from the Personalize registry key.
+    On macOS, checks ``AppleInterfaceStyle`` via ``defaults``.
+    Returns False (dark) when the value cannot be read.
     """
+    if sys.platform == 'darwin':
+        return _macos_menu_bar_uses_light_theme()
+
+    if sys.platform != 'win32':
+        return False
+
+    import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, THEME_REG_KEY) as key:
             value, _ = winreg.QueryValueEx(key, THEME_REG_VALUE)
@@ -58,15 +114,54 @@ def taskbar_uses_light_theme() -> bool:
 
 
 def watch_theme_change(callback: Callable[[], None]) -> None:
-    """Block the current thread and call *callback* whenever the taskbar theme changes.
+    """Block the current thread and call *callback* whenever the host theme changes.
 
-    Uses ``RegNotifyChangeKeyValue`` to sleep until the registry key
-    is modified, avoiding any polling.  Designed to run in a daemon thread.
+    On Windows, uses ``RegNotifyChangeKeyValue`` to sleep until the registry key
+    is modified.  On macOS, polls ``AppleInterfaceStyle`` at a low frequency.
+    Designed to run in a daemon thread.
     """
+    if sys.platform == 'darwin':
+        _watch_macos_theme_change(callback)
+        return
+
+    if sys.platform != 'win32':
+        return
+
+    import ctypes
+    import winreg
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, THEME_REG_KEY, 0, winreg.KEY_READ) as key:
         while True:
             if ctypes.windll.advapi32.RegNotifyChangeKeyValue(int(key), False, REG_NOTIFY_CHANGE_LAST_SET, None, False) != 0:
                 return
+            callback()
+
+
+def _macos_menu_bar_uses_light_theme() -> bool:
+    """Return True when the macOS menu bar currently uses the light theme.
+
+    ``defaults read -g AppleInterfaceStyle`` prints ``Dark`` in dark mode and
+    exits non-zero with empty output in light mode (the default state, in
+    which the preference is not stored).
+    """
+    try:
+        result = subprocess.run(
+            [_MACOS_DEFAULTS_BIN, 'read', '-g', 'AppleInterfaceStyle'],
+            capture_output=True, text=True, timeout=2,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return True
+
+    return result.stdout.strip() != 'Dark'
+
+
+def _watch_macos_theme_change(callback: Callable[[], None]) -> None:
+    """Poll the macOS appearance and fire *callback* whenever it changes."""
+    last = _macos_menu_bar_uses_light_theme()
+    while True:
+        time.sleep(_MACOS_THEME_POLL_SECONDS)
+        current = _macos_menu_bar_uses_light_theme()
+        if current != last:
+            last = current
             callback()
 
 
@@ -113,27 +208,34 @@ def create_icon_image(
     # "$" when exhausted but paid extra-usage still available,
     # "C" while usage is still zero, otherwise the percentage.
     stroke_width = 0
+    weight = _ICON_LAYOUT['weight']
     any_exhausted = pct_top >= 100 or pct_bottom >= 100
     if any_exhausted and not extra_usage_available:
-        text, font = '\u2715', load_font(36, symbol=True)
+        text, font = '\u2715', load_font(_ICON_LAYOUT['font_symbol'], symbol=True, weight=weight)
         stroke_width = 2
     elif any_exhausted:
-        text, font = '$', load_font(42)
+        text, font = '$', load_font(_ICON_LAYOUT['font_letter'], weight=weight)
         stroke_width = 2
     elif pct_top > 0:
-        text, font = f'{pct_top:.0f}', load_font(40)
+        text, font = f'{pct_top:.0f}', load_font(_ICON_LAYOUT['font_num'], weight=weight)
     else:
-        text, font = 'C', load_font(42)
+        text, font = 'C', load_font(_ICON_LAYOUT['font_letter'], weight=weight)
+
+    # Progress bars - full width, flush to bottom
+    bar_h = _ICON_LAYOUT['bar_h']
+    gap = _ICON_LAYOUT['bar_gap']
+    bar2_y = S - bar_h
+    bar1_y = bar2_y - gap - bar_h
 
     bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
     tw = bbox[2] - bbox[0]
-    draw.text(((S - tw) / 2 - bbox[0], -bbox[1]), text, fill=fg, font=font, stroke_width=stroke_width, stroke_fill=fg)
-
-    # Progress bars - full width, flush to bottom
-    bar_h = 9
-    gap = 3
-    bar2_y = S - bar_h
-    bar1_y = bar2_y - gap - bar_h
+    if _ICON_LAYOUT['center_text']:
+        # Vertically center the glyph in the area above the progress bars.
+        text_area_h = bar1_y
+        text_y = (text_area_h - (bbox[3] - bbox[1])) / 2 - bbox[1]
+    else:
+        text_y = -bbox[1]
+    draw.text(((S - tw) / 2 - bbox[0], text_y), text, fill=fg, font=font, stroke_width=stroke_width, stroke_fill=fg)
 
     for y, pct, mode, time_pct in (
         (bar1_y, pct_top, mode_top, time_pct_top),
@@ -161,7 +263,7 @@ def create_status_image(text: str, light_taskbar: bool = False) -> Image.Image:
     S = 64
     img = Image.new('RGBA', (S, S), TRANSPARENT)
     draw = ImageDraw.Draw(img)
-    font = load_font(46)
+    font = load_font(_ICON_LAYOUT['status_font'], weight=_ICON_LAYOUT['weight'])
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text(((S - tw) / 2 - bbox[0], (S - th) / 2 - bbox[1]), text, fill=fg_dim, font=font)

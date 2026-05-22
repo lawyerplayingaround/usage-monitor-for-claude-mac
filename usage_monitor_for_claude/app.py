@@ -34,6 +34,9 @@ from .i18n import T
 from .popup import UsagePopup
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
+if sys.platform == 'darwin':
+    from ._macos_tray import install_macos_tray_patch
+
 __all__ = ['UsageMonitorForClaude', 'crash_log']
 
 
@@ -101,6 +104,9 @@ class UsageMonitorForClaude:
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
         )
+
+        if sys.platform == 'darwin':
+            install_macos_tray_patch(self.icon)
 
     # Menu actions
 
@@ -687,4 +693,8 @@ class UsageMonitorForClaude:
 
 def crash_log(msg: str) -> None:
     """Show a crash message box (for windowless EXE builds)."""
-    ctypes.windll.user32.MessageBoxW(0, msg[:2000], 'Usage Monitor for Claude - Error', 0x10)
+    if sys.platform == 'win32':
+        ctypes.windll.user32.MessageBoxW(0, msg[:2000], 'Usage Monitor for Claude - Error', 0x10)
+    else:
+        sys.stderr.write(msg)
+        sys.stderr.flush()

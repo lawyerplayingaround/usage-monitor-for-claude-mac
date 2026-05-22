@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -28,9 +30,24 @@ CLAUDE_CONFIG_DIR = Path(os.environ.get('CLAUDE_CONFIG_DIR', '')) if os.environ.
 CLAUDE_CREDENTIALS = CLAUDE_CONFIG_DIR / '.credentials.json'
 _FALLBACK_USER_AGENT = 'claude-code/2.1.85'
 
+# macOS Keychain item identifiers used by Claude Code.
+# v2.1.52+ uses a hashed suffix; earlier versions used the plain name.
+_KEYCHAIN_SERVICE_LEGACY = 'Claude Code-credentials'
+_KEYCHAIN_SERVICE_PREFIX = 'Claude Code-credentials-'
+_SECURITY_BIN = '/usr/bin/security'
+_resolved_keychain_service: str | None = None
+
 
 def read_access_token() -> str | None:
-    """Read the current access token from the Claude credentials file."""
+    """Read the current access token from the Claude credentials store.
+
+    On macOS, Claude Code persists credentials in the system Keychain.
+    On other platforms, credentials live in ``CLAUDE_CREDENTIALS`` as JSON.
+    The token is never cached in memory beyond the duration of the caller.
+    """
+    if sys.platform == 'darwin':
+        return _read_access_token_macos()
+
     if not CLAUDE_CREDENTIALS.exists():
         return None
 
@@ -141,4 +158,85 @@ def _parse_retry_after(response: requests.Response | None) -> int | None:
     try:
         return max(int(raw), 0)
     except (ValueError, TypeError):
+        return None
+
+
+# macOS Keychain helpers (only invoked when sys.platform == 'darwin')
+
+
+def _read_access_token_macos() -> str | None:
+    """Read the access token from the macOS Keychain item written by Claude Code."""
+    for service in _macos_keychain_service_candidates():
+        token = _read_macos_keychain_token(service)
+        if token is not None:
+            return token
+    return None
+
+
+def _macos_keychain_service_candidates() -> list[str]:
+    """Return the Keychain service names to probe, most-likely first.
+
+    Claude Code v2.1.52+ uses a hashed suffix (``Claude Code-credentials-<HASH>``);
+    earlier versions used the plain legacy name. The hashed name is discovered
+    once per process via ``security dump-keychain`` and then cached in memory.
+    """
+    global _resolved_keychain_service
+    if _resolved_keychain_service is not None:
+        return [_resolved_keychain_service, _KEYCHAIN_SERVICE_LEGACY]
+
+    hashed = _find_macos_hashed_keychain_service()
+    if hashed:
+        _resolved_keychain_service = hashed
+        return [hashed, _KEYCHAIN_SERVICE_LEGACY]
+
+    return [_KEYCHAIN_SERVICE_LEGACY]
+
+
+def _find_macos_hashed_keychain_service() -> str | None:
+    """Search the login keychain for a service name with the v2.1.52+ hashed suffix."""
+    try:
+        result = subprocess.run(
+            [_SECURITY_BIN, 'dump-keychain'],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    marker = '="'
+    for line in result.stdout.splitlines():
+        if '"svce"' not in line or _KEYCHAIN_SERVICE_PREFIX not in line:
+            continue
+        start = line.find(marker)
+        if start < 0:
+            continue
+        end = line.find('"', start + len(marker))
+        if end < 0:
+            continue
+        name = line[start + len(marker):end]
+        if name.startswith(_KEYCHAIN_SERVICE_PREFIX):
+            return name
+    return None
+
+
+def _read_macos_keychain_token(service: str) -> str | None:
+    """Read and parse the OAuth JSON blob stored under ``service`` in the Keychain."""
+    try:
+        result = subprocess.run(
+            [_SECURITY_BIN, 'find-generic-password', '-s', service, '-w'],
+            capture_output=True, text=True, timeout=3,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    raw = result.stdout.strip()
+    if not raw:
+        return None
+    try:
+        creds = json.loads(raw)
+        return creds.get('claudeAiOauth', {}).get('accessToken') or None
+    except (json.JSONDecodeError, KeyError):
         return None

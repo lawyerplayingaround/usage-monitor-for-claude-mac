@@ -20,6 +20,8 @@ from . import __version__
 
 __all__ = ['run_event_command']
 
+_NO_CONSOLE_KWARGS: dict = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
+
 
 def run_event_command(commands: list[str], env_vars: dict[str, str]) -> None:
     """Launch shell commands with event-specific environment variables.
@@ -54,7 +56,7 @@ def run_event_command(commands: list[str], env_vars: dict[str, str]) -> None:
             subprocess.Popen(
                 command, shell=True, env=env, cwd=working_dir,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                **_NO_CONSOLE_KWARGS,
             )
         except Exception:
             traceback.print_exc()

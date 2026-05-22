@@ -12,8 +12,14 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+# CREATE_NO_WINDOW hides the brief console flash when subprocess.run() spawns
+# a child on Windows.  On POSIX systems there is no attached console for
+# windowless apps, so the flag is omitted entirely.
+_NO_CONSOLE_KWARGS: dict = {'creationflags': subprocess.CREATE_NO_WINDOW} if sys.platform == 'win32' else {}
 
 
 def _discover_cli_path() -> Path:
@@ -156,7 +162,7 @@ def refresh_token() -> RefreshResult:
     try:
         proc = subprocess.run(
             [str(CLAUDE_CLI_PATH), 'update'],
-            capture_output=True, text=True, timeout=60, creationflags=subprocess.CREATE_NO_WINDOW,
+            capture_output=True, text=True, timeout=60, **_NO_CONSOLE_KWARGS,
         )
     except subprocess.TimeoutExpired:
         return RefreshResult(success=False, updated=False, old_version='', new_version='', error='Timeout')
@@ -204,7 +210,7 @@ def cli_version(path: Path) -> str:
 
         proc = subprocess.run(
             [str(path), '--version'],
-            capture_output=True, text=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+            capture_output=True, text=True, timeout=10, **_NO_CONSOLE_KWARGS,
         )
         # Output format: "2.1.69 (Claude Code)"
         match = re.match(r'(\d+\.\d+\.\d+)', proc.stdout.strip())
