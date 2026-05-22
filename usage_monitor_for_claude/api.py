@@ -92,6 +92,12 @@ def fetch_usage() -> dict[str, Any]:
             extra['server_message'] = server_msg
 
         if code == 401:
+            # An expired or revoked token can happen when the user logs
+            # into a different Claude Code account or v2.1.52+ rotates
+            # the hashed Keychain service name.  Clear the cached macOS
+            # service name so the next read_access_token() call re-runs
+            # the discovery and picks up the fresh entry.
+            _invalidate_keychain_cache()
             return {**extra, 'error': T['auth_expired'], 'auth_error': True}
         if code == 429:
             retry = _parse_retry_after(e.response)
@@ -171,6 +177,18 @@ def _read_access_token_macos() -> str | None:
         if token is not None:
             return token
     return None
+
+
+def _invalidate_keychain_cache() -> None:
+    """Clear the cached Keychain service name so the next read re-discovers it.
+
+    Called when the Anthropic API returns 401 - typically because the
+    user has signed into a different Claude Code account and v2.1.52+
+    rotated the hashed service name we resolved earlier.  No-op on
+    non-darwin platforms (the cache is only populated there).
+    """
+    global _resolved_keychain_service
+    _resolved_keychain_service = None
 
 
 def _macos_keychain_service_candidates() -> list[str]:

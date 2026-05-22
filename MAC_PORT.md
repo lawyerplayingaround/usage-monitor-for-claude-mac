@@ -254,7 +254,11 @@ Excludes on macOS additionally drop Windows-only paths
 (``pystray._win32``, ``pystray._util.win32``,
 ``webview.platforms.edgechromium``, ``webview.platforms.winforms``,
 ``clr_loader``, ``pythonnet``, ``bottle``).  ``xml`` stays included
-because ``pystray._darwin`` imports it during backend autodetection.
+because excluding it causes the bundle to fail at startup with
+``ImportError: this platform is not supported: No module named 'xml'``
+out of ``pystray.__init__.backend()``; the trigger appears to be the
+PyInstaller pkg_resources shim during backend autodetection rather
+than pystray's own source.
 
 ### `build.py` (now multi-platform)
 

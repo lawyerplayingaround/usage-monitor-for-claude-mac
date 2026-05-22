@@ -184,6 +184,26 @@ class TestFetchUsage(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.api.requests.get')
     @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
+    def test_401_invalidates_keychain_cache(self, _mock_headers, mock_get):
+        """A 401 from the API clears the cached macOS Keychain service name."""
+        import requests
+        import usage_monitor_for_claude.api as api_mod
+
+        # Seed the cache as if discovery had run successfully.
+        api_mod._resolved_keychain_service = 'Claude Code-credentials-DEADBEEF'
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 401
+        mock_resp.json.return_value = {}
+        mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+        mock_get.return_value = mock_resp
+
+        fetch_usage()
+
+        self.assertIsNone(api_mod._resolved_keychain_service)
+
+    @patch('usage_monitor_for_claude.api.requests.get')
+    @patch('usage_monitor_for_claude.api.api_headers', return_value={'Authorization': 'Bearer test'})
     def test_server_error_500(self, _mock_headers, mock_get):
         """HTTP 500 returns server_error with status code."""
         import requests

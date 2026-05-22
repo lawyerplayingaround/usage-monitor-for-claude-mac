@@ -146,6 +146,84 @@ class TestInstallMacOSDblclickHandler(unittest.TestCase):
             )
         self.mock_button.setTarget_.assert_not_called()
 
+    def test_dispatcher_routes_by_click_kind(self):
+        """The dispatcher fires the right callback for single, double, ignore.
+
+        Calls ``_dispatch`` directly with the pre-classified click kind so
+        no real ``NSEvent`` is needed - the kind→action mapping is the
+        actual contract we care about.
+        """
+        import time
+
+        dblclick_mod.install_macos_dblclick_handler(
+            self.icon, on_single_click=self.single_cb, on_double_click=self.double_cb,
+        )
+        dispatcher = self.icon._click_dispatcher
+
+        # single: schedules timer, callback fires after _SINGLE_CLICK_DEFER_S.
+        dispatcher._dispatch(dblclick_mod._CLICK_SINGLE)
+        time.sleep(dblclick_mod._SINGLE_CLICK_DEFER_S + 0.2)
+        self.single_cb.assert_called_once()
+        self.double_cb.assert_not_called()
+
+        # Reset for the double-click case.
+        self.single_cb.reset_mock()
+        self.double_cb.reset_mock()
+
+        # single followed by double: timer cancelled, double fires, single never does.
+        dispatcher._dispatch(dblclick_mod._CLICK_SINGLE)
+        dispatcher._dispatch(dblclick_mod._CLICK_DOUBLE)
+        time.sleep(dblclick_mod._SINGLE_CLICK_DEFER_S + 0.2)
+        self.single_cb.assert_not_called()
+        self.double_cb.assert_called_once()
+
+        # 3rd click (ignore): no callback, no timer.
+        self.double_cb.reset_mock()
+        dispatcher._dispatch(dblclick_mod._CLICK_IGNORE)
+        time.sleep(dblclick_mod._SINGLE_CLICK_DEFER_S + 0.2)
+        self.single_cb.assert_not_called()
+        self.double_cb.assert_not_called()
+
+    def test_dispatcher_menu_kind_shows_menu(self):
+        """A 'menu' classification routes through _show_menu, not the callbacks."""
+        dblclick_mod.install_macos_dblclick_handler(
+            self.icon, on_single_click=self.single_cb, on_double_click=self.double_cb,
+        )
+        dispatcher = self.icon._click_dispatcher
+
+        # Spy on _show_menu so we can assert it was called.
+        with patch.object(dispatcher, '_show_menu') as mock_show:
+            dispatcher._dispatch(dblclick_mod._CLICK_MENU)
+
+        mock_show.assert_called_once()
+        self.single_cb.assert_not_called()
+        self.double_cb.assert_not_called()
+
+    def test_install_is_idempotent(self):
+        """A second install on the same icon must be a no-op (no recursive _update_menu).
+
+        Without the guard, the second call would capture the already-patched
+        ``_update_menu`` as the new original, producing infinite recursion the
+        next time pystray invokes a menu rebuild.
+        """
+        dblclick_mod.install_macos_dblclick_handler(
+            self.icon, on_single_click=self.single_cb, on_double_click=self.double_cb,
+        )
+        first_dispatcher = self.icon._click_dispatcher
+        first_update_menu = self.icon._update_menu
+
+        dblclick_mod.install_macos_dblclick_handler(
+            self.icon, on_single_click=self.single_cb, on_double_click=self.double_cb,
+        )
+
+        # The second install must NOT replace the dispatcher or rewrap _update_menu.
+        self.assertIs(self.icon._click_dispatcher, first_dispatcher)
+        self.assertIs(self.icon._update_menu, first_update_menu)
+
+        # And a subsequent menu rebuild must terminate (no recursion).
+        self.icon._update_menu()
+        self.icon._update_menu()
+
 
 if __name__ == '__main__':
     unittest.main()

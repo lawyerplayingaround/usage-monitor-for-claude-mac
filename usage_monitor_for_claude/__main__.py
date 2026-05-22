@@ -7,7 +7,13 @@ import subprocess
 import sys
 import traceback
 
-_verbose = '--verbose' in sys.argv
+# --verbose triggers Win32-only diagnostics that read the registry and
+# attach a console.  On macOS the unfrozen run already prints to stderr
+# and the frozen .app has nothing to attach to, so the flag is a no-op
+# off Windows.  Gating the import here prevents verbose.py's
+# ``import winreg`` (Windows-only stdlib) from crashing the launch on
+# macOS when the user passes --verbose.
+_verbose = '--verbose' in sys.argv and sys.platform == 'win32'
 
 # In frozen builds (console=False), stdout/stderr go nowhere.
 # --verbose attaches a console so diagnostics are visible.

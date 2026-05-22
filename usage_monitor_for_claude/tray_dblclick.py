@@ -76,6 +76,14 @@ _SINGLE_CLICK_DEFER_S = 0.48
 # found.
 _CLAUDE_WEB_FALLBACK = 'https://claude.ai/'
 
+# Click classification kinds returned by the macOS dispatcher's
+# ``handleClick_`` and consumed by ``_dispatch``.  Strings rather than
+# enums to keep the dispatcher dependency-free (no functools/Enum import).
+_CLICK_MENU = 'menu'
+_CLICK_SINGLE = 'single'
+_CLICK_DOUBLE = 'double'
+_CLICK_IGNORE = 'ignore'
+
 
 # ---------------------------------------------------------------------------
 # Windows: subclassed pystray.Icon
@@ -213,7 +221,6 @@ if sys.platform == 'darwin':
             self._single = single
             self._double = double
             self._pending_timer = None
-            self._last_dblclick_at = 0.0
             self._lock = threading.Lock()
             return self
 
@@ -223,44 +230,67 @@ if sys.platform == 'darwin':
                 return
 
             event_type = event.type()
+            modifier_flags = event.modifierFlags()
+            click_count = event.clickCount()
+
             is_right_click = event_type in (
                 AppKit.NSEventTypeRightMouseDown,
                 AppKit.NSEventTypeRightMouseUp,
             )
             is_ctrl_left = (
                 event_type in (AppKit.NSEventTypeLeftMouseDown, AppKit.NSEventTypeLeftMouseUp)
-                and bool(event.modifierFlags() & AppKit.NSEventModifierFlagControl)
+                and bool(modifier_flags & AppKit.NSEventModifierFlagControl)
             )
 
             if is_right_click or is_ctrl_left:
+                kind = _CLICK_MENU
+            elif click_count == 1:
+                kind = _CLICK_SINGLE
+            elif click_count == 2:
+                kind = _CLICK_DOUBLE
+            else:
+                # 3rd, 4th, ... click in the same sequence - the user
+                # already got their double-click action; ignore.
+                kind = _CLICK_IGNORE
+
+            self._dispatch(kind)
+
+        @objc.python_method
+        def _dispatch(self, kind: str) -> None:
+            """Apply the timer / callback policy for a classified click.
+
+            Split out from ``handleClick_`` so unit tests can exercise the
+            single / double / triple branches without constructing real
+            ``NSEvent`` objects.  ``NSEvent.clickCount`` is OS-managed and
+            respects the user's System Settings double-click interval - a
+            new click after the interval restarts at 1, so this method
+            relies on the classification alone.
+
+            Decorated with ``@objc.python_method`` so pyobjc does not
+            mistake it for an Objective-C selector and reject the
+            signature - it is a pure Python helper.
+            """
+            if kind == _CLICK_MENU:
                 self._show_menu()
                 return
 
-            click_count = event.clickCount()
-            now = time.time()
-
             with self._lock:
-                # Trailing single-up that follows a double-click - swallow.
-                if now - self._last_dblclick_at < _DBLCLICK_GUARD_S and click_count == 1:
-                    return
-
                 if self._pending_timer is not None:
                     self._pending_timer.cancel()
                     self._pending_timer = None
 
-                if click_count >= 2:
-                    self._last_dblclick_at = now
-                    callback = self._double
-                    deferred = False
-                else:
+                if kind == _CLICK_SINGLE:
                     timer = threading.Timer(_SINGLE_CLICK_DEFER_S, self._fire_single)
                     timer.daemon = True
                     self._pending_timer = timer
                     timer.start()
                     callback = None
-                    deferred = True
+                elif kind == _CLICK_DOUBLE:
+                    callback = self._double
+                else:
+                    callback = None
 
-            if not deferred and callback is not None:
+            if callback is not None:
                 threading.Thread(target=_safe_invoke, args=(callback,), daemon=True).start()
 
         def _fire_single(self) -> None:
@@ -317,6 +347,13 @@ def install_macos_dblclick_handler(
     if sys.platform != 'darwin':
         return
 
+    # Idempotency guard.  Re-calling the installer would capture the
+    # already-patched ``_update_menu`` as ``original_update_menu`` and
+    # produce infinite recursion on the next pystray menu rebuild.  A
+    # private flag on the icon stops the second call from doing anything.
+    if getattr(icon, '_dblclick_installed', False):
+        return
+
     # 1) Detach pystray's NSMenu from the status item so left-clicks
     #    actually reach the button's action selector.  pystray re-attaches
     #    the menu every time ``_update_menu`` runs (e.g. when an item's
@@ -350,6 +387,8 @@ def install_macos_dblclick_handler(
     button.sendActionOn_(
         AppKit.NSEventMaskLeftMouseDown | AppKit.NSEventMaskRightMouseDown,
     )
+
+    icon._dblclick_installed = True  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------

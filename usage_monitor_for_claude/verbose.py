@@ -5,18 +5,26 @@ Verbose Diagnostics
 Collects and prints system and runtime diagnostics when the app is
 launched with ``--verbose``.  Helps users diagnose startup failures
 without needing a Python installation.
+
+This module is Windows-only.  ``--verbose`` on macOS is a no-op (the
+unfrozen ``python -m`` already prints to stderr; the frozen ``.app``
+has nothing to attach a console to).  The Win32-specific imports below
+are guarded so that merely loading this module on macOS does not blow
+up.
 """
 from __future__ import annotations
 
-import ctypes
-import ctypes.wintypes
 import importlib.metadata
 import locale
 import os
 import platform
 import sys
-import winreg
 from pathlib import Path
+
+if sys.platform == 'win32':
+    import ctypes
+    import ctypes.wintypes
+    import winreg
 
 __all__ = ['setup_console', 'print_startup_diagnostics', 'print_runtime_diagnostics']
 

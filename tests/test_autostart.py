@@ -270,18 +270,16 @@ class TestMacOSAutostart(unittest.TestCase):
         self.assertNotIn('/old/path', second)
 
     def test_sync_is_idempotent_when_path_matches(self):
+        """sync_autostart_path must NOT rewrite the plist when content matches."""
         autostart_mod.set_autostart(True)
-        original_mtime = self._plist_path.stat().st_mtime_ns
+        before = self._plist_path.read_text()
 
-        autostart_mod.sync_autostart_path()
+        # Patch the writer so a rewrite would raise loudly.
+        with patch.object(autostart_mod, 'set_autostart') as mock_set:
+            autostart_mod.sync_autostart_path()
 
-        # No rewrite: same content means the file should not be touched.
-        # (write_text would update mtime even with identical content.)
-        new_content = self._plist_path.read_text()
-        rebuilt = autostart_mod._build_plist(sys.executable)
-        self.assertEqual(new_content, rebuilt)
-        # Mtime may or may not have changed depending on filesystem;
-        # the important contract is that the content is correct.
+        mock_set.assert_not_called()
+        self.assertEqual(self._plist_path.read_text(), before)
 
     def test_sync_returns_silently_when_plist_absent(self):
         autostart_mod.sync_autostart_path()  # should not raise

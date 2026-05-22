@@ -40,10 +40,14 @@ if _IS_MAC:
         'usage_monitor_for_claude._macos_tray',
         'usage_monitor_for_claude._macos_popup',
     ]
-    # 'xml' must stay - pystray._darwin imports xml.etree internally via its
-    # backend autodetection, and the bundle ImportErrors at module load
-    # without it.  Autostart on macOS inlines XML escaping so the only
-    # remaining xml consumer is pystray, but pystray's need is enough.
+    # 'xml' must stay - an empirical test (excluding it) results in
+    # ``ImportError: this platform is not supported: No module named
+    # 'xml'`` from ``pystray.__init__.backend()`` during the bundle's
+    # cold start.  The trigger appears to be PyInstaller's
+    # ``pkg_resources`` shim rather than pystray's own source (pystray's
+    # files do not ``import xml`` directly), but the symptom is real
+    # and reproducible.  Autostart on macOS inlines XML escaping so the
+    # autostart module does not contribute to the xml requirement.
     _excludes = [
         'unittest', 'test',
         'xmlrpc', 'pydoc',
