@@ -2,13 +2,15 @@
 Build Script
 =============
 
-Builds a standalone EXE for Usage Monitor for Claude using PyInstaller.
+Builds the standalone executable for Usage Monitor for Claude using
+PyInstaller.
 
 Usage:
     python build.py
 
 Produces:
-    dist/UsageMonitorForClaude.exe
+    dist/UsageMonitorForClaude.exe        (on Windows)
+    dist/UsageMonitorForClaude.app/...    (on macOS - a proper app bundle)
 """
 from __future__ import annotations
 
@@ -21,18 +23,34 @@ DIST = ROOT / 'dist'
 SPEC = ROOT / 'usage_monitor_for_claude.spec'
 
 
+def _artifact_path() -> Path:
+    """Return the expected output path for the current platform."""
+    if sys.platform == 'darwin':
+        return DIST / 'UsageMonitorForClaude.app'
+    return DIST / 'UsageMonitorForClaude.exe'
+
+
+def _artifact_size(path: Path) -> float:
+    """Return the artifact size in megabytes (recursive for the .app bundle)."""
+    if path.is_dir():
+        total = sum(p.stat().st_size for p in path.rglob('*') if p.is_file())
+    else:
+        total = path.stat().st_size
+    return total / (1024 * 1024)
+
+
 def build() -> None:
-    """Run PyInstaller to produce the standalone EXE."""
+    """Run PyInstaller to produce the standalone executable."""
     print('Starting PyInstaller build ...')
     cmd = [sys.executable, '-m', 'PyInstaller', '--clean', '--noconfirm', str(SPEC)]
     subprocess.check_call(cmd, cwd=str(ROOT))
 
-    exe = DIST / 'UsageMonitorForClaude.exe'
-    if exe.exists():
-        size_mb = exe.stat().st_size / (1024 * 1024)
-        print(f'\nBuild successful!  {exe}  ({size_mb:.1f} MB)')
+    artifact = _artifact_path()
+    if artifact.exists():
+        size_mb = _artifact_size(artifact)
+        print(f'\nBuild successful!  {artifact}  ({size_mb:.1f} MB)')
     else:
-        print('\nBuild failed - EXE not found.')
+        print('\nBuild failed - artifact not found.')
         sys.exit(1)
 
 

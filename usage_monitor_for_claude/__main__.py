@@ -25,7 +25,11 @@ if _verbose:
     from usage_monitor_for_claude.verbose import print_startup_diagnostics
     print_startup_diagnostics()
 
-import webview  # type: ignore[import-untyped]  # no type stubs available
+# pywebview is the popup host on Windows; on macOS the popup runs through
+# the native ``_macos_popup`` module instead, and pywebview (with its bottle
+# / clr_loader dependencies) is excluded from the PyInstaller bundle.
+if sys.platform == 'win32':
+    import webview  # type: ignore[import-untyped]  # no type stubs available
 
 from usage_monitor_for_claude.app import UsageMonitorForClaude, crash_log
 from usage_monitor_for_claude.single_instance import ensure_single_instance, release_instance_lock
@@ -65,12 +69,14 @@ def _run_app() -> None:
         crash_log(traceback.format_exc())
     finally:
         # Destroy all webview windows (keeper + any open popups) so
-        # webview.start() on the main thread returns.
-        for win in list(webview.windows):
-            try:
-                win.destroy()
-            except Exception:
-                pass
+        # webview.start() on the main thread returns.  Only needed on the
+        # Windows branch - macOS does not own a webview event loop.
+        if sys.platform == 'win32':
+            for win in list(webview.windows):
+                try:
+                    win.destroy()
+                except Exception:
+                    pass
 
 
 try:

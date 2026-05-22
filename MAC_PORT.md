@@ -22,7 +22,7 @@ auditability guarantees of the original:
 | 1 | Read access token from macOS Keychain | done |
 | 2 | Tray icon visible in the menu bar | done |
 | 3 | Detail popup (NSPanel + WKWebView) on click | done |
-| 4 | Login Item autostart + PyInstaller `.app` build | pending |
+| 4 | LaunchAgent autostart + PyInstaller `.app` build | done |
 | 5 | Final end-to-end validation (network + filesystem audit) | pending |
 
 ---
@@ -107,9 +107,25 @@ Adds a `sys.platform == 'darwin'` branch using
 
 ### `usage_monitor_for_claude/autostart.py`
 
-The Windows registry implementation is now wrapped in `if sys.platform ==
-'win32':`.  The macOS branch is currently a no-op stub - Phase 4 will
-implement a `LaunchAgent` plist under `~/Library/LaunchAgents`.
+The Windows registry implementation is wrapped in `if sys.platform ==
+'win32':`.  The macOS branch writes a ``LaunchAgent`` plist at
+``~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`` on
+``set_autostart(True)`` and deletes it on ``set_autostart(False)``.  No
+``launchctl bootstrap`` call is required - macOS scans
+``~/Library/LaunchAgents`` at every login and starts the agent
+automatically thanks to ``RunAtLoad=true`` in the template.
+
+The plist is built from a small static XML template with no dynamic key
+names and no user data; only the executable path (``sys.executable``)
+is interpolated, with the three XML-significant chars
+(``&``, ``<``, ``>``) escaped via an inlined helper.  This avoids
+pulling ``xml.sax.saxutils`` into the PyInstaller bundle just for the
+escape call.
+
+``sync_autostart_path`` mirrors the Windows semantics: if the user
+drags ``UsageMonitorForClaude.app`` to a new location, the next startup
+rewrites the plist so the launch agent always points at the current
+binary.
 
 ### `usage_monitor_for_claude/single_instance.py`
 
@@ -214,6 +230,51 @@ because it needs a live AppKit runloop and a real ``NSStatusItem``.
 
 ## Roadmap
 
+### `usage_monitor_for_claude.spec` (now multi-platform)
+
+The single spec file branches on ``sys.platform`` to keep the build
+config in one auditable place:
+
+- **Windows**: original ``EXE`` build with the ``.ico`` icon and the
+  ``version_info.py`` resource file.
+- **macOS**: onedir layout (``EXE(exclude_binaries=True)`` →
+  ``COLLECT`` → ``BUNDLE``) producing
+  ``dist/UsageMonitorForClaude.app`` with ``target_arch='arm64'``,
+  ``LSUIElement=True``, ``CFBundleIdentifier='com.usage-monitor-for-claude'``,
+  ``LSMinimumSystemVersion='11.0'``, ``NSHighResolutionCapable=True``
+  and the version pulled from ``__init__.py`` at spec parse time.
+
+Hidden imports on macOS: ``pystray._darwin``, ``objc``, ``AppKit``,
+``Foundation``, ``Quartz``, ``WebKit``,
+``usage_monitor_for_claude._macos_tray``,
+``usage_monitor_for_claude._macos_popup``.  Windows hidden imports
+unchanged.
+
+Excludes on macOS additionally drop Windows-only paths
+(``pystray._win32``, ``pystray._util.win32``,
+``webview.platforms.edgechromium``, ``webview.platforms.winforms``,
+``clr_loader``, ``pythonnet``, ``bottle``).  ``xml`` stays included
+because ``pystray._darwin`` imports it during backend autodetection.
+
+### `build.py` (now multi-platform)
+
+Detects the host platform and reports the correct artifact path on
+success: ``dist/UsageMonitorForClaude.exe`` on Windows,
+``dist/UsageMonitorForClaude.app`` on macOS.  The size summary walks
+the ``.app`` directory recursively.
+
+### `tests/test_autostart.py`
+
+The existing Windows registry tests are decorated with a
+``_WIN32_ONLY`` skip; a new ``TestMacOSAutostart`` class covers the
+LaunchAgent plist write path: initial state, enable creates plist,
+plist parses as XML, enable escapes XML-significant chars in the path,
+disable removes plist, disable is idempotent, enable creates the
+parent ``LaunchAgents`` directory, ``sync_autostart_path`` rewrites
+when the executable moves, ``sync_autostart_path`` is a no-op when
+absent.  Each test patches ``LAUNCH_AGENT_PATH`` to a tmp file so the
+real ``~/Library/LaunchAgents`` is never touched.
+
 ### Phase 3 - Popup window (DONE)
 
 Implemented as a **hybrid** of the two originally-considered paths: the
@@ -237,15 +298,18 @@ See `_macos_popup.py`, the darwin branches in `popup.py`, the
 `compute_popup_position` tests in `tests/test_macos_popup.py`, and the
 end-to-end driver `scripts/mac_smoke_popup.py`.
 
-### Phase 4 - Autostart + build
+### Phase 4 - Autostart + build (DONE)
 
-- macOS autostart: write a `LaunchAgent` plist at
-  `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist` and load it
-  via `launchctl bootstrap gui/$(id -u)`.
-- Build script (`build.py`) gets a `darwin` branch producing
-  `dist/UsageMonitorForClaude.app` via PyInstaller with
-  `--target-arch arm64`, `LSUIElement=true` in `Info.plist`, and hidden
-  imports for `pystray._darwin`, `Quartz`, and `_macos_tray`.
+- macOS autostart writes ``~/Library/LaunchAgents/com.usage-monitor-for-claude.plist``
+  on toggle.  ``launchd`` picks it up at next login automatically -
+  no ``launchctl bootstrap`` round-trip is performed at toggle time, so
+  the toggle never spawns a second instance.  See ``autostart.py``.
+- ``build.py`` + ``usage_monitor_for_claude.spec`` produce
+  ``dist/UsageMonitorForClaude.app`` (~52 MB, onedir layout) with
+  ``target_arch='arm64'``, ``LSUIElement=true`` so the app lives only
+  in the menu bar, and the version pulled dynamically from
+  ``usage_monitor_for_claude/__init__.py`` so future bumps need touch
+  only one file.
 
 ### Phase 5 - Validation
 
@@ -261,12 +325,13 @@ end-to-end driver `scripts/mac_smoke_popup.py`.
 
 ## Known limitations on macOS today
 
-- **No autostart.**  The "Start with Windows" menu item is hidden in the
-  unfrozen build and the macOS branch is a stub.
 - **App is unsigned.**  Phase 4 produces an unsigned `.app`; macOS Gatekeeper
   will require right-click - Open the first time.  Distributable signed
   builds would require enrolling the developer in Apple's notarization
   programme, which is out of scope for this port.
+- **arm64-only build.**  ``target_arch='arm64'`` keeps the bundle small
+  on Apple Silicon.  Switch to ``'universal2'`` in the spec if Intel
+  Mac support is ever required.
 
 ---
 

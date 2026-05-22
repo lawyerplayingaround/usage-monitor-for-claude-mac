@@ -23,15 +23,20 @@ import webbrowser
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import webview  # type: ignore[import-untyped]  # no type stubs available
-
 from . import __version__
 from .claude_cli import CHANGELOG_URL, find_installations
 from .formatting import elapsed_pct, expand_popup_fields, field_period, format_credits, midnight_positions, popup_label, time_until
 from .i18n import T
 from .settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK, POPUP_FIELDS
 
-if sys.platform == 'darwin':
+# pywebview is the popup host on Windows only.  On macOS the popup is hosted
+# by ``_macos_popup.PopupController`` (native NSPanel + WKWebView), so the
+# pywebview module - and its ``bottle`` HTTP-server dependency - never need
+# to load.  Guarding the import keeps the macOS bundle smaller and avoids
+# tripping over ``bottle`` being excluded from the PyInstaller spec.
+if sys.platform == 'win32':
+    import webview  # type: ignore[import-untyped]  # no type stubs available
+elif sys.platform == 'darwin':
     from ._macos_popup import PopupController
 
 _POPUP_DIR = Path(__file__).parent / 'popup'
