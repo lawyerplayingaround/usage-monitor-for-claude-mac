@@ -23,7 +23,7 @@ auditability guarantees of the original:
 | 2 | Tray icon visible in the menu bar | done |
 | 3 | Detail popup (NSPanel + WKWebView) on click | done |
 | 4 | LaunchAgent autostart + PyInstaller `.app` build | done |
-| 5 | Final end-to-end validation (network + filesystem audit) | pending |
+| 5 | Final end-to-end validation (network + filesystem audit) | done |
 
 ---
 
@@ -374,15 +374,69 @@ end-to-end driver `scripts/mac_smoke_popup.py`.
   ``usage_monitor_for_claude/__init__.py`` so future bumps need touch
   only one file.
 
-### Phase 5 - Validation
+### Phase 5 - Validation (DONE)
 
-- `sudo lsof -i -P -n | grep python` confirms only `api.anthropic.com` and
-  `api.github.com` connections.
-- `find ~/Library -name "*usage_monitor*"` confirms no on-disk files
-  contain credentials (the lock file may exist; the SF Pro variation cache
-  inside Pillow does not persist).
-- Side-by-side screenshot comparison with the Windows reference image
-  stored at `Apps Windows/Usage_Monitor_Windows/`.
+Audit performed against the bundled ``dist/UsageMonitorForClaude.app``
+(onedir, arm64, ``LSUIElement=true``) and the dev-mode ``python -m``
+run.  Results captured at 2026-05-22 ~04:40 local time.
+
+**Network destinations.**  ``nettop -p <pid>`` over 30 s observed
+short-lived TCP flows from the app PID consistent with a single HTTPS
+poll (~27 bytes ACK pattern, no sustained connection).  Source-grep
+confirmed only one place issues HTTP requests:
+
+```
+usage_monitor_for_claude/api.py:27: API_URL_USAGE  = 'https://api.anthropic.com/api/oauth/usage'
+usage_monitor_for_claude/api.py:28: API_URL_PROFILE = 'https://api.anthropic.com/api/oauth/profile'
+```
+
+Every other URL constant (``CHANGELOG_URL`` in ``claude_cli.py``,
+``PROJECT_URL`` in ``claude_cli.py``, ``_CLAUDE_WEB_FALLBACK`` in
+``tray_dblclick.py``) is opened in the user's browser via
+``webbrowser.open`` or ``open(1)`` and is **never** fetched by the app
+process itself.  Strings extracted from the bundled
+``Frameworks/`` libraries with ``strings -a`` show only the XML
+namespace ``http://www.w3.org`` (used by ``plistlib``) - benign.
+
+**Filesystem writes.**  The only files the app writes are:
+
+- ``~/.usage-monitor-for-claude.lock`` - 13 bytes containing PID + app
+  version, opened in ``single_instance.py``.  Required for the
+  POSIX-flock single-instance design; never contains credentials.
+- ``~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`` -
+  written only when the user explicitly toggles "Start at login".
+  Contains the literal label, ``sys.executable`` path, ``RunAtLoad`` /
+  ``KeepAlive`` / ``ProcessType`` keys.  No credentials, no user data.
+
+``grep -rn -E 'open\(.*[w]|write_text|write_bytes|\.write\('
+usage_monitor_for_claude/`` returns only:
+
+- ``verbose.py`` (Windows-only ``CONOUT`` redirect, gated behind
+  ``sys.platform == 'win32'``);
+- ``autostart.py`` (the LaunchAgent plist above);
+- ``single_instance.py`` (the lock above);
+- ``app.py:crash_log`` (``sys.stderr.write`` only - no on-disk file).
+
+**Credential handling.**  ``api.py`` is the only module that touches
+the OAuth token.  On macOS the token is read from the system Keychain
+via ``/usr/bin/security find-generic-password``, cached in memory only
+for the lifetime of the process, and injected into the
+``Authorization: Bearer ...`` HTTP header.  ``api.py`` never writes
+the token, never logs it, never sends it anywhere except the
+``api.anthropic.com`` endpoint.
+
+**No dynamic code.**  ``grep -rn -E
+'\b(eval|exec|compile|__import__)\s*\(' usage_monitor_for_claude/``
+returns zero matches.  ``grep -rn 'base64' usage_monitor_for_claude/``
+returns zero matches.
+
+**Visual parity.**  ``scripts/screenshots/01_popup_open.png`` (macOS)
+matches the Windows reference at
+``Apps Windows/Usage_Monitor_Windows/usage-monitor-for-claude/screenshot.png``
+on layout, dark theme palette, section structure (ACCOUNT / USAGE /
+EXTRA USAGE / CLAUDE CODE / footer), progress bar style, Changelog
+link styling, and status footer.  Differences are data-driven only
+(different account, BRL locale, different installed CLI versions).
 
 ---
 
@@ -395,6 +449,11 @@ end-to-end driver `scripts/mac_smoke_popup.py`.
 - **arm64-only build.**  ``target_arch='arm64'`` keeps the bundle small
   on Apple Silicon.  Switch to ``'universal2'`` in the spec if Intel
   Mac support is ever required.
+- **First single click feels ~0.5 s laggy** by design.  The double-click
+  dispatcher must wait for the OS-configured double-click interval
+  before it can confidently fire the single-click action; otherwise a
+  slow second click would lose the chance to open Claude Desktop.
+  Same trade-off as the Windows version.
 
 ---
 
