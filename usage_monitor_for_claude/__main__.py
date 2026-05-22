@@ -81,9 +81,11 @@ try:
     _verbose_step('ensure_single_instance... OK')
 
     if sys.platform == 'darwin':
-        # AppKit requires NSStatusItem and any other GUI object to live on the
-        # main thread, so pystray runs in-thread here.  The HTML popup is
-        # currently disabled on macOS (Phase 3 of the port reintroduces it).
+        # AppKit requires NSStatusItem and other GUI objects to live on the
+        # main thread, and pystray's _darwin backend runs NSApp.run() on the
+        # calling thread.  The popup window is hosted by a native NSPanel +
+        # WKWebView (see _macos_popup) and dispatched onto the same main
+        # runloop via NSOperationQueue from popup worker threads.
         _verbose_step('running pystray on main thread (macOS)...')
         _run_app()
         _verbose_step('pystray.run returned')

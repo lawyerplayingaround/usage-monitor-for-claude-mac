@@ -21,7 +21,7 @@ auditability guarantees of the original:
 | --- | --- | --- |
 | 1 | Read access token from macOS Keychain | done |
 | 2 | Tray icon visible in the menu bar | done |
-| 3 | Detail popup (HTML or native) on click | pending |
+| 3 | Detail popup (NSPanel + WKWebView) on click | done |
 | 4 | Login Item autostart + PyInstaller `.app` build | pending |
 | 5 | Final end-to-end validation (network + filesystem audit) | pending |
 
@@ -36,23 +36,33 @@ The package lives in
 cd "/path/to/usage-monitor-for-claude"
 python3 -m venv .venv
 source .venv/bin/activate
-pip install requests Pillow pystray pywebview pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-Quartz pyinstaller
+pip install requests Pillow pystray pywebview \
+    pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-Quartz pyobjc-framework-WebKit \
+    pyinstaller
 python3 -m usage_monitor_for_claude
 ```
 
 The menu bar should show `C` (no data yet) and update to the current 5h
-session percentage within a second.
+session percentage within a second.  Clicking "Show Claude Usage" opens
+the HTML popup hosted in a native ``NSPanel``.
 
-To run the API-related tests:
+To run the tests that work on macOS:
 
 ```bash
-python3 -m unittest tests.test_api
+python3 -m unittest tests.test_api tests.test_popup tests.test_macos_popup
+# expected: 113 ok, 19 skipped (Win32-only)
 ```
 
-The file-based tests are auto-skipped on macOS; nine Keychain-specific tests
-cover the macOS read path.  Other test modules import Windows-only Win32
-APIs and are not expected to load on macOS - that is upstream behaviour, not
-a porting regression.
+To exercise the popup end-to-end without manual clicking:
+
+```bash
+python3 scripts/mac_smoke_popup.py
+```
+
+The remaining test modules (`test_app`, `test_command`, `test_idle`,
+`test_tray_icon`, `test_verbose`, `test_autostart`) still import Windows
+APIs at module level and are not expected to load on macOS - that is
+upstream behaviour, not a porting regression.
 
 ---
 
@@ -112,8 +122,9 @@ other instance manually.
 ### `usage_monitor_for_claude/__main__.py`
 
 On macOS, pystray runs on the main thread (AppKit requires `NSStatusItem`
-to be created on the main thread), and the pywebview event loop is skipped.
-That makes the popup unavailable on macOS until Phase 3 wires it up.
+to be created on the main thread).  The popup is dispatched onto the same
+main runloop via `NSOperationQueue.mainQueue()` from the popup worker
+thread; pywebview's `webview.start()` is never called on macOS.
 `subprocess.CREATE_NO_WINDOW` is guarded behind `sys.platform == 'win32'`.
 
 ### `usage_monitor_for_claude/{claude_cli,command,app}.py`
@@ -123,6 +134,50 @@ expands to nothing on POSIX.  `app.crash_log` writes to `stderr` on non-Windows
 instead of calling `MessageBoxW`.  `app.UsageMonitorForClaude.__init__`
 installs the tray patch from `_macos_tray.py` when running on macOS.
 
+### `usage_monitor_for_claude/popup.py`
+
+`__init__`, `_on_loaded`, `_show_window`, `_close`, `_update_loop` and
+`_resize_and_position` each grew a `sys.platform == 'darwin'` branch that
+delegates to a `PopupController` instance instead of pywebview's
+`webview.create_window` / `evaluate_js` / `destroy`.  A new
+`_on_bridge_message` method bridges incoming WKScriptMessage payloads to
+the original `_PopupApi.{close, open_url, report_height}` behaviour.
+`_dismiss_watch` (Win32 hook pump) is left untouched but no longer started
+on macOS - dismissal there is handled by ``NSEvent`` monitors inside
+``_macos_popup``.
+
+### `usage_monitor_for_claude/_macos_popup.py` (new)
+
+Hosts the popup natively on macOS:
+
+* `PopupController` - owns one ``NSPanel`` + ``WKWebView`` lifecycle; safe
+  to drive from any thread (every public method dispatches through
+  ``NSOperationQueue.mainQueue()``).
+* `dispatch_main_async` / `dispatch_main_sync` - thin pyobjc wrappers
+  around ``NSOperationQueue.mainQueue().addOperationWithBlock_`` with the
+  same-thread fast path on the sync variant to avoid runloop deadlocks.
+* `status_item_screen_frame` / `compute_popup_position` - pure helpers
+  that convert the status bar button frame (Cocoa screen coords,
+  bottom-left origin) into a popup origin centred horizontally on the
+  icon, clamped to the owning ``NSScreen.visibleFrame``.
+* `_BridgeHandler` (WKScriptMessageHandler), `_WindowDelegate`
+  (NSWindowDelegate), `_NavigationDelegate` (WKNavigationDelegate) -
+  pyobjc subclasses kept tiny so security review can read them at a
+  glance.
+* `_PYWEBVIEW_BRIDGE_JS` - a single ``WKUserScript`` injected at
+  ``WKUserScriptInjectionTimeAtDocumentStart`` that defines
+  ``window.pywebview.api.{close, open_url, report_height}`` so the
+  existing ``popup/popup.js`` runs unchanged.
+
+The panel is created at ``NSPopUpMenuWindowLevel`` with
+``setHidesOnDeactivate_(False)`` (dismissal is owned by the NSEvent
+monitor, not by AppKit's deactivation) and
+``NSWindowCollectionBehaviorCanJoinAllSpaces |
+NSWindowCollectionBehaviorFullScreenAuxiliary`` so it remains visible
+when another app is in fullscreen mode.  The HTML is loaded with
+``loadFileURL:allowingReadAccessToURL:`` so the WKWebView is permitted to
+fetch sibling ``popup.css`` and ``popup.js``.
+
 ### `tests/test_api.py`
 
 Existing file-based read tests are now `unittest.skipIf(sys.platform ==
@@ -131,27 +186,56 @@ covering legacy + hashed service names, OS error, non-zero exit, empty
 output, malformed JSON, missing OAuth key, subprocess timeout, and an
 explicit `test_token_never_written_to_disk` assertion.
 
+### `tests/test_popup.py`
+
+`TestTrayPosition` and `TestResizeAndPosition` are decorated with a new
+``_WIN32_ONLY`` skip so the suite stays green on macOS without weakening
+the Win32 assertions.  Pure data-transform tests
+(`TestUsageEntries`, `TestSnapshotToDict`, `TestInitConfig`) run on both
+platforms.
+
+### `tests/test_macos_popup.py` (new)
+
+Six tests for ``compute_popup_position`` (centering, vertical placement
+below icon, edge clamping at left/right/top) and ``_color_from_hex``
+(hex parse + safe fallback).  Skipped automatically off macOS.
+
+### `scripts/mac_smoke_popup.py` (new)
+
+End-to-end functional smoke test that launches the app, opens the popup,
+introspects the live ``WKWebView`` DOM via
+``evaluateJavaScript:completionHandler:``, asserts geometry against the
+status item frame, exercises a close/re-open cycle, and (optionally)
+captures screenshots into ``scripts/screenshots/`` when the parent
+process has the Screen Recording permission.  Not part of ``unittest``
+because it needs a live AppKit runloop and a real ``NSStatusItem``.
+
 ---
 
 ## Roadmap
 
-### Phase 3 - Popup window
+### Phase 3 - Popup window (DONE)
 
-Two paths under evaluation:
+Implemented as a **hybrid** of the two originally-considered paths: the
+popup HTML/CSS/JS is reused **unchanged** (3A's fidelity goal), but the
+host is a **native ``NSPanel`` + ``WKWebView``** rather than pywebview's
+Cocoa backend (3B's auditability goal).  Decision rationale:
 
-- **3A.** Reuse pywebview with the Cocoa backend.  AppKit will only allow
-  one main-thread runloop, so the popup creation has to be dispatched onto
-  the existing pystray loop via `Foundation.NSObject.performSelectorOnMainThread`
-  or `dispatch_async`.  The Windows `_tray_position()` (Shell_TrayWnd +
-  MonitorFromWindow + GetMonitorInfoW) must be reimplemented against
-  `NSStatusItem.button.window.frame` via pyobjc.
+* pywebview's Cocoa backend insists on owning ``NSApplication.run()``,
+  which pystray already owns - we cannot drive both event loops from the
+  same main thread.
+* Hosting the HTML in a dedicated ``NSPanel`` keeps the auditable popup
+  HTML upstream, gives us full control of dismissal/positioning, and
+  avoids pulling in pywebview's Cocoa code path on macOS at all.
 
-- **3B.** Replace the HTML popup with a native `NSPanel` driven by pyobjc.
-  Less code surface for malicious changes (no WebKit), but reimplements the
-  upstream `popup/popup.{html,css,js}` from scratch.
+A short ``WKUserScript`` injected at ``documentStart`` defines
+``window.pywebview.api.{close, open_url, report_height}``, forwarding to
+``window.webkit.messageHandlers.bridge`` so ``popup.js`` is platform-
+agnostic.
 
-3A keeps fidelity with the Windows visual; 3B is more native.  Decision
-pending until the work starts.
+See `_macos_popup.py`, the darwin branches in `popup.py`, the
+`compute_popup_position` tests in `tests/test_macos_popup.py`, and the
+end-to-end driver `scripts/mac_smoke_popup.py`.
 
 ### Phase 4 - Autostart + build
 
@@ -177,8 +261,6 @@ pending until the work starts.
 
 ## Known limitations on macOS today
 
-- **No popup.**  Clicking "Show Claude Usage" does nothing on macOS yet
-  (Phase 3).  The number on the menu bar is the only live indicator.
 - **No autostart.**  The "Start with Windows" menu item is hidden in the
   unfrozen build and the macOS branch is a stub.
 - **App is unsigned.**  Phase 4 produces an unsigned `.app`; macOS Gatekeeper

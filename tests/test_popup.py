@@ -8,11 +8,14 @@ and _init_config.
 from __future__ import annotations
 
 import ctypes
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.cache import CacheSnapshot
 from usage_monitor_for_claude.popup import UsagePopup, _BASELINE_DPI, _MONITORINFO, _init_config, _snapshot_to_dict, _usage_entries
+
+_WIN32_ONLY = unittest.skipUnless(sys.platform == 'win32', 'Win32-specific popup positioning and DPI hooks')
 
 
 def _snap(
@@ -513,6 +516,7 @@ class TestInitConfig(unittest.TestCase):
 # _tray_position
 # ---------------------------------------------------------------------------
 
+@_WIN32_ONLY
 class TestTrayPosition(unittest.TestCase):
     """Tests for UsagePopup._tray_position - popup placement near the tray.
 
@@ -618,6 +622,7 @@ class TestTrayPosition(unittest.TestCase):
 # _resize_and_position
 # ---------------------------------------------------------------------------
 
+@_WIN32_ONLY
 class TestResizeAndPosition(unittest.TestCase):
     """Tests for UsagePopup._resize_and_position - DPI-aware resize."""
 

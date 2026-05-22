@@ -3,14 +3,20 @@ Popup Window
 =============
 
 Dark-themed HTML popup window showing account info and usage bars.
-Uses pywebview with Edge WebView2 for smooth CSS transitions and
-flexible layout.
+
+On Windows, uses pywebview with Edge WebView2 for smooth CSS transitions
+and flexible layout, with Win32 hooks for click-outside dismissal.
+
+On macOS, uses a native ``NSPanel`` + ``WKWebView`` host (see
+``_macos_popup``) and ``NSEvent`` monitors for dismissal.  The same HTML/CSS
+/JS files are reused unchanged via a small ``window.pywebview.api`` shim.
 """
 from __future__ import annotations
 
 import ctypes
 import ctypes.wintypes
 import json
+import sys
 import threading
 import time
 import webbrowser
@@ -24,6 +30,9 @@ from .claude_cli import CHANGELOG_URL, find_installations
 from .formatting import elapsed_pct, expand_popup_fields, field_period, format_credits, midnight_positions, popup_label, time_until
 from .i18n import T
 from .settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK, POPUP_FIELDS
+
+if sys.platform == 'darwin':
+    from ._macos_popup import PopupController
 
 _POPUP_DIR = Path(__file__).parent / 'popup'
 _BASELINE_DPI = 96
@@ -210,7 +219,10 @@ class UsagePopup:
         """Create and display a popup window with usage details.
 
         Blocks the calling thread until the window is closed.
-        Requires ``webview.start()`` to be running on the main thread.
+
+        On Windows, requires ``webview.start()`` to be running on the main
+        thread.  On macOS, the underlying ``NSPanel`` is created via the
+        AppKit main runloop owned by pystray.
 
         Parameters
         ----------
@@ -225,27 +237,45 @@ class UsagePopup:
         self._last_height = initial_height
         snap = app.cache.snapshot
         self._last_version = snap.version
-
-        api = _PopupApi(self)
-
-        self._window = webview.create_window(
-            '', url=str(_POPUP_DIR / 'popup.html'),
-            width=self.WIDTH, height=initial_height,
-            resizable=False, frameless=True, shadow=False,
-            easy_drag=False,
-            on_top=True, hidden=True,
-            background_color=BG,
-            js_api=api,
-        )
         self._shown = False
-        self._window.events.loaded += self._on_loaded
-        self._window.events.closed += self._on_window_closed
-        threading.Thread(target=self._dismiss_watch, daemon=True).start()
+
+        if sys.platform == 'darwin':
+            self._controller = PopupController(
+                html_url=Path(_POPUP_DIR / 'popup.html').as_uri(),
+                width=self.WIDTH, initial_height=initial_height, bg_color=BG,
+                status_item=app.icon._status_item,
+                on_message=self._on_bridge_message,
+                on_did_finish_load=self._on_loaded,
+                on_window_closed=self._on_window_closed,
+            )
+            self._controller.create_and_load()
+        else:
+            api = _PopupApi(self)
+            self._window = webview.create_window(
+                '', url=str(_POPUP_DIR / 'popup.html'),
+                width=self.WIDTH, height=initial_height,
+                resizable=False, frameless=True, shadow=False,
+                easy_drag=False,
+                on_top=True, hidden=True,
+                background_color=BG,
+                js_api=api,
+            )
+            self._window.events.loaded += self._on_loaded
+            self._window.events.closed += self._on_window_closed
+            threading.Thread(target=self._dismiss_watch, daemon=True).start()
+
         self._closed.wait()
 
     def _on_loaded(self) -> None:
         """Inject config and show the window transparently for layout."""
         config = _init_config(self.app.cache.snapshot, next_poll_time=self.app._next_poll_time)
+
+        if sys.platform == 'darwin':
+            self._controller.evaluate_js(f'init({json.dumps(config)})')
+            # AppKit handles the window chrome; no need for layered/transparent tricks.
+            # First report_height from JS triggers resize+show.
+            return
+
         self._window.evaluate_js(f'init({json.dumps(config)})')
 
         self._popup_hwnd = self._window.native.Handle.ToInt32()
@@ -266,11 +296,32 @@ class UsagePopup:
 
     def _show_window(self) -> None:
         """Make the popup visible after the first resize positioned it correctly."""
+        if sys.platform == 'darwin':
+            self._controller.show()
+            self._shown = True
+            threading.Thread(target=self._update_loop, daemon=True).start()
+            return
+
         # Remove the layered style to restore normal rendering
         ex_style = ctypes.windll.user32.GetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE)
         ctypes.windll.user32.SetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE, ex_style & ~_WS_EX_LAYERED)
         self._shown = True
         threading.Thread(target=self._update_loop, daemon=True).start()
+
+    def _on_bridge_message(self, message: dict[str, Any]) -> None:
+        """Dispatch ``window.pywebview.api.*`` calls coming from WKWebView."""
+        method = message.get('method')
+        if method == 'close':
+            self._close()
+        elif method == 'open_url':
+            webbrowser.open(CHANGELOG_URL)
+        elif method == 'report_height':
+            height = message.get('height')
+            if height and height != self._last_height:
+                self._last_height = int(height)
+                self._resize_and_position(self._last_height)
+                if not self._shown:
+                    self._show_window()
 
     def _dismiss_watch(self) -> None:
         """Close the popup on click-outside, Escape, or focus change.
@@ -284,6 +335,9 @@ class UsagePopup:
         The foreground hook uses a short delay to ride out the brief
         focus bounce that WebView2 causes between its host and renderer
         process on every click inside the content area.
+
+        On macOS, dismissal is handled by ``_macos_popup.PopupController``
+        via ``NSEvent`` global/local monitors, so this method is not used.
         """
         this_thread = ctypes.windll.kernel32.GetCurrentThreadId()
         WM_QUIT = 0x0012
@@ -395,7 +449,10 @@ class UsagePopup:
     def _close(self) -> None:
         self._running = False
         try:
-            self._window.destroy()
+            if sys.platform == 'darwin':
+                self._controller.close()
+            else:
+                self._window.destroy()
         except Exception:
             pass
         self._closed.set()
@@ -418,12 +475,16 @@ class UsagePopup:
                     cached_installations = [{'name': i.name, 'version': i.version} for i in find_installations()]
                 last_next_poll_time = next_poll_time
                 data = _snapshot_to_dict(snap, installations=cached_installations, next_poll_time=next_poll_time)
-                self._window.evaluate_js(f'updateData({json.dumps(data)})')
+                script = f'updateData({json.dumps(data)})'
+                if sys.platform == 'darwin':
+                    self._controller.evaluate_js(script)
+                else:
+                    self._window.evaluate_js(script)
             except Exception:
                 break
 
     def _tray_position(self, physical_width: int, physical_height: int) -> tuple[int, int]:
-        """Calculate popup position near the system tray.
+        """Calculate popup position near the system tray (Windows only).
 
         Parameters
         ----------
@@ -475,7 +536,14 @@ class UsagePopup:
         are still computed for ``_tray_position``, which needs them to
         calculate the correct logical position against the physical work-area
         coordinates returned by Win32.
+
+        On macOS, delegates to ``PopupController.resize`` which positions
+        the panel under the status bar icon in Cocoa screen coordinates.
         """
+        if sys.platform == 'darwin':
+            self._controller.resize(height)
+            return
+
         dpi = ctypes.windll.user32.GetDpiForWindow(self._popup_hwnd) or ctypes.windll.user32.GetDpiForSystem()
         scale = dpi / _BASELINE_DPI
         physical_width = int(self.WIDTH * scale)
