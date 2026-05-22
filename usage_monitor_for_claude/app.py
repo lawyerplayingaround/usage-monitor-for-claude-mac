@@ -32,10 +32,14 @@ from .settings import (
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label
 from .i18n import T
 from .popup import UsagePopup
+from .tray_dblclick import launch_claude_desktop
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
-if sys.platform == 'darwin':
+if sys.platform == 'win32':
+    from .tray_dblclick import IconWithDoubleClick
+elif sys.platform == 'darwin':
     from ._macos_tray import install_macos_tray_patch
+    from .tray_dblclick import install_macos_dblclick_handler
 
 __all__ = ['UsageMonitorForClaude', 'crash_log']
 
@@ -78,7 +82,14 @@ class UsageMonitorForClaude:
 
         self.restart_requested = False
 
-        self.icon = pystray.Icon(
+        if sys.platform == 'win32':
+            icon_class = IconWithDoubleClick
+            icon_kwargs = {'on_double_click': launch_claude_desktop}
+        else:
+            icon_class = pystray.Icon
+            icon_kwargs = {}
+
+        self.icon = icon_class(
             'usage_monitor',
             icon=create_icon_image(0, 0, self._light_taskbar),
             title=T['loading'],
@@ -103,10 +114,16 @@ class UsageMonitorForClaude:
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
+            **icon_kwargs,
         )
 
         if sys.platform == 'darwin':
             install_macos_tray_patch(self.icon)
+            install_macos_dblclick_handler(
+                self.icon,
+                on_single_click=self.on_show_popup,
+                on_double_click=launch_claude_desktop,
+            )
 
     # Menu actions
 

@@ -275,6 +275,69 @@ when the executable moves, ``sync_autostart_path`` is a no-op when
 absent.  Each test patches ``LAUNCH_AGENT_PATH`` to a tmp file so the
 real ``~/Library/LaunchAgents`` is never touched.
 
+### `usage_monitor_for_claude/tray_dblclick.py` (new, cross-platform)
+
+Lets the icon serve two roles at once:
+
+* left single-click → popup (existing behaviour);
+* left double-click → ``launch_claude_desktop`` (opens Claude.app via
+  ``claude://`` URL handler, falls back to
+  ``com.anthropic.claudefordesktop`` bundle ID, then to
+  ``https://claude.ai/`` in the default browser);
+* right-click or Ctrl+left-click → context menu (preserved access to
+  Show / Restart / Autostart / Quit on macOS even though the menu is
+  no longer attached to the status item directly).
+
+On **Windows** this is implemented as ``IconWithDoubleClick(pystray.Icon)``
+overriding ``_on_notify`` to catch ``WM_LBUTTONDBLCLK``.
+
+On **macOS** the menu would otherwise intercept every click, so the
+installer ``install_macos_dblclick_handler`` patches ``_update_menu``
+to immediately detach the menu after each rebuild, swaps the button's
+target/action for a module-level ``_ClickDispatcher`` Objective-C
+class, and re-shows the menu on right-click via
+``popUpMenuPositioningItem:atLocation:inView:``.
+
+The dispatcher is defined at module scope (not inside the installer)
+because the Objective-C runtime forbids re-registering a class with
+the same name - which would otherwise happen across tests or app
+restarts.
+
+``app.py`` chooses the icon implementation at construction time:
+
+```python
+if sys.platform == 'win32':
+    icon_class = IconWithDoubleClick
+    icon_kwargs = {'on_double_click': launch_claude_desktop}
+else:
+    icon_class = pystray.Icon
+    icon_kwargs = {}
+...
+if sys.platform == 'darwin':
+    install_macos_tray_patch(self.icon)
+    install_macos_dblclick_handler(
+        self.icon,
+        on_single_click=self.on_show_popup,
+        on_double_click=launch_claude_desktop,
+    )
+```
+
+### `tests/test_tray_dblclick.py` (new)
+
+11 tests covering:
+
+* ``launch_claude_desktop`` falls back to the web URL when both native
+  attempts fail, and never raises even when ``webbrowser.open`` itself
+  throws (boundary swallow);
+* macOS ``_try_macos_uri_launch`` returns ``True`` only on
+  ``open``-success and ``False`` on non-zero exit, timeout, or OSError;
+* ``_try_macos_bundle_id_launch`` always invokes the canonical bundle
+  identifier;
+* ``install_macos_dblclick_handler`` replaces the button target/action,
+  detaches the pystray menu after each ``_update_menu`` rebuild,
+  retains a strong Python reference to the dispatcher, and is a no-op
+  on non-darwin platforms.
+
 ### Phase 3 - Popup window (DONE)
 
 Implemented as a **hybrid** of the two originally-considered paths: the
