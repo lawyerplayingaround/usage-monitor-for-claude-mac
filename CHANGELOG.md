@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`app.crash_log`** writes to `stderr` on non-Windows instead of calling `MessageBoxW`.
 - **`CREATE_NO_WINDOW`** is replaced with a `_NO_CONSOLE_KWARGS` dict that expands to nothing on POSIX (in `claude_cli.py`, `command.py`, `app.py`).
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.15.1...v1.15.1-fork.1)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1...v1.15.1-fork.1)
 
 ## [1.15.1] - 2026-05-17
 
