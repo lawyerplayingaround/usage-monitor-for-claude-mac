@@ -29,8 +29,7 @@ auditability guarantees of the original:
 
 ## How to run the porting locally
 
-The package lives in
-`your local checkout/`.
+Clone the fork (or your local copy), then:
 
 ```bash
 cd /path/to/usage-monitor-for-claude   # your local checkout
@@ -382,7 +381,7 @@ end-to-end driver `scripts/mac_smoke_popup.py`.
 
 Audit performed against the bundled ``dist/UsageMonitorForClaude.app``
 (onedir, arm64, ``LSUIElement=true``) and the dev-mode ``python -m``
-run.  Results captured at 2026-05-22 ~04:40 local time.
+run.  Results captured on 2026-05-22.
 
 **Network destinations.**  ``nettop -p <pid>`` over 30 s observed
 short-lived TCP flows from the app PID consistent with a single HTTPS

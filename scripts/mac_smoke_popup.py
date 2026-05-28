@@ -69,7 +69,7 @@ def _capturing_init(self: popup_mod.UsagePopup, app: UsageMonitorForClaude) -> N
             _LIVE_POPUPS.remove(self)
 
 
-popup_mod.UsagePopup.__init__ = _capturing_init  # type: ignore[method-assign]
+popup_mod.UsagePopup.__init__ = _capturing_init  # type: ignore[method-assign]  # smoke-test instrumentation
 
 
 def _current_popup() -> popup_mod.UsagePopup | None:

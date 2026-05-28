@@ -35,6 +35,6 @@ Desktop.ini
 # Smoke test artifacts (full-screen captures with user-identifiable content)
 scripts/screenshots/
 
-# Private scratchpads — internal porting notes that may contain personal paths
+# Private scratchpads - internal porting notes that may contain personal paths
 _*.md
 NEXT_SESSION.md

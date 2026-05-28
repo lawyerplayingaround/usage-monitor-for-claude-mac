@@ -29,9 +29,9 @@ See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergenc
 
 ## Features
 
-- **Portable** - single EXE (~12.5 MB), no installation, no Electron, no runtime required. Download, place anywhere, run. To uninstall, delete the file
+- **Portable** - single executable, no installation, no Electron, no runtime required (Windows EXE ~12.5 MB; macOS `.app` ~52 MB onedir bundle). Download, place anywhere, run. To uninstall, drag it away
 - **Zero configuration** - authenticates through your existing Claude Code login, no API key or manual token entry needed
-- **Live tray icon** with two [configurable](docs/configuration.md#tray-icon-bars) progress bars (session + weekly by default), [configurable tooltip](docs/configuration.md#tooltip-fields), percentage display, and theme-aware colors for light and dark taskbars
+- **Live tray / menu bar icon** with two [configurable](docs/configuration.md#tray-icon-bars) progress bars (session + weekly by default), [configurable tooltip](docs/configuration.md#tooltip-fields), percentage display, and theme-aware colors for light and dark backgrounds
 - **Detail popup** (left-click) showing account info, dynamically detected usage bars for all active quota types (Session, Weekly, Sonnet, Opus, Cowork, and any new quotas Anthropic adds) with [configurable field selection](docs/configuration.md#popup-fields), extra usage, reset countdowns, and a stale-data indicator when values may be outdated
 - **Claude Code versions** - the popup shows which version is installed in each environment (native CLI, VS Code, Cursor, Windsurf), making it easy to spot when your IDE extension is ahead of or behind the CLI
 - **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
@@ -49,8 +49,8 @@ See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergenc
 This tool handles your Claude Code OAuth token, so you should be able to verify it is safe. The codebase is deliberately structured for easy auditing:
 
 - **Single network destination** - communicates exclusively with `api.anthropic.com`, no other hosts
-- **Credentials stay local** - the OAuth token is used only in HTTP Authorization headers, never logged, stored elsewhere, or transmitted to third parties
-- **Read-only** - the app never writes files to disk
+- **Credentials stay local** - the OAuth token is used only in HTTP Authorization headers, never logged, stored elsewhere, or transmitted to third parties. On Windows the token is read from `~/.claude/.credentials.json`; on macOS it is read from the system Keychain. Either way it is cached in memory only.
+- **No usage data, credentials, or telemetry written to disk.** The macOS port writes a 13-byte single-instance lock at `~/.usage-monitor-for-claude.lock` (PID + app version) and, only when "Start at login" is enabled, a LaunchAgent plist at `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`. Neither contains your token or any usage data. The Windows build is unchanged from upstream.
 - **No dynamic code execution** - no `eval()`, `exec()`, `compile()`, or dynamic imports
 - **No obfuscation** - no encoded strings, no hidden URLs, no minified logic
 - **Modular architecture** - small, focused modules with security-critical code (credentials, API calls) isolated in a single file ([`api.py`](usage_monitor_for_claude/api.py))
