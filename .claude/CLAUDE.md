@@ -4,8 +4,9 @@ Apply Python best practices and clean code principles. Only change code relevant
 Prioritize readability and auditability - users handle credentials and must be able to verify the code is safe at a glance.
 
 ## Platform
-- Windows-only application - no `sys.platform` checks or cross-platform guards needed
-- Windows APIs (`ctypes.windll`, `winreg`) can be used unconditionally
+- **Fork note (macOS port):** this fork is cross-platform.  The upstream rule below is **relaxed**: new code may add `sys.platform == 'darwin'` (or `'win32'`) branches where strictly necessary for the port to function.  Keep each branch small and justified, isolate macOS-only imports (`AppKit`, `Foundation`, `Quartz`, `WebKit`, `pyobjc`) behind such guards, and never add a check that the existing code does not already require.  All Windows code paths must continue to work unchanged.  See `MAC_PORT.md` for the per-module list of divergences.
+- Upstream rule (kept for the Windows path): Windows-only application - no `sys.platform` checks or cross-platform guards needed
+- Windows APIs (`ctypes.windll`, `winreg`) can be used unconditionally inside `if sys.platform == 'win32':` blocks (the fork guards them); on the Windows code path itself they remain unconditional
 
 ## Popup Window & DPI
 - The popup uses pywebview with a WinForms host window and Edge WebView2
