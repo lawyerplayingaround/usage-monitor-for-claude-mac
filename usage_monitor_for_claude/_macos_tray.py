@@ -39,9 +39,9 @@ def install_macos_tray_patch(icon) -> None:
     if sys.platform != 'darwin':
         return
 
-    import AppKit  # type: ignore[import-untyped]
-    import Foundation  # type: ignore[import-untyped]
-    import PIL.Image  # type: ignore[import-untyped]
+    import AppKit  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+    import Foundation  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+    import PIL.Image  # type: ignore[import-untyped]  # Pillow ships partial stubs only
 
     def _assert_image(self) -> None:
         thickness = float(self._status_bar.thickness())

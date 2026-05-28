@@ -22,10 +22,10 @@ from __future__ import annotations
 import threading
 from typing import Any, Callable
 
-import AppKit  # type: ignore[import-untyped]
-import Foundation  # type: ignore[import-untyped]
-import WebKit  # type: ignore[import-untyped]
-import objc  # type: ignore[import-untyped]
+import AppKit  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+import Foundation  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+import WebKit  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+import objc  # type: ignore[import-untyped]  # pyobjc has no type stubs
 
 __all__ = ['PopupController', 'dispatch_main_async', 'dispatch_main_sync', 'status_item_screen_frame', 'compute_popup_position']
 

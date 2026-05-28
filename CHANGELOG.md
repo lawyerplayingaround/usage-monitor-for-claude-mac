@@ -7,7 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.15.1...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.1...HEAD)
+
+## [1.15.1-fork.1] - 2026-05-28
+
+> Fork notice: entries below this line are introduced by the `lawyerplayingaround` macOS-port fork. All credit for the original app goes to [@jens-duttke](https://github.com/jens-duttke). The macOS code, build configuration, and macOS-specific test suite were developed with Claude (Anthropic) assistance, then reviewed and tested by the fork maintainer.
+
+### Added
+
+- **macOS port** (Apple Silicon, macOS 11+). The same source tree now builds either `UsageMonitorForClaude.exe` (Windows, unchanged) or `UsageMonitorForClaude.app` (macOS, ~52 MB onedir bundle) depending on the host platform. See [`MAC_PORT.md`](MAC_PORT.md) for the full technical writeup of each module's macOS divergence.
+- **Keychain credential read on macOS** ([`api.py`](usage_monitor_for_claude/api.py)). The OAuth token is read from the system Keychain via `/usr/bin/security find-generic-password`, supporting both the legacy service name (`Claude Code-credentials`) and the v2.1.52+ hashed variant (`Claude Code-credentials-<HASH>`) discovered through `security dump-keychain`. The token is cached in memory only - never written to disk, never logged.
+- **Menu bar icon on macOS** ([`tray_icon.py`](usage_monitor_for_claude/tray_icon.py), [`_macos_tray.py`](usage_monitor_for_claude/_macos_tray.py)). Rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density. Light/dark detection uses `defaults read -g AppleInterfaceStyle`.
+- **Native popup on macOS** ([`_macos_popup.py`](usage_monitor_for_claude/_macos_popup.py), [`popup.py`](usage_monitor_for_claude/popup.py)). The popup is hosted in a native `NSPanel` + `WKWebView` (not pywebview's Cocoa backend) so AppKit's `NSApplication.run()` is owned cleanly by pystray. The upstream `popup.html`/`popup.css`/`popup.js` are reused unchanged - a small `WKUserScript` injected at `documentStart` shims `window.pywebview.api.{close, open_url, report_height}` onto a `WKScriptMessageHandler`. Panel is created at `NSPopUpMenuWindowLevel` with `CanJoinAllSpaces | FullScreenAuxiliary` so it stays visible when another app is in fullscreen mode.
+- **Idle and screen-lock detection on macOS** ([`idle.py`](usage_monitor_for_claude/idle.py)). Uses `CGEventSourceSecondsSinceLastEventType` (Quartz) for idle seconds and `CGSessionCopyCurrentDictionary` for screen-lock detection.
+- **Autostart via LaunchAgent on macOS** ([`autostart.py`](usage_monitor_for_claude/autostart.py)). Writes `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist` on toggle, deletes it on disable. `launchd` picks the agent up at the next login automatically thanks to `RunAtLoad=true`, so the toggle never has to round-trip through `launchctl bootstrap` (which would also spawn a second instance). `sync_autostart_path` rewrites the plist if the `.app` is dragged to a new location.
+- **POSIX single-instance guard on macOS** ([`single_instance.py`](usage_monitor_for_claude/single_instance.py)). Uses `flock` on `~/.usage-monitor-for-claude.lock` (a 13-byte file containing only PID + app version - no credentials).
+- **Double-click on the menu bar icon launches Claude Desktop** ([`tray_dblclick.py`](usage_monitor_for_claude/tray_dblclick.py), cross-platform). Left single-click opens the usage popup, left double-click launches Claude Desktop via `claude://`, falling back to the `com.anthropic.claudefordesktop` bundle ID, then to `claude.ai` in the default browser. Right-click or Ctrl+click shows the context menu. On macOS the menu would otherwise intercept every click, so `install_macos_dblclick_handler` patches `_update_menu` to detach the menu after each rebuild, swaps the button's target/action for a module-level `_ClickDispatcher` Objective-C class, and re-shows the menu on right-click via `popUpMenuPositioningItem:atLocation:inView:`.
+- **Multi-platform build configuration** ([`build.py`](build.py), [`usage_monitor_for_claude.spec`](usage_monitor_for_claude.spec)). The single spec file branches on `sys.platform` to keep build config in one auditable place. macOS produces a `.app` (onedir layout, `target_arch='arm64'`, `LSUIElement=true`, `CFBundleIdentifier='com.usage-monitor-for-claude'`, `LSMinimumSystemVersion='11.0'`) with the version pulled from `__init__.py` at spec parse time.
+- **macOS-specific tests** ([`tests/test_api.py`](tests/test_api.py), [`tests/test_popup.py`](tests/test_popup.py), [`tests/test_autostart.py`](tests/test_autostart.py), [`tests/test_macos_popup.py`](tests/test_macos_popup.py), [`tests/test_tray_dblclick.py`](tests/test_tray_dblclick.py)). New tests cover Keychain reads (legacy + hashed service names, OS errors, timeouts, malformed JSON, missing OAuth key, and an explicit assertion that the token is never written to disk), the LaunchAgent plist lifecycle (XML parsing, escaping, idempotency, path sync), the popup position math, and the cross-platform click dispatcher.
+- **End-to-end macOS smoke test** ([`scripts/mac_smoke_popup.py`](scripts/mac_smoke_popup.py)). Launches the app, opens the popup, introspects the live `WKWebView` DOM, asserts geometry against the status item frame, exercises a close/re-open cycle, and (optionally) captures screenshots when the parent process has the Screen Recording permission.
+
+### Changed
+
+- **`single_instance.py`** falls back to a `flock` lock file on POSIX instead of a named Win32 mutex + shared memory. The interactive "kill the other instance?" dialog is replaced by a silent "refuse to start" when the lock is held; the user must quit the other instance manually.
+- **`app.crash_log`** writes to `stderr` on non-Windows instead of calling `MessageBoxW`.
+- **`CREATE_NO_WINDOW`** is replaced with a `_NO_CONSOLE_KWARGS` dict that expands to nothing on POSIX (in `claude_cli.py`, `command.py`, `app.py`).
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.15.1...v1.15.1-fork.1)
 
 ## [1.15.1] - 2026-05-17
 

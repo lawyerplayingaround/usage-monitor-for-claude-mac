@@ -33,7 +33,7 @@ The package lives in
 `your local checkout/`.
 
 ```bash
-cd "/path/to/usage-monitor-for-claude"
+cd /path/to/usage-monitor-for-claude   # your local checkout
 python3 -m venv .venv
 source .venv/bin/activate
 pip install requests Pillow pystray pywebview \

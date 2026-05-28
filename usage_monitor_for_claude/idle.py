@@ -50,7 +50,7 @@ if sys.platform == 'win32':
 elif sys.platform == 'darwin':
     # Quartz (CoreGraphics) is part of pyobjc-framework-Quartz, which ships in
     # the default pyobjc install used by the macOS build of this app.
-    from Quartz import (  # type: ignore[import-untyped]
+    from Quartz import (  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
         CGEventSourceSecondsSinceLastEventType,
         CGSessionCopyCurrentDictionary,
         kCGAnyInputEventType,

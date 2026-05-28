@@ -13,6 +13,9 @@ env/
 # PyInstaller build artifacts
 build/
 dist/
+# Google-Drive sync sometimes creates duplicate folders with a "(N)" suffix
+build (*)/
+dist (*)/
 
 # IDE
 .vscode/
@@ -31,3 +34,7 @@ Desktop.ini
 
 # Smoke test artifacts (full-screen captures with user-identifiable content)
 scripts/screenshots/
+
+# Private scratchpads — internal porting notes that may contain personal paths
+_*.md
+NEXT_SESSION.md

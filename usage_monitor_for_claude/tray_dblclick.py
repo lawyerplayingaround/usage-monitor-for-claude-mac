@@ -99,7 +99,7 @@ if sys.platform == 'win32':
     _CLAUDE_URI_REG_KEY = r'claude\shell\open\command'
 
 
-    class IconWithDoubleClick(pystray.Icon):  # type: ignore[misc]
+    class IconWithDoubleClick(pystray.Icon):  # type: ignore[misc]  # subclassing an untyped base class
         """``pystray.Icon`` subclass that distinguishes single from double click.
 
         Parameters
@@ -127,7 +127,7 @@ if sys.platform == 'win32':
 
         # pystray's internal handler - override to inject double-click logic.
         # The signature matches ``pystray._win32.Icon._on_notify(wparam, lparam)``.
-        def _on_notify(self, wparam: int, lparam: int) -> None:  # type: ignore[override]
+        def _on_notify(self, wparam: int, lparam: int) -> None:  # type: ignore[override]  # overriding pystray internal hook
             if lparam == _WM_LBUTTONUP:
                 self._handle_lbutton_up()
                 return
@@ -191,7 +191,7 @@ else:
     # .tray_dblclick import IconWithDoubleClick`` does not crash at
     # import time.  ``app.py`` only uses it under
     # ``if sys.platform == 'win32':``.
-    IconWithDoubleClick = None  # type: ignore[assignment,misc]
+    IconWithDoubleClick = None  # type: ignore[assignment,misc]  # stub for non-win32 platforms
 
 
 # ---------------------------------------------------------------------------
@@ -199,9 +199,9 @@ else:
 # ---------------------------------------------------------------------------
 
 if sys.platform == 'darwin':
-    import AppKit  # type: ignore[import-untyped]
-    import Foundation  # type: ignore[import-untyped]
-    import objc  # type: ignore[import-untyped]
+    import AppKit  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+    import Foundation  # type: ignore[import-untyped]  # pyobjc framework has no type stubs
+    import objc  # type: ignore[import-untyped]  # pyobjc has no type stubs
 
 
     class _ClickDispatcher(Foundation.NSObject):
@@ -366,7 +366,7 @@ def install_macos_dblclick_handler(
         if icon._menu_handle is not None:
             icon._status_item.setMenu_(None)
 
-    icon._update_menu = _patched_update_menu  # type: ignore[method-assign]
+    icon._update_menu = _patched_update_menu  # type: ignore[method-assign]  # monkey-patch pystray internal
     # Force one initial menu build so ``icon._menu_handle`` is populated.
     icon._update_menu()
 
@@ -377,7 +377,7 @@ def install_macos_dblclick_handler(
     # Hold a strong Python reference so the Objective-C delegate stays
     # alive for the icon's lifetime (NSStatusBarButton only weak-refs its
     # target).
-    icon._click_dispatcher = dispatcher  # type: ignore[attr-defined]
+    icon._click_dispatcher = dispatcher  # type: ignore[attr-defined]  # extend pystray icon with our dispatcher reference
 
     button = icon._status_item.button()
     button.setTarget_(dispatcher)
@@ -388,7 +388,7 @@ def install_macos_dblclick_handler(
         AppKit.NSEventMaskLeftMouseDown | AppKit.NSEventMaskRightMouseDown,
     )
 
-    icon._dblclick_installed = True  # type: ignore[attr-defined]
+    icon._dblclick_installed = True  # type: ignore[attr-defined]  # marker that the patch is in place
 
 
 # ---------------------------------------------------------------------------

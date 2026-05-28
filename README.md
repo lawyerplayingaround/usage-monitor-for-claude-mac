@@ -1,13 +1,31 @@
-# Usage Monitor for Claude
+# Usage Monitor for Claude - macOS port
 
-[![Feature Ideas](https://img.shields.io/badge/Feature_Ideas-Vote_%26_Discuss-blue?style=for-the-badge&logo=github)](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/categories/ideas)
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-ff69b4?style=for-the-badge&logo=github)](https://github.com/sponsors/jens-duttke)
+> **This is a personal fork of [`jens-duttke/usage-monitor-for-claude`](https://github.com/jens-duttke/usage-monitor-for-claude).**
+> All credit for the original app goes to [@jens-duttke](https://github.com/jens-duttke). The original is Windows-only; this fork adds a macOS port (Apple Silicon) while keeping the original's security promises and APIs unchanged. If you only run Windows, the upstream release is what you want.
+>
+> **AI assistance disclosure.** The macOS port (code, build configuration, and the macOS-specific test suite) was developed in collaboration with Claude (Anthropic), with every change reviewed and tested by the fork maintainer before publishing. Commits authored against the fork carry an `Assisted-by: Claude (Anthropic)` trailer.
 
-**Monitor your Claude rate limits in real time - right from your Windows system tray.**
+[![Feature Ideas (upstream)](https://img.shields.io/badge/Feature_Ideas-Vote_%26_Discuss-blue?style=for-the-badge&logo=github)](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/categories/ideas)
+[![Sponsor the original author](https://img.shields.io/badge/Sponsor_original-%E2%9D%A4-ff69b4?style=for-the-badge&logo=github)](https://github.com/sponsors/jens-duttke)
 
-A native Windows tray app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, Claude Code Cowork, and IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits (Sonnet, Opus, Cowork, and any future quota types) you have left.
+**Monitor your Claude rate limits in real time - from your Windows system tray or your macOS menu bar.**
+
+A native tray/menu bar app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, Claude Code Cowork, and IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits (Sonnet, Opus, Cowork, and any future quota types) you have left.
 
 ![Detail popup showing account info and usage bars](screenshot.png)
+
+## What this fork adds
+
+The only difference from upstream is a macOS port. The Windows experience is unchanged - if you only run Windows, the upstream release is what you want.
+
+- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~52 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a 13-byte PID lock and the optional LaunchAgent plist.
+- **Menu bar icon** rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density.
+- **Click behavior**: left single-click opens the usage popup, left double-click opens Claude Desktop (via `claude://`, falling back to the `com.anthropic.claudefordesktop` bundle ID, then to `claude.ai` in the default browser), right-click or Ctrl+click shows the context menu.
+- **Popup hosted in a native `NSPanel` + `WKWebView`** (no pywebview Cocoa backend), so AppKit's `NSApplication.run()` is owned cleanly by pystray. The upstream `popup.html`/`popup.css`/`popup.js` are reused unchanged - a small `WKUserScript` shims `window.pywebview.api.{close, open_url, report_height}` onto a `WKScriptMessageHandler`.
+- **Autostart via LaunchAgent** (`~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`) when "Start at login" is toggled. The plist self-heals if the `.app` is moved to a new location.
+- **POSIX single-instance guard** using `flock` on `~/.usage-monitor-for-claude.lock` (a 13-byte file containing only PID + app version - no credentials).
+
+See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergences, the network/filesystem audit performed before release, and build details.
 
 ## Features
 
@@ -42,8 +60,9 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 
 ## Requirements
 
-- **Windows 10 or Windows 11** (64-bit)
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). The app reads the OAuth token that Claude Code stores locally (`~/.claude/.credentials.json`). If you have `CLAUDE_CONFIG_DIR` set, the app uses that directory instead.
+- **macOS 11 (Big Sur) or later, on Apple Silicon** for the `.app` release of this fork. The build is `target_arch='arm64'`; switch to `universal2` in the spec if Intel Mac support is needed.
+- **Windows 10 or Windows 11** (64-bit) is also supported by the same source tree (the fork preserves all Windows code paths), but pre-built EXEs come from the [upstream release](https://github.com/jens-duttke/usage-monitor-for-claude/releases).
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). On Windows the app reads the OAuth token from `~/.claude/.credentials.json`; on macOS it reads from the system **Keychain** via `/usr/bin/security find-generic-password` (no file cache). If you have `CLAUDE_CONFIG_DIR` set, the Windows path honors it.
 
 > [!TIP]
 > If the token expires, the app automatically runs `claude update` to refresh it. If the token is missing entirely, the app shows a notification and a "!" icon - log in to Claude Code and the monitor picks it up automatically.
@@ -52,7 +71,18 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 
 ## Quick Start
 
-**No Python required.** Download the latest [**UsageMonitorForClaude.exe**](https://github.com/jens-duttke/usage-monitor-for-claude/releases/latest), place it wherever you like, and run it. To remove, disable "Start with Windows" in the context menu first (if enabled), then delete the file.
+### macOS (this fork)
+
+**No Python required.** Download the latest **`UsageMonitorForClaude.app`** from this fork's [Releases](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/releases/latest), drag it into `/Applications` (or anywhere you prefer), and double-click to launch. The icon appears in the menu bar.
+
+> [!NOTE]
+> The `.app` is **unsigned and unnotarized**. On first launch macOS Gatekeeper will refuse to open it - **right-click → Open** the first time, then click "Open" in the confirmation dialog. Subsequent launches work normally. Signing/notarization would require Apple Developer enrollment, which is out of scope for this fork.
+
+To remove: turn off "Start at login" from the menu bar context menu first (if enabled - this deletes `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`), then drag the `.app` to the Trash.
+
+### Windows (upstream)
+
+**No Python required.** Download the latest [**UsageMonitorForClaude.exe**](https://github.com/jens-duttke/usage-monitor-for-claude/releases/latest) from the upstream release, place it wherever you like, and run it. To remove, disable "Start with Windows" in the context menu first (if enabled), then delete the file.
 
 ---
 
@@ -65,13 +95,15 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 | **Right-click** the tray icon | Context menu: open popup, autostart toggle, test event commands, restart, GitHub link, or quit |
 | **Escape** or click outside | Closes the detail popup |
 
-### Tray icon not visible?
+### Tray / menu bar icon not visible?
 
-Windows may hide new tray icons by default. To keep the icon always visible:
+**Windows.** Windows may hide new tray icons by default. To keep the icon always visible:
 
 1. Right-click the **taskbar** → **Taskbar settings**
 2. Expand **Other system tray icons** (Win 11) or **Select which icons appear on the taskbar** (Win 10)
 3. Toggle **UsageMonitorForClaude** to **On**
+
+**macOS.** Menu bar items are shown by default, but if the menu bar is crowded the system may push items off-screen. Hold **Cmd** and drag the icon to reorder it closer to the leading edge, or use a menu-bar manager (Bartender, iceberg, etc.) to control visibility.
 
 ### Reading the progress bars
 
@@ -115,29 +147,43 @@ The app never creates or modifies this file. See [Configuration](docs/configurat
 - Python 3.10+
 - pip
 
-### Setup
+### Setup (Windows)
 
 ```bash
-git clone https://github.com/jens-duttke/usage-monitor-for-claude.git
-cd usage-monitor-for-claude
+git clone https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac.git
+cd usage-monitor-for-claude-mac
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### Setup (macOS)
+
+```bash
+git clone https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac.git
+cd usage-monitor-for-claude-mac
+python3 -m venv .venv
+source .venv/bin/activate
+pip install requests Pillow pystray pywebview \
+    pyobjc-core pyobjc-framework-Cocoa pyobjc-framework-Quartz pyobjc-framework-WebKit \
+    pyinstaller
+```
+
 ### Run
 
 ```bash
-python -m usage_monitor_for_claude
+python -m usage_monitor_for_claude       # Windows
+python3 -m usage_monitor_for_claude      # macOS
 ```
 
-### Build EXE
+### Build
 
 ```bash
-python build.py
+python build.py        # Windows: dist/UsageMonitorForClaude.exe (~12.5 MB)
+python3 build.py       # macOS:   dist/UsageMonitorForClaude.app (~52 MB, arm64 onedir)
 ```
 
-Produces `dist/UsageMonitorForClaude.exe` (~12.5 MB), a single-file executable that bundles Python and all dependencies.
+The same `build.py` and `usage_monitor_for_claude.spec` produce the appropriate artifact for the host platform; the spec branches on `sys.platform`.
 
 ### Popup UI Development
 
@@ -152,21 +198,25 @@ This starts a local server and opens the dev preview in your default browser. Us
 ### Create a Release
 
 1. Update dependencies: `pip install --upgrade -r requirements.txt`
-2. Update `__version__` in [`usage_monitor_for_claude/__init__.py`](usage_monitor_for_claude/__init__.py) and the version in [`version_info.py`](version_info.py) (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`)
+2. Update `__version__` in [`usage_monitor_for_claude/__init__.py`](usage_monitor_for_claude/__init__.py) and the version in [`version_info.py`](version_info.py) (`filevers`, `prodvers`, `FileVersion`, `ProductVersion`). The macOS `.app` reads `CFBundleShortVersionString` from `__init__.py` automatically via the spec.
 3. Update `_FALLBACK_USER_AGENT` in [`usage_monitor_for_claude/api.py`](usage_monitor_for_claude/api.py) to the current Claude Code version
-4. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [1.x.x] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it
-5. Run the test suite: `python -m unittest discover -s tests`
-6. Smoke test: `python -m usage_monitor_for_claude` - verify tray icon, popup, and settings
-7. Build the EXE with `python build.py`
-8. Smoke test: `dist\UsageMonitorForClaude.exe` - verify tray icon, popup, and settings
-9. Stage the changes from steps 2 to 4
-10. Commit, tag, push, and publish:
+4. In [`CHANGELOG.md`](CHANGELOG.md), rename `## [Unreleased]` to `## [x.y.z-fork.N] - YYYY-MM-DD` and add a fresh empty `## [Unreleased]` section above it
+5. Run the test suite: `python -m unittest discover -s tests` (macOS will skip Win32-only modules - that is expected)
+6. Smoke test: run from source and verify the icon, popup, and settings on the host platform
+7. Build the artifact (`python build.py`) and smoke-test it
+8. Stage the changes from steps 2 to 4
+9. Commit, tag, push, and publish (example for a macOS release of this fork):
 
    ```bash
-   git commit -m "Release v1.x.x"
-   git tag v1.x.x
-   git push origin main v1.x.x
-   gh release create v1.x.x dist/UsageMonitorForClaude.exe --title "v1.x.x" --notes "<release notes from CHANGELOG.md, followed by a [README for this version](https://github.com/jens-duttke/usage-monitor-for-claude/blob/v1.x.x/README.md) link>"
+   git commit -m "Release v1.x.x-fork.N"
+   git tag v1.x.x-fork.N
+   git push origin main v1.x.x-fork.N
+   # Use --repo to make sure gh targets the fork and not upstream
+   gh release create v1.x.x-fork.N \
+     --repo lawyerplayingaround/usage-monitor-for-claude-mac \
+     dist/UsageMonitorForClaude.app \
+     --title "v1.x.x-fork.N" \
+     --notes "<release notes from CHANGELOG.md>"
    ```
 
 </details>

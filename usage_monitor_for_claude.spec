@@ -167,7 +167,7 @@ if _IS_MAC:
             'CFBundleDisplayName': 'Usage Monitor for Claude',
             'CFBundleShortVersionString': _VERSION,
             'CFBundleVersion': _VERSION,
-            'NSHumanReadableCopyright': 'Copyright (c) 2025',
+            'NSHumanReadableCopyright': 'Original work Copyright (c) 2025 Jens Duttke. macOS port released under the same MIT license.',
             'NSHighResolutionCapable': True,
             # Minimum macOS that supports Apple Silicon native + modern WKWebView.
             'LSMinimumSystemVersion': '11.0',
