@@ -157,7 +157,7 @@ if _IS_MAC:
     app = BUNDLE(
         coll,
         name='UsageMonitorForClaude.app',
-        icon=None,
+        icon='usage_monitor_for_claude.icns',
         bundle_identifier='com.usage-monitor-for-claude',
         info_plist={
             # LSUIElement keeps the app out of the Dock and the application
