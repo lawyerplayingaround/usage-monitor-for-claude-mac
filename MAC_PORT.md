@@ -88,9 +88,11 @@ token itself is never cached, never written to disk, and never logged.
 Replaces the Windows-registry theme detection with `defaults read -g
 AppleInterfaceStyle`.  Adds a platform-keyed `_ICON_LAYOUT` constant: macOS
 uses SF Pro Semibold (via the `SFNS.ttf` variable font and Pillow's
-`set_variation_by_name`) at size 32 with the glyph vertically centred in the
-area above the two progress bars; Windows keeps Arial Bold and the original
-geometry.  Font paths fall back to the macOS system fonts directory.
+`set_variation_by_name`) with a large percentage glyph centred above a single
+session progress bar (the minimalist menu-bar look; the weekly quota is shown
+in the popup).  Windows keeps Arial Bold, the original geometry, and both the
+session and weekly bars.  Font paths fall back to the macOS system fonts
+directory.
 
 ### `usage_monitor_for_claude/_macos_tray.py` (new)
 
@@ -452,11 +454,12 @@ link styling, and status footer.  Differences are data-driven only
 - **arm64-only build.**  ``target_arch='arm64'`` keeps the bundle small
   on Apple Silicon.  Switch to ``'universal2'`` in the spec if Intel
   Mac support is ever required.
-- **First single click feels ~0.5 s laggy** by design.  The double-click
-  dispatcher must wait for the OS-configured double-click interval
-  before it can confidently fire the single-click action; otherwise a
-  slow second click would lose the chance to open Claude Desktop.
-  Same trade-off as the Windows version.
+- **Single-click latency equals your double-click speed** by design.  The
+  dispatcher must wait out the OS double-click interval before it can
+  confidently fire the single-click action, otherwise a slow second click
+  would lose the chance to open Claude Desktop.  The defer tracks
+  `NSEvent.doubleClickInterval` (your System Settings double-click speed)
+  rather than a fixed value, so a fast setting makes single clicks snappier.
 
 ---
 

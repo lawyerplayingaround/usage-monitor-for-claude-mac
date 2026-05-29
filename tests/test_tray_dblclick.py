@@ -171,9 +171,9 @@ class TestInstallMacOSDblclickHandler(unittest.TestCase):
         )
         dispatcher = self.icon._click_dispatcher
 
-        # single: schedules timer, callback fires after _SINGLE_CLICK_DEFER_S.
+        # single: schedules timer, callback fires after the resolved defer.
         dispatcher._dispatch(dblclick_mod._CLICK_SINGLE)
-        time.sleep(dblclick_mod._SINGLE_CLICK_DEFER_S + 0.2)
+        time.sleep(dblclick_mod._resolve_single_click_defer() + 0.2)
         self.single_cb.assert_called_once()
         self.double_cb.assert_not_called()
 
@@ -184,14 +184,14 @@ class TestInstallMacOSDblclickHandler(unittest.TestCase):
         # single followed by double: timer cancelled, double fires, single never does.
         dispatcher._dispatch(dblclick_mod._CLICK_SINGLE)
         dispatcher._dispatch(dblclick_mod._CLICK_DOUBLE)
-        time.sleep(dblclick_mod._SINGLE_CLICK_DEFER_S + 0.2)
+        time.sleep(dblclick_mod._resolve_single_click_defer() + 0.2)
         self.single_cb.assert_not_called()
         self.double_cb.assert_called_once()
 
         # 3rd click (ignore): no callback, no timer.
         self.double_cb.reset_mock()
         dispatcher._dispatch(dblclick_mod._CLICK_IGNORE)
-        time.sleep(dblclick_mod._SINGLE_CLICK_DEFER_S + 0.2)
+        time.sleep(dblclick_mod._resolve_single_click_defer() + 0.2)
         self.single_cb.assert_not_called()
         self.double_cb.assert_not_called()
 
@@ -234,6 +234,29 @@ class TestInstallMacOSDblclickHandler(unittest.TestCase):
         # And a subsequent menu rebuild must terminate (no recursion).
         self.icon._update_menu()
         self.icon._update_menu()
+
+
+@_MAC_ONLY
+class TestResolveSingleClickDefer(unittest.TestCase):
+    """_resolve_single_click_defer() tracks the system double-click interval."""
+
+    def test_tracks_system_double_click_interval(self):
+        """The defer follows NSEvent.doubleClickInterval plus a small margin."""
+        with patch('AppKit.NSEvent') as ns_event:
+            ns_event.doubleClickInterval.return_value = 0.25
+            expected = 0.25 + dblclick_mod._SINGLE_CLICK_DEFER_MARGIN_S
+            self.assertAlmostEqual(dblclick_mod._resolve_single_click_defer(), expected, places=6)
+
+    def test_falls_back_when_interval_unusable(self):
+        """A zero/invalid system interval falls back to the fixed constant."""
+        with patch('AppKit.NSEvent') as ns_event:
+            ns_event.doubleClickInterval.return_value = 0.0
+            self.assertEqual(dblclick_mod._resolve_single_click_defer(), dblclick_mod._SINGLE_CLICK_DEFER_S)
+
+    def test_non_darwin_returns_constant(self):
+        """Off macOS the resolver returns the fixed fallback without touching AppKit."""
+        with patch.object(dblclick_mod.sys, 'platform', 'win32'):
+            self.assertEqual(dblclick_mod._resolve_single_click_defer(), dblclick_mod._SINGLE_CLICK_DEFER_S)
 
 
 if __name__ == '__main__':

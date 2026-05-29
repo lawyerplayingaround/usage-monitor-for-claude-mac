@@ -36,7 +36,7 @@ TRANSPARENT = (0, 0, 0, 0)
 if sys.platform == 'darwin':
     # SF Pro Semibold matches the look of the macOS system clock in the menu bar
     # while remaining bold enough to read against busy wallpapers.
-    _ICON_LAYOUT = {'font_num': 32, 'font_letter': 34, 'font_symbol': 30, 'bar_h': 8, 'bar_gap': 2, 'status_font': 40, 'weight': 'Semibold', 'center_text': True}
+    _ICON_LAYOUT = {'font_num': 46, 'font_letter': 34, 'font_symbol': 30, 'bar_h': 8, 'bar_gap': 2, 'status_font': 40, 'weight': 'Semibold', 'center_text': True, 'single_bar': True}
 else:
     _ICON_LAYOUT = {'font_num': 40, 'font_letter': 42, 'font_symbol': 36, 'bar_h': 9, 'bar_gap': 3, 'status_font': 46, 'weight': None, 'center_text': False}
 
@@ -171,7 +171,9 @@ def create_icon_image(
     time_pct_top: float | None = None, time_pct_bottom: float | None = None,
     extra_usage_available: bool = False,
 ) -> Image.Image:
-    """Create monochrome tray icon: 'C' letter + two usage bars.
+    """Create monochrome tray icon: a glyph (percentage / 'C' / '$' / '✕') over
+    one or two usage bars (single session bar on macOS, session + weekly bars
+    elsewhere).
 
     Parameters
     ----------
@@ -221,26 +223,37 @@ def create_icon_image(
     else:
         text, font = 'C', load_font(_ICON_LAYOUT['font_letter'], weight=weight)
 
-    # Progress bars - full width, flush to bottom
+    # Progress bar(s) - full width, flush to bottom.  The macOS menu bar mirrors
+    # the minimalist look: a single session bar (pct_top) with a large glyph
+    # above it; the weekly quota lives in the on-click popup.  Other platforms
+    # keep the original two-bar layout (session above weekly).
     bar_h = _ICON_LAYOUT['bar_h']
     gap = _ICON_LAYOUT['bar_gap']
-    bar2_y = S - bar_h
-    bar1_y = bar2_y - gap - bar_h
+    if _ICON_LAYOUT.get('single_bar'):
+        bar_top_y = S - bar_h
+        bars = ((bar_top_y, pct_top, mode_top, time_pct_top),)
+        text_area_h = bar_top_y
+    else:
+        bar2_y = S - bar_h
+        bar1_y = bar2_y - gap - bar_h
+        bars = (
+            (bar1_y, pct_top, mode_top, time_pct_top),
+            (bar2_y, pct_bottom, mode_bottom, time_pct_bottom),
+        )
+        text_area_h = bar1_y
 
     bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
     tw = bbox[2] - bbox[0]
     if _ICON_LAYOUT['center_text']:
-        # Vertically center the glyph in the area above the progress bars.
-        text_area_h = bar1_y
-        text_y = (text_area_h - (bbox[3] - bbox[1])) / 2 - bbox[1]
+        # Vertically center the glyph in the area above the bar(s), biased a few
+        # px upward for separation from the bar (aids legibility once the menu
+        # bar downsamples the icon).
+        text_y = (text_area_h - (bbox[3] - bbox[1])) / 2 - bbox[1] - 3
     else:
         text_y = -bbox[1]
     draw.text(((S - tw) / 2 - bbox[0], text_y), text, fill=fg, font=font, stroke_width=stroke_width, stroke_fill=fg)
 
-    for y, pct, mode, time_pct in (
-        (bar1_y, pct_top, mode_top, time_pct_top),
-        (bar2_y, pct_bottom, mode_bottom, time_pct_bottom),
-    ):
+    for y, pct, mode, time_pct in bars:
         draw.rectangle([0, y, S - 1, y + bar_h - 1], fill=fg_half)
         if mode == 'overage' and time_pct is not None and time_pct < 100:
             overage = max(0.0, pct - time_pct)

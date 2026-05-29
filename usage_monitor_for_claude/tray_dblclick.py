@@ -65,11 +65,12 @@ __all__ = ['IconWithDoubleClick', 'install_macos_dblclick_handler', 'launch_clau
 # down.
 _DBLCLICK_GUARD_S = 0.7
 
-# How long to defer the single-click action, waiting to see if a
-# double-click arrives.  Must be >= the user's configured double-click
-# interval, otherwise slow double-clicks are missed.  480 ms (just under
-# the Windows default of 500 ms) keeps the popup feeling snappy on plain
-# single clicks while still catching typical double-clicks.
+# Fallback single-click defer (seconds): how long to wait after a single click
+# to see if a double-click follows before firing the single-click action.  Must
+# be >= the user's double-click interval or slow double-clicks are missed.  On
+# macOS the live defer tracks the system double-click speed (see
+# _resolve_single_click_defer); this constant is the value used on other
+# platforms and the fallback when that lookup is unavailable.
 _SINGLE_CLICK_DEFER_S = 0.48
 
 # Common fallback for both platforms when no Claude Desktop install is
@@ -83,6 +84,32 @@ _CLICK_MENU = 'menu'
 _CLICK_SINGLE = 'single'
 _CLICK_DOUBLE = 'double'
 _CLICK_IGNORE = 'ignore'
+
+# Small margin added to the resolved double-click interval so the single-click
+# action fires just after the double-click window has closed.
+_SINGLE_CLICK_DEFER_MARGIN_S = 0.02
+
+
+def _resolve_single_click_defer() -> float:
+    """Return the single-click defer in seconds.
+
+    On macOS the single-click action can only fire once a double-click is no
+    longer possible, so the defer follows the user's System Settings
+    double-click speed (``NSEvent.doubleClickInterval``) plus a small margin -
+    snappier than a fixed value for users with a fast setting, while never
+    cutting a double-click short.  On other platforms, or when the AppKit lookup
+    is unavailable, it falls back to ``_SINGLE_CLICK_DEFER_S``.
+    """
+    if sys.platform != 'darwin':
+        return _SINGLE_CLICK_DEFER_S
+    try:
+        import AppKit
+        interval = float(AppKit.NSEvent.doubleClickInterval())
+    except (ImportError, AttributeError, ValueError):
+        return _SINGLE_CLICK_DEFER_S
+    if interval <= 0:
+        return _SINGLE_CLICK_DEFER_S
+    return interval + _SINGLE_CLICK_DEFER_MARGIN_S
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +307,7 @@ if sys.platform == 'darwin':
                     self._pending_timer = None
 
                 if kind == _CLICK_SINGLE:
-                    timer = threading.Timer(_SINGLE_CLICK_DEFER_S, self._fire_single)
+                    timer = threading.Timer(_resolve_single_click_defer(), self._fire_single)
                     timer.daemon = True
                     self._pending_timer = timer
                     timer.start()

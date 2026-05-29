@@ -324,12 +324,14 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         img = tray_icon_mod.create_icon_image(60, 60, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
-        bar_h = 9
-        gap = 3
-        bar2_y = S - bar_h
-        bar1_y = bar2_y - gap - bar_h
+        layout = tray_icon_mod._ICON_LAYOUT
+        bar_h = layout['bar_h']
+        if layout.get('single_bar'):
+            bar_ys = (S - bar_h,)
+        else:
+            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
         pixels = img.load()
-        for bar_y in (bar1_y, bar2_y):
+        for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2
             # No pixel in the bar should be fully opaque (fill_w=0)
             self.assertNotEqual(pixels[0, mid_y][3], 255, f'Expected no fill at x=0, y={mid_y}')
@@ -338,14 +340,16 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         """Usage below time_pct (ahead of schedule) also produces an empty bar."""
         # pct=40 < time_pct=60 -> overage=0 -> no fill; same result as pct=60
         S = 64
-        bar_h = 9
-        gap = 3
-        bar2_y = S - bar_h
-        bar1_y = bar2_y - gap - bar_h
+        layout = tray_icon_mod._ICON_LAYOUT
+        bar_h = layout['bar_h']
+        if layout.get('single_bar'):
+            bar_ys = (S - bar_h,)
+        else:
+            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
 
         img_ahead = tray_icon_mod.create_icon_image(40, 40, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
         pixels = img_ahead.load()
-        for bar_y in (bar1_y, bar2_y):
+        for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2
             self.assertNotEqual(pixels[0, mid_y][3], 255, f'Expected no fill at x=0, y={mid_y}')
 
@@ -355,12 +359,14 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         img = tray_icon_mod.create_icon_image(80, 80, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
-        bar_h = 9
-        gap = 3
-        bar2_y = S - bar_h
-        bar1_y = bar2_y - gap - bar_h
+        layout = tray_icon_mod._ICON_LAYOUT
+        bar_h = layout['bar_h']
+        if layout.get('single_bar'):
+            bar_ys = (S - bar_h,)
+        else:
+            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
         pixels = img.load()
-        for bar_y in (bar1_y, bar2_y):
+        for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2
             # x=31 (last pixel of left half) should be filled (fg, alpha=255)
             self.assertEqual(pixels[31, mid_y][3], 255, f'Expected filled pixel at x=31, y={mid_y}')
@@ -373,12 +379,14 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         img = tray_icon_mod.create_icon_image(100, 100, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
-        bar_h = 9
-        gap = 3
-        bar2_y = S - bar_h
-        bar1_y = bar2_y - gap - bar_h
+        layout = tray_icon_mod._ICON_LAYOUT
+        bar_h = layout['bar_h']
+        if layout.get('single_bar'):
+            bar_ys = (S - bar_h,)
+        else:
+            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
         pixels = img.load()
-        for bar_y in (bar1_y, bar2_y):
+        for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2
             self.assertEqual(pixels[S - 1, mid_y][3], 255, f'Expected fully filled bar at y={mid_y}')
 
