@@ -225,6 +225,23 @@ class TestCreateIconImage(unittest.TestCase):
 
         self.assertNotEqual(img_zero.tobytes(), img_one.tobytes())
 
+    def test_glyph_does_not_clip_canvas_edges(self):
+        """The glyph must fit the 64px canvas - notably '100' (shown for 99.5-99.9%).
+
+        A pct in [99.5, 100) rounds to the 3-char string '100' while still
+        below the exhausted (>=100) branch; at the large digit size it must be
+        auto-shrunk so it never paints into the extreme left/right columns.
+        """
+        S = 64
+        for pct_top in (99.7, 88, 7):
+            img = tray_icon_mod.create_icon_image(pct_top, 50)
+            px = img.load()
+            glyph_rows = range(0, 35)  # above any progress bar on either layout
+            left = [y for y in glyph_rows if px[0, y][3] == 255]
+            right = [y for y in glyph_rows if px[S - 1, y][3] == 255]
+            self.assertEqual(left, [], f'glyph clipped at left edge for pct={pct_top}')
+            self.assertEqual(right, [], f'glyph clipped at right edge for pct={pct_top}')
+
     @patch.object(tray_icon_mod, 'load_font')
     def test_zero_usage_calls_font_size_42(self, mock_font):
         """Usage of 0% requests size 42 font for 'C' letter."""

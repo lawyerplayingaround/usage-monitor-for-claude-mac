@@ -213,15 +213,24 @@ def create_icon_image(
     weight = _ICON_LAYOUT['weight']
     any_exhausted = pct_top >= 100 or pct_bottom >= 100
     if any_exhausted and not extra_usage_available:
-        text, font = '\u2715', load_font(_ICON_LAYOUT['font_symbol'], symbol=True, weight=weight)
+        text, font_size, symbol_glyph = '\u2715', _ICON_LAYOUT['font_symbol'], True
         stroke_width = 2
     elif any_exhausted:
-        text, font = '$', load_font(_ICON_LAYOUT['font_letter'], weight=weight)
+        text, font_size, symbol_glyph = '$', _ICON_LAYOUT['font_letter'], False
         stroke_width = 2
     elif pct_top > 0:
-        text, font = f'{pct_top:.0f}', load_font(_ICON_LAYOUT['font_num'], weight=weight)
+        text, font_size, symbol_glyph = f'{pct_top:.0f}', _ICON_LAYOUT['font_num'], False
     else:
-        text, font = 'C', load_font(_ICON_LAYOUT['font_letter'], weight=weight)
+        text, font_size, symbol_glyph = 'C', _ICON_LAYOUT['font_letter'], False
+
+    font = load_font(font_size, symbol=symbol_glyph, weight=weight)
+    # Shrink the glyph to fit the canvas width.  At the large macOS digit size a
+    # 3-character "100" (rendered for 99.5-99.9 %, just below the exhausted
+    # branch) would otherwise overflow the 64 px canvas and clip.
+    fit_bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
+    fit_w = fit_bbox[2] - fit_bbox[0]
+    if fit_w > S - 2:
+        font = load_font(max(1, font_size * (S - 2) // fit_w), symbol=symbol_glyph, weight=weight)
 
     # Progress bar(s) - full width, flush to bottom.  The macOS menu bar mirrors
     # the minimalist look: a single session bar (pct_top) with a large glyph
