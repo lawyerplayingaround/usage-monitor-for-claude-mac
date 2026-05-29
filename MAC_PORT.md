@@ -9,8 +9,9 @@ auditability guarantees of the original:
 
 - credentials only ever live in HTTP Authorization headers (never in disk
   caches, never in logs);
-- the only network destinations are `api.anthropic.com` and `api.github.com`
-  (the latter only for upstream release checks);
+- the only network destination contacted by the app process is
+  `api.anthropic.com` (the optional release check is an external event-command
+  script, never the app itself);
 - no `eval` / `exec` / dynamic imports.
 
 ---
@@ -403,7 +404,7 @@ namespace ``http://www.w3.org`` (used by ``plistlib``) - benign.
 
 **Filesystem writes.**  The only files the app writes are:
 
-- ``~/.usage-monitor-for-claude.lock`` - 13 bytes containing PID + app
+- ``~/.usage-monitor-for-claude.lock`` - a small file containing PID + app
   version, opened in ``single_instance.py``.  Required for the
   POSIX-flock single-instance design; never contains credentials.
 - ``~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`` -
@@ -434,12 +435,11 @@ returns zero matches.  ``grep -rn 'base64' usage_monitor_for_claude/``
 returns zero matches.
 
 **Visual parity.**  ``scripts/screenshots/01_popup_open.png`` (macOS)
-matches the Windows reference at
-``Apps Windows/Usage_Monitor_Windows/usage-monitor-for-claude/screenshot.png``
+matches the upstream Windows reference ``screenshot.png``
 on layout, dark theme palette, section structure (ACCOUNT / USAGE /
 EXTRA USAGE / CLAUDE CODE / footer), progress bar style, Changelog
 link styling, and status footer.  Differences are data-driven only
-(different account, BRL locale, different installed CLI versions).
+(different account, locale, different installed CLI versions).
 
 ---
 
@@ -462,6 +462,5 @@ link styling, and status footer.  Differences are data-driven only
 
 ## Reference
 
-- Windows visual reference (popup design): see
-  `Apps Windows/Usage_Monitor_Windows/screenshot.png`.
+- Windows visual reference (popup design): see the upstream `screenshot.png`.
 - Upstream repository: <https://github.com/jens-duttke/usage-monitor-for-claude>

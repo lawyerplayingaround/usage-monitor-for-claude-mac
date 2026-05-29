@@ -4,16 +4,18 @@ about: Something is not working as expected
 labels: ''
 ---
 
-<!-- Tip: If the app fails to start or behaves unexpectedly, running with
---verbose prints system diagnostics that help identify the problem:
+<!-- Tip: If the app fails to start or behaves unexpectedly, capturing
+diagnostics helps identify the problem.
 
-  UsageMonitorForClaude.exe --verbose                          (Windows)
-  open dist/UsageMonitorForClaude.app --args --verbose         (macOS bundle)
+On Windows, --verbose prints full startup diagnostics:
 
-or from source on either platform:
+  UsageMonitorForClaude.exe --verbose
+  python -m usage_monitor_for_claude --verbose                 (from source)
 
-  python -m usage_monitor_for_claude --verbose                 (Windows)
-  python3 -m usage_monitor_for_claude --verbose                (macOS)
+On macOS, run from source so errors print to the terminal (stderr). The
+--verbose startup diagnostics are Windows-only, so the flag is a no-op here:
+
+  python3 -m usage_monitor_for_claude
 
 Paste the output below if you can - it saves a lot of back and forth. -->
 

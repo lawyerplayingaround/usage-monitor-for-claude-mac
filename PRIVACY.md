@@ -34,7 +34,7 @@ kept in memory only and discarded when the application closes. An optional setti
 Two small bookkeeping files are written outside the credential and usage-data flow, never contain
 your token, and exist only to keep a single instance running cleanly:
 
-- **macOS:** a 13-byte single-instance lock at `~/.usage-monitor-for-claude.lock` containing only the
+- **macOS:** a small single-instance lock at `~/.usage-monitor-for-claude.lock` containing only the
   running process's PID and the app version. When you enable autostart from the menu, a LaunchAgent
   plist is written at `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`; disabling
   autostart deletes it.
