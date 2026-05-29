@@ -374,7 +374,7 @@ end-to-end driver `scripts/mac_smoke_popup.py`.
   no ``launchctl bootstrap`` round-trip is performed at toggle time, so
   the toggle never spawns a second instance.  See ``autostart.py``.
 - ``build.py`` + ``usage_monitor_for_claude.spec`` produce
-  ``dist/UsageMonitorForClaude.app`` (~52 MB, onedir layout) with
+  ``dist/UsageMonitorForClaude.app`` (~32 MB, onedir layout) with
   ``target_arch='arm64'``, ``LSUIElement=true`` so the app lives only
   in the menu bar, and the version pulled dynamically from
   ``usage_monitor_for_claude/__init__.py`` so future bumps need touch

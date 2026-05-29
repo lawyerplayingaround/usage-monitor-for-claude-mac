@@ -18,7 +18,7 @@ A native tray/menu bar app that shows your Claude usage at a glance - lightweigh
 
 The only difference from upstream is a macOS port. The Windows experience is unchanged - if you only run Windows, the upstream release is what you want.
 
-- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~52 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock and the optional LaunchAgent plist.
+- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock and the optional LaunchAgent plist.
 - **Menu bar icon** rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density.
 - **Click behavior**: left single-click opens the usage popup, left double-click opens Claude Desktop (via `claude://`, falling back to the `com.anthropic.claudefordesktop` bundle ID, then to `claude.ai` in the default browser), right-click or Ctrl+click shows the context menu.
 - **Popup hosted in a native `NSPanel` + `WKWebView`** (no pywebview Cocoa backend), so AppKit's `NSApplication.run()` is owned cleanly by pystray. The upstream `popup.html`/`popup.css`/`popup.js` are reused unchanged - a small `WKUserScript` shims `window.pywebview.api.{close, open_url, report_height}` onto a `WKScriptMessageHandler`.
@@ -29,7 +29,7 @@ See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergenc
 
 ## Features
 
-- **Portable** - single executable, no installation, no Electron, no runtime required (Windows EXE ~12.5 MB; macOS `.app` ~52 MB onedir bundle). Download, place anywhere, run. To uninstall, drag it away
+- **Portable** - single executable, no installation, no Electron, no runtime required (Windows EXE ~12.5 MB; macOS `.app` ~32 MB onedir bundle). Download, place anywhere, run. To uninstall, drag it away
 - **Zero configuration** - authenticates through your existing Claude Code login, no API key or manual token entry needed
 - **Live tray / menu bar icon** with two [configurable](docs/configuration.md#tray-icon-bars) progress bars (session + weekly by default), [configurable tooltip](docs/configuration.md#tooltip-fields), percentage display, and theme-aware colors for light and dark backgrounds
 - **Detail popup** (left-click) showing account info, dynamically detected usage bars for all active quota types (Session, Weekly, Sonnet, Opus, Cowork, and any new quotas Anthropic adds) with [configurable field selection](docs/configuration.md#popup-fields), extra usage, reset countdowns, and a stale-data indicator when values may be outdated
@@ -180,7 +180,7 @@ python3 -m usage_monitor_for_claude      # macOS
 
 ```bash
 python build.py        # Windows: dist/UsageMonitorForClaude.exe (~12.5 MB)
-python3 build.py       # macOS:   dist/UsageMonitorForClaude.app (~52 MB, arm64 onedir)
+python3 build.py       # macOS:   dist/UsageMonitorForClaude.app (~32 MB, arm64 onedir)
 ```
 
 The same `build.py` and `usage_monitor_for_claude.spec` produce the appropriate artifact for the host platform; the spec branches on `sys.platform`.
