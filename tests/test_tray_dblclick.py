@@ -89,6 +89,17 @@ class TestMacosLaunchHelpers(unittest.TestCase):
             args = mock_run.call_args[0][0]
             self.assertIn('com.anthropic.claudefordesktop', args)
 
+    def test_launches_foreground_not_background(self):
+        """A user-initiated double-click must bring Claude Desktop forward, so neither launch passes '-g'."""
+        with patch.object(subprocess, 'run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            dblclick_mod._try_macos_uri_launch()
+            self.assertNotIn('-g', mock_run.call_args[0][0])
+            mock_run.reset_mock()
+            mock_run.return_value = MagicMock(returncode=0)
+            dblclick_mod._try_macos_bundle_id_launch()
+            self.assertNotIn('-g', mock_run.call_args[0][0])
+
 
 @_MAC_ONLY
 class TestInstallMacOSDblclickHandler(unittest.TestCase):

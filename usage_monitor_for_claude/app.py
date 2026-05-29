@@ -32,7 +32,7 @@ from .settings import (
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label
 from .i18n import T
 from .popup import UsagePopup
-from .tray_dblclick import launch_claude_desktop
+from .tray_dblclick import _SINGLE_CLICK_DEFER_S, launch_claude_desktop
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
 if sys.platform == 'win32':
@@ -42,6 +42,14 @@ elif sys.platform == 'darwin':
     from .tray_dblclick import install_macos_dblclick_handler
 
 __all__ = ['UsageMonitorForClaude', 'crash_log']
+
+# Ignore reopen requests for this long after the popup closes. On macOS the
+# dismiss happens on mouse-down on the menu-bar icon, which the click
+# dispatcher also classifies as a single-click and fires after
+# _SINGLE_CLICK_DEFER_S; the guard must outlast that deferred click (plus a
+# margin for close() latency) or the popup would immediately reopen. Windows
+# uses a different dismiss path and keeps its original short debounce.
+_POPUP_REOPEN_GUARD_S = (_SINGLE_CLICK_DEFER_S + 0.2) if sys.platform == 'darwin' else 0.15
 
 
 def _future_iso(**kwargs: float) -> str:
@@ -131,7 +139,7 @@ class UsageMonitorForClaude:
         with self._popup_lock:
             if self._popup_open:
                 return
-            if time.time() - self._popup_closed_at < 0.15:
+            if time.time() - self._popup_closed_at < _POPUP_REOPEN_GUARD_S:
                 return
             self._popup_open = True
         threading.Thread(target=self._open_popup, daemon=True).start()

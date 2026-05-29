@@ -453,6 +453,7 @@ class TestReadAccessTokenMacOS(unittest.TestCase):
     def setUp(self):
         import usage_monitor_for_claude.api as api_mod
         api_mod._resolved_keychain_service = None
+        api_mod._keychain_discovery_done = False
 
     def _completed(self, stdout: str, returncode: int = 0):
         result = MagicMock()
@@ -526,6 +527,29 @@ class TestReadAccessTokenMacOS(unittest.TestCase):
                 with patch('builtins.open') as open_mock:
                     read_access_token()
                     open_mock.assert_not_called()
+
+    def test_keychain_discovery_runs_once_for_legacy_install(self):
+        """With no hashed entry, the expensive keychain dump runs once, not per read."""
+        creds = {'claudeAiOauth': {'accessToken': 'sk-keychain-legacy'}}
+        with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+            run.return_value = self._completed(json.dumps(creds))
+            with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None) as discover:
+                self.assertEqual(read_access_token(), 'sk-keychain-legacy')
+                self.assertEqual(read_access_token(), 'sk-keychain-legacy')
+                self.assertEqual(read_access_token(), 'sk-keychain-legacy')
+                discover.assert_called_once()
+
+    def test_invalidate_cache_forces_keychain_rediscovery(self):
+        """A 401-triggered cache invalidation makes the next read re-run discovery."""
+        import usage_monitor_for_claude.api as api_mod
+        creds = {'claudeAiOauth': {'accessToken': 'sk-keychain-legacy'}}
+        with patch('usage_monitor_for_claude.api.subprocess.run') as run:
+            run.return_value = self._completed(json.dumps(creds))
+            with patch('usage_monitor_for_claude.api._find_macos_hashed_keychain_service', return_value=None) as discover:
+                read_access_token()
+                api_mod._invalidate_keychain_cache()
+                read_access_token()
+                self.assertEqual(discover.call_count, 2)
 
 
 if __name__ == '__main__':

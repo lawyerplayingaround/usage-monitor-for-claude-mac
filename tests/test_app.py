@@ -7,6 +7,7 @@ tray rendering, polling interval, and reset notifications.
 """
 from __future__ import annotations
 
+import time
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -1261,6 +1262,22 @@ class TestMenuActions(unittest.TestCase):
         with patch('usage_monitor_for_claude.app.threading.Thread') as mock_thread:
             self.app.on_show_popup()
             mock_thread.assert_not_called()
+
+    def test_on_show_popup_blocks_reopen_within_guard_window(self):
+        """A reopen request just after closing is ignored, so clicking the icon to dismiss does not reopen."""
+        self.app._popup_open = False
+        self.app._popup_closed_at = time.time()
+        with patch('usage_monitor_for_claude.app.threading.Thread') as mock_thread:
+            self.app.on_show_popup()
+            mock_thread.assert_not_called()
+
+    def test_on_show_popup_opens_after_guard_window(self):
+        """Once the reopen guard window has elapsed, on_show_popup() opens the popup."""
+        self.app._popup_open = False
+        self.app._popup_closed_at = time.time() - 10.0
+        with patch('usage_monitor_for_claude.app.threading.Thread') as mock_thread:
+            self.app.on_show_popup()
+            mock_thread.assert_called_once()
 
     def test_on_quit_stops_running(self):
         """on_quit() sets running to False and stops the icon."""

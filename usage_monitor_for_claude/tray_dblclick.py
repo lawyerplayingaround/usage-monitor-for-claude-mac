@@ -488,7 +488,7 @@ if sys.platform == 'darwin':
 
     def _try_macos_uri_launch() -> bool:
         """Open Claude Desktop via its registered ``claude://`` URL handler."""
-        return _open_via_launch_services(['/usr/bin/open', '-g', 'claude://'])
+        return _open_via_launch_services(['/usr/bin/open', 'claude://'])
 
     def _try_macos_bundle_id_launch() -> bool:
         """Open Claude Desktop via its bundle identifier.
@@ -497,7 +497,7 @@ if sys.platform == 'darwin':
         (e.g. the user installed Claude.app outside ``/Applications`` and
         Launch Services has not re-scanned it yet).
         """
-        return _open_via_launch_services(['/usr/bin/open', '-g', '-b', _CLAUDE_BUNDLE_ID])
+        return _open_via_launch_services(['/usr/bin/open', '-b', _CLAUDE_BUNDLE_ID])
 
     def _open_via_launch_services(argv: list[str]) -> bool:
         """Run ``open`` and return True if the launch succeeded."""

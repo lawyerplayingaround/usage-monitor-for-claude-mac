@@ -36,6 +36,7 @@ _KEYCHAIN_SERVICE_LEGACY = 'Claude Code-credentials'
 _KEYCHAIN_SERVICE_PREFIX = 'Claude Code-credentials-'
 _SECURITY_BIN = '/usr/bin/security'
 _resolved_keychain_service: str | None = None
+_keychain_discovery_done: bool = False
 
 
 def read_access_token() -> str | None:
@@ -187,8 +188,9 @@ def _invalidate_keychain_cache() -> None:
     rotated the hashed service name we resolved earlier.  No-op on
     non-darwin platforms (the cache is only populated there).
     """
-    global _resolved_keychain_service
+    global _resolved_keychain_service, _keychain_discovery_done
     _resolved_keychain_service = None
+    _keychain_discovery_done = False
 
 
 def _macos_keychain_service_candidates() -> list[str]:
@@ -196,13 +198,19 @@ def _macos_keychain_service_candidates() -> list[str]:
 
     Claude Code v2.1.52+ uses a hashed suffix (``Claude Code-credentials-<HASH>``);
     earlier versions used the plain legacy name. The hashed name is discovered
-    once per process via ``security dump-keychain`` and then cached in memory.
+    once per process via ``security dump-keychain``; both a positive result (the
+    resolved name) and a negative one (no hashed entry exists) are cached, so the
+    expensive keychain dump runs at most once per process rather than on every
+    token read. ``_invalidate_keychain_cache`` resets both on an HTTP 401.
     """
-    global _resolved_keychain_service
+    global _resolved_keychain_service, _keychain_discovery_done
     if _resolved_keychain_service is not None:
         return [_resolved_keychain_service, _KEYCHAIN_SERVICE_LEGACY]
+    if _keychain_discovery_done:
+        return [_KEYCHAIN_SERVICE_LEGACY]
 
     hashed = _find_macos_hashed_keychain_service()
+    _keychain_discovery_done = True
     if hashed:
         _resolved_keychain_service = hashed
         return [hashed, _KEYCHAIN_SERVICE_LEGACY]
