@@ -61,6 +61,7 @@
     "status_updated_s": "{s}秒前更新",
     "status_next_update": "{duration}后更新",
     "status_refreshing": "刷新中...",
+    "refresh": "刷新",
     "already_running": "Usage Monitor for Claude v{running_version} 已在运行中。\n\n是否要替换正在运行的实例？",
     "menu_icon_style": "图标样式",
     "icon_style_classic": "经典",

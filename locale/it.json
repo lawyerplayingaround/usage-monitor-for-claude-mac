@@ -61,6 +61,7 @@
     "status_updated_s": "Aggiornato {s}s fa",
     "status_next_update": "Prossimo aggiornamento tra {duration}",
     "status_refreshing": "Aggiornamento...",
+    "refresh": "Aggiorna",
     "already_running": "Usage Monitor for Claude v{running_version} è già in esecuzione.\n\nVuoi sostituire l'istanza in esecuzione?",
     "menu_icon_style": "Stile icona",
     "icon_style_classic": "Classico",

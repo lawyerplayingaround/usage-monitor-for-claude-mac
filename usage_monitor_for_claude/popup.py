@@ -179,6 +179,7 @@ def _init_config(snap: CacheSnapshot, next_poll_time: float | None = None) -> di
             'status_updated_s': T['status_updated_s'], 'status_updated': T['status_updated'],
             'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
             'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
+            'refresh': T['refresh'],
         },
         'app_version': __version__,
         'data': _snapshot_to_dict(snap, next_poll_time=next_poll_time),
@@ -200,6 +201,10 @@ class _PopupApi:
 
     def open_url(self) -> None:
         webbrowser.open(CHANGELOG_URL)
+
+    def refresh(self) -> None:
+        """Called by JS when the user clicks the footer refresh button."""
+        self._popup._request_refresh()
 
     def report_height(self, height: int) -> None:
         """Called by JS ResizeObserver when content height changes."""
@@ -243,6 +248,7 @@ class UsagePopup:
         snap = app.cache.snapshot
         self._last_version = snap.version
         self._shown = False
+        self._refreshing = False
 
         if sys.platform == 'darwin':
             self._controller = PopupController(
@@ -320,6 +326,8 @@ class UsagePopup:
             self._close()
         elif method == 'open_url':
             webbrowser.open(CHANGELOG_URL)
+        elif method == 'refresh':
+            self._request_refresh()
         elif method == 'report_height':
             height = message.get('height')
             if height and height != self._last_height:
@@ -487,6 +495,46 @@ class UsagePopup:
                     self._window.evaluate_js(script)
             except Exception:
                 break
+
+    def _request_refresh(self) -> None:
+        """Force an immediate data refresh from the popup refresh button.
+
+        Re-fetches in a background thread - the same path the popup uses when
+        it opens with stale data - then pushes the fresh snapshot straight to
+        the popup instead of waiting for the periodic update loop.  Ignored
+        while a refresh is already in flight.
+        """
+        if self._refreshing or not self._running:
+            return
+        self._refreshing = True
+
+        def _do() -> None:
+            try:
+                self.app.update()
+            except Exception:
+                pass
+            finally:
+                self._refreshing = False
+                self._push_snapshot()
+
+        threading.Thread(target=_do, daemon=True).start()
+
+    def _push_snapshot(self) -> None:
+        """Build the current snapshot and push it to the popup via ``updateData``."""
+        if not self._running:
+            return
+        try:
+            snap = self.app.cache.snapshot
+            installations = [{'name': i.name, 'version': i.version} for i in find_installations()]
+            data = _snapshot_to_dict(snap, installations=installations, next_poll_time=self.app._next_poll_time)
+            self._last_version = snap.version
+            script = f'updateData({json.dumps(data)})'
+            if sys.platform == 'darwin':
+                self._controller.evaluate_js(script)
+            else:
+                self._window.evaluate_js(script)
+        except Exception:
+            pass
 
     def _tray_position(self, physical_width: int, physical_height: int) -> tuple[int, int]:
         """Calculate popup position near the system tray (Windows only).

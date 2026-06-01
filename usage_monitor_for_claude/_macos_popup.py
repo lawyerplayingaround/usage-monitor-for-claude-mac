@@ -40,8 +40,8 @@ _PANEL_STYLE_MASK = (
 _MARGIN = 6
 
 # JavaScript shim installed at document-start so popup.js can call
-# ``pywebview.api.close()``, ``pywebview.api.open_url()``, and
-# ``pywebview.api.report_height(h)`` unchanged.
+# ``pywebview.api.close()``, ``pywebview.api.open_url()``,
+# ``pywebview.api.refresh()``, and ``pywebview.api.report_height(h)`` unchanged.
 _PYWEBVIEW_BRIDGE_JS = '''
 window.pywebview = {
     api: {
@@ -50,6 +50,9 @@ window.pywebview = {
         },
         open_url: function () {
             window.webkit.messageHandlers.bridge.postMessage({method: 'open_url'});
+        },
+        refresh: function () {
+            window.webkit.messageHandlers.bridge.postMessage({method: 'refresh'});
         },
         report_height: function (h) {
             window.webkit.messageHandlers.bridge.postMessage({method: 'report_height', height: h});

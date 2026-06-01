@@ -61,6 +61,7 @@
     "status_updated_s": "{s}s पहले अपडेट किया गया",
     "status_next_update": "अगला अपडेट {duration} में",
     "status_refreshing": "रीफ़्रेश हो रहा है...",
+    "refresh": "रिफ़्रेश करें",
     "already_running": "Usage Monitor for Claude v{running_version} पहले से चल रहा है।\n\nक्या आप चल रही प्रति को बदलना चाहते हैं?",
     "menu_icon_style": "आइकन शैली",
     "icon_style_classic": "क्लासिक",

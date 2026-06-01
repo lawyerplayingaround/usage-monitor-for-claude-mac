@@ -61,6 +61,7 @@
     "status_updated_s": "Оновлено {s}с тому",
     "status_next_update": "Наступне оновлення через {duration}",
     "status_refreshing": "Оновлення...",
+    "refresh": "Оновити",
     "already_running": "Usage Monitor for Claude v{running_version} вже запущено.\n\nБажаєте замінити запущений екземпляр?",
     "menu_icon_style": "Стиль піктограми",
     "icon_style_classic": "Класичний",

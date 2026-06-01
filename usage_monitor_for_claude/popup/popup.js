@@ -31,6 +31,11 @@ function init(config) {
     changelogLink.addEventListener('click', () => pywebview.api.open_url());
     document.getElementById('closeBtn').addEventListener('click', () => pywebview.api.close());
 
+    const refreshBtn = document.getElementById('refreshBtn');
+    refreshBtn.title = translations.refresh;
+    refreshBtn.setAttribute('aria-label', translations.refresh);
+    refreshBtn.addEventListener('click', requestRefresh);
+
     document.getElementById('appVersion').textContent = config.app_version;
 
     els = {
@@ -49,6 +54,7 @@ function init(config) {
         installRows: document.getElementById('installRows'),
         statusSection: document.getElementById('statusSection'),
         statusText: document.getElementById('statusText'),
+        refreshBtn: document.getElementById('refreshBtn'),
     };
 
     updateData(config.data);
@@ -134,6 +140,25 @@ function updateStatus(status) {
         statusState = {};
         els.statusText.textContent = status.text || '';
         els.statusSection.classList.toggle('error', !!status.is_error);
+    }
+
+    els.refreshBtn.classList.toggle('spinning', !!status.refreshing);
+}
+
+/**
+ * Force an immediate data refresh (the footer refresh button).
+ *
+ * Optimistically shows the spinner and "refreshing" status right away;
+ * Python re-fetches and pushes fresh data via updateData(), which clears
+ * the spinner.  Ignored while a refresh is already in flight.
+ */
+function requestRefresh() {
+    if (statusState.refreshing) return;
+    statusState.refreshing = true;
+    els.refreshBtn.classList.add('spinning');
+    tickStatusText();
+    if (window.pywebview?.api?.refresh) {
+        pywebview.api.refresh();
     }
 }
 

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Refresh button in the popup.** A refresh control next to the "updated ... ago" status forces an immediate usage update on demand, instead of waiting for the next automatic poll. The icon spins while the fetch is in flight.
 - **Icon Style submenu (macOS).** The menu-bar right-click menu now offers `Classic` (two bars - session over weekly) and `Compact` (a single session bar with a large percentage), matching the Windows fork. The choice is stored in the standard macOS preferences domain (`com.usage-monitor-for-claude.settings`) and applied on the next launch; Compact stays the default.
 - **Double-click toggle (macOS).** "Double-click opens Claude Desktop" can now be turned off from the menu; when disabled, the menu-bar icon is single-click only (it still opens the popup).
 

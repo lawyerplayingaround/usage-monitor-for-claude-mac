@@ -13,7 +13,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.cache import CacheSnapshot
-from usage_monitor_for_claude.popup import UsagePopup, _BASELINE_DPI, _MONITORINFO, _init_config, _snapshot_to_dict, _usage_entries
+from usage_monitor_for_claude.popup import UsagePopup, _BASELINE_DPI, _MONITORINFO, _PopupApi, _init_config, _snapshot_to_dict, _usage_entries
 
 _WIN32_ONLY = unittest.skipUnless(sys.platform == 'win32', 'Win32-specific popup positioning and DPI hooks')
 
@@ -496,6 +496,7 @@ class TestInitConfig(unittest.TestCase):
         self.assertEqual(t['duration_hm'], T['duration_hm'])
         self.assertEqual(t['duration_m'], T['duration_m'])
         self.assertEqual(t['duration_s'], T['duration_s'])
+        self.assertEqual(t['refresh'], T['refresh'])
 
     def test_app_version(self):
         """app_version matches the package version."""
@@ -719,6 +720,77 @@ class TestResizeAndPosition(unittest.TestCase):
 
         mock_sys_dpi.assert_called()
         mock_window.resize.assert_called_once_with(340, 500)
+
+
+# ---------------------------------------------------------------------------
+# Refresh button (force-update)
+# ---------------------------------------------------------------------------
+
+class TestRefresh(unittest.TestCase):
+    """Force-refresh wiring: JS bridge -> _request_refresh -> app.update + push."""
+
+    def test_windows_api_refresh_delegates(self):
+        """_PopupApi.refresh() forwards to the popup's _request_refresh."""
+        popup = MagicMock()
+        _PopupApi(popup).refresh()
+        popup._request_refresh.assert_called_once_with()
+
+    def test_macos_bridge_refresh_delegates(self):
+        """A 'refresh' bridge message routes to _request_refresh."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup._request_refresh = MagicMock()
+        popup._close = MagicMock()
+        popup._on_bridge_message({'method': 'refresh'})
+        popup._request_refresh.assert_called_once_with()
+
+    def test_request_refresh_ignored_when_already_refreshing(self):
+        """A second refresh while one is in flight is a no-op."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup.app = MagicMock()
+        popup._refreshing = True
+        popup._running = True
+        popup._request_refresh()
+        popup.app.update.assert_not_called()
+
+    def test_request_refresh_ignored_when_closing(self):
+        """No refresh is started once the popup is shutting down."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup.app = MagicMock()
+        popup._refreshing = False
+        popup._running = False
+        popup._request_refresh()
+        popup.app.update.assert_not_called()
+
+    def test_request_refresh_fetches_then_pushes(self):
+        """The worker calls app.update(), pushes fresh data, and clears the flag."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup.app = MagicMock()
+        popup._refreshing = False
+        popup._running = True
+        popup._push_snapshot = MagicMock()
+        with patch('usage_monitor_for_claude.popup.threading.Thread') as mock_thread:
+            popup._request_refresh()
+            self.assertTrue(popup._refreshing)
+            worker = mock_thread.call_args.kwargs['target']
+        worker()
+        popup.app.update.assert_called_once_with()
+        popup._push_snapshot.assert_called_once_with()
+        self.assertFalse(popup._refreshing)
+
+    def test_request_refresh_pushes_even_if_update_raises(self):
+        """A failed fetch still clears the flag and pushes a snapshot (clears spinner)."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup.app = MagicMock()
+        popup.app.update.side_effect = RuntimeError('network down')
+        popup._refreshing = False
+        popup._running = True
+        popup._push_snapshot = MagicMock()
+        with patch('usage_monitor_for_claude.popup.threading.Thread') as mock_thread:
+            popup._request_refresh()
+            worker = mock_thread.call_args.kwargs['target']
+        worker()
+        popup._push_snapshot.assert_called_once_with()
+        self.assertFalse(popup._refreshing)
 
 
 if __name__ == '__main__':
