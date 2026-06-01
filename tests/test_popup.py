@@ -773,7 +773,7 @@ class TestRefresh(unittest.TestCase):
             self.assertTrue(popup._refreshing)
             worker = mock_thread.call_args.kwargs['target']
         worker()
-        popup.app.update.assert_called_once_with()
+        popup.app.update.assert_called_once_with(force=True)
         popup._push_snapshot.assert_called_once_with()
         self.assertFalse(popup._refreshing)
 

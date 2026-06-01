@@ -510,7 +510,7 @@ class UsagePopup:
 
         def _do() -> None:
             try:
-                self.app.update()
+                self.app.update(force=True)
             except Exception:
                 pass
             finally:

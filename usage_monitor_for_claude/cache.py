@@ -150,8 +150,15 @@ class UsageCache:
                 self._version += 1
             log.info('fetch_profile -> %s', 'OK' if profile else 'failed')
 
-    def update(self) -> UpdateResult:
+    def update(self, force: bool = False) -> UpdateResult:
         """Fetch usage data with lock and cooldown protection.
+
+        Parameters
+        ----------
+        force : bool
+            When True, bypass the ``POLL_FAST`` minimum-interval cooldown so a
+            user-initiated refresh fetches immediately.  The concurrency lock,
+            rate-limit backoff, and failed-token guard still apply.
 
         Returns
         -------
@@ -165,15 +172,15 @@ class UsageCache:
             return UpdateResult(data=None)
 
         try:
-            return self._update_locked()
+            return self._update_locked(force=force)
         finally:
             self._lock.release()
 
     # Private helpers
 
-    def _update_locked(self) -> UpdateResult:
+    def _update_locked(self, force: bool = False) -> UpdateResult:
         """Execute the actual update while holding ``_lock``."""
-        if self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
+        if not force and self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
             log.debug('update skipped (cooldown, %.0fs remaining)', POLL_FAST - (time.time() - self._last_success_time))
             return UpdateResult(data=None)
 

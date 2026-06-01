@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.3...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.4...HEAD)
+
+## [1.15.1-fork.mac.4] - 2026-06-01
+
+### Fixed
+
+- **Popup refresh button now actually refreshes.** Clicking it within a couple of minutes of opening the popup did nothing, because the manual refresh was being silenced by the same cooldown that throttles automatic polling. The button now forces an immediate fetch and bypasses that cooldown (the server-side rate-limit backoff is still respected, so it never hammers a throttled API).
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.3...v1.15.1-fork.mac.4)
 
 ## [1.15.1-fork.mac.3] - 2026-06-01
 

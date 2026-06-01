@@ -113,6 +113,17 @@ class TestCooldownBehavior(unittest.TestCase):
         result = cache.update()
         self.assertIsNotNone(result.data)
 
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    def test_force_bypasses_cooldown(self, mock_fetch):
+        """update(force=True) fetches even within the cooldown window."""
+        cache = _make_cache()
+        cache.update()
+        mock_fetch.reset_mock()
+
+        result = cache.update(force=True)
+        self.assertIsNotNone(result.data)
+        mock_fetch.assert_called_once()
+
     def test_first_call_always_proceeds(self):
         """First update() always proceeds (no prior success time)."""
         cache = _make_cache()
@@ -337,6 +348,21 @@ class TestRateLimitGuard(unittest.TestCase):
         # Still within backoff window
         mock_time.time.return_value = 1050.0
         result = cache.update()
+        self.assertIsNone(result.data)
+        mock_fetch.assert_not_called()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value={'error': 'HTTP 429', 'rate_limited': True})
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_force_still_respects_rate_limit(self, mock_time, mock_fetch):
+        """force=True bypasses the cooldown but NOT the server 429 backoff."""
+        cache = _make_cache()
+        mock_time.time.return_value = 1000.0
+        cache.update()
+        mock_fetch.reset_mock()
+
+        # Still within backoff window - a forced refresh must not hammer a 429'd server
+        mock_time.time.return_value = 1050.0
+        result = cache.update(force=True)
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
 
