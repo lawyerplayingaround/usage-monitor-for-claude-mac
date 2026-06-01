@@ -30,15 +30,37 @@ _MACOS_THEME_POLL_SECONDS = 5.0
 
 TRANSPARENT = (0, 0, 0, 0)
 
-# Icon canvas layout - tuned per platform.  The Mac menu bar gives the icon
+# Icon layout names (mirror usage_monitor_for_claude.preferences).
+ICON_LAYOUT_CLASSIC = 'classic'
+ICON_LAYOUT_COMPACT = 'compact'
+
+# Icon canvas metrics - tuned per platform.  The Mac menu bar gives the icon
 # only ~22 logical points of height, so the number font is enlarged and the
-# bars thickened to survive the LANCZOS downsample applied by pystray.
+# bars thickened to survive the LANCZOS downsample applied by pystray.  Two
+# layouts are selectable from the tray menu: 'classic' (two bars - session over
+# weekly, smaller glyph) and 'compact' (a single session bar with a large
+# percentage glyph; the weekly quota is shown in the popup).  ``_FONT_NUM`` is
+# keyed by layout; the other metrics are shared by both layouts on a platform.
 if sys.platform == 'darwin':
     # SF Pro Semibold matches the look of the macOS system clock in the menu bar
     # while remaining bold enough to read against busy wallpapers.
-    _ICON_LAYOUT = {'font_num': 46, 'font_letter': 34, 'font_symbol': 30, 'bar_h': 8, 'bar_gap': 2, 'status_font': 40, 'weight': 'Semibold', 'center_text': True, 'single_bar': True}
+    _WEIGHT = 'Semibold'
+    _CENTER_TEXT = True
+    _BAR_H = 8
+    _BAR_GAP = 2
+    _FONT_LETTER = 34
+    _FONT_SYMBOL = 30
+    _STATUS_FONT = 40
+    _FONT_NUM = {ICON_LAYOUT_COMPACT: 46, ICON_LAYOUT_CLASSIC: 32}
 else:
-    _ICON_LAYOUT = {'font_num': 40, 'font_letter': 42, 'font_symbol': 36, 'bar_h': 9, 'bar_gap': 3, 'status_font': 46, 'weight': None, 'center_text': False}
+    _WEIGHT = None
+    _CENTER_TEXT = False
+    _BAR_H = 9
+    _BAR_GAP = 3
+    _FONT_LETTER = 42
+    _FONT_SYMBOL = 36
+    _STATUS_FONT = 46
+    _FONT_NUM = {ICON_LAYOUT_COMPACT: 58, ICON_LAYOUT_CLASSIC: 40}
 
 
 @functools.lru_cache(maxsize=None)
@@ -169,11 +191,13 @@ def create_icon_image(
     pct_top: float, pct_bottom: float, light_taskbar: bool = False,
     *, mode_top: str = 'utilization', mode_bottom: str = 'utilization',
     time_pct_top: float | None = None, time_pct_bottom: float | None = None,
-    extra_usage_available: bool = False,
+    extra_usage_available: bool = False, layout: str = ICON_LAYOUT_COMPACT,
 ) -> Image.Image:
     """Create monochrome tray icon: a glyph (percentage / 'C' / '$' / '✕') over
-    one or two usage bars (single session bar on macOS, session + weekly bars
-    elsewhere).
+    the usage bar(s).
+
+    The *layout* selects ``'compact'`` (a single session bar with a large
+    glyph) or ``'classic'`` (two bars - session over weekly).
 
     Parameters
     ----------
@@ -210,18 +234,18 @@ def create_icon_image(
     # "$" when exhausted but paid extra-usage still available,
     # "C" while usage is still zero, otherwise the percentage.
     stroke_width = 0
-    weight = _ICON_LAYOUT['weight']
+    weight = _WEIGHT
     any_exhausted = pct_top >= 100 or pct_bottom >= 100
     if any_exhausted and not extra_usage_available:
-        text, font_size, symbol_glyph = '\u2715', _ICON_LAYOUT['font_symbol'], True
+        text, font_size, symbol_glyph = '\u2715', _FONT_SYMBOL, True
         stroke_width = 2
     elif any_exhausted:
-        text, font_size, symbol_glyph = '$', _ICON_LAYOUT['font_letter'], False
+        text, font_size, symbol_glyph = '$', _FONT_LETTER, False
         stroke_width = 2
     elif pct_top > 0:
-        text, font_size, symbol_glyph = f'{pct_top:.0f}', _ICON_LAYOUT['font_num'], False
+        text, font_size, symbol_glyph = f'{pct_top:.0f}', _FONT_NUM[layout], False
     else:
-        text, font_size, symbol_glyph = 'C', _ICON_LAYOUT['font_letter'], False
+        text, font_size, symbol_glyph = 'C', _FONT_LETTER, False
 
     font = load_font(font_size, symbol=symbol_glyph, weight=weight)
     # Shrink the glyph to fit the canvas width.  At the large macOS digit size a
@@ -236,9 +260,9 @@ def create_icon_image(
     # the minimalist look: a single session bar (pct_top) with a large glyph
     # above it; the weekly quota lives in the on-click popup.  Other platforms
     # keep the original two-bar layout (session above weekly).
-    bar_h = _ICON_LAYOUT['bar_h']
-    gap = _ICON_LAYOUT['bar_gap']
-    if _ICON_LAYOUT.get('single_bar'):
+    bar_h = _BAR_H
+    gap = _BAR_GAP
+    if layout == ICON_LAYOUT_COMPACT:
         bar_top_y = S - bar_h
         bars = ((bar_top_y, pct_top, mode_top, time_pct_top),)
         text_area_h = bar_top_y
@@ -253,7 +277,7 @@ def create_icon_image(
 
     bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
     tw = bbox[2] - bbox[0]
-    if _ICON_LAYOUT['center_text']:
+    if _CENTER_TEXT:
         # Vertically center the glyph in the area above the bar(s), biased a few
         # px upward for separation from the bar (aids legibility once the menu
         # bar downsamples the icon).
@@ -285,7 +309,7 @@ def create_status_image(text: str, light_taskbar: bool = False) -> Image.Image:
     S = 64
     img = Image.new('RGBA', (S, S), TRANSPARENT)
     draw = ImageDraw.Draw(img)
-    font = load_font(_ICON_LAYOUT['status_font'], weight=_ICON_LAYOUT['weight'])
+    font = load_font(_STATUS_FONT, weight=_WEIGHT)
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text(((S - tw) / 2 - bbox[0], (S - th) / 2 - bbox[1]), text, fill=fg_dim, font=font)

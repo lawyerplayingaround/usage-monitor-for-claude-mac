@@ -454,12 +454,12 @@ link styling, and status footer.  Differences are data-driven only
 - **arm64-only build.**  ``target_arch='arm64'`` keeps the bundle small
   on Apple Silicon.  Switch to ``'universal2'`` in the spec if Intel
   Mac support is ever required.
-- **Single-click latency equals your double-click speed** by design.  The
-  dispatcher must wait out the OS double-click interval before it can
-  confidently fire the single-click action, otherwise a slow second click
-  would lose the chance to open Claude Desktop.  The defer tracks
-  `NSEvent.doubleClickInterval` (your System Settings double-click speed)
-  rather than a fixed value, so a fast setting makes single clicks snappier.
+- **Single-click is briefly deferred** so a follow-up double-click can
+  cancel it before the popup opens.  The defer is a short fixed 120 ms
+  (`_SINGLE_CLICK_DEFER_S`), matching the Windows fork - snappy on real
+  single clicks, while still catching double-clicks within the typical human
+  click interval.  A slower double-click opens the popup, which the user can
+  close before the next attempt fires the double-click action.
 
 ---
 

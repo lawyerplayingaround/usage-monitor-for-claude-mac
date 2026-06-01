@@ -47,14 +47,29 @@ def _discover_cli_path() -> Path:
                     return alt
         return path
 
-    appdata = os.environ.get('APPDATA')
-    if appdata:
-        for name in ('claude.cmd', 'claude.exe'):
-            candidate = Path(appdata) / 'npm' / name
-            if candidate.is_file():
-                return candidate
+    if sys.platform == 'win32':
+        appdata = os.environ.get('APPDATA')
+        if appdata:
+            for name in ('claude.cmd', 'claude.exe'):
+                candidate = Path(appdata) / 'npm' / name
+                if candidate.is_file():
+                    return candidate
+        return Path.home() / '.local' / 'bin' / 'claude.exe'
 
-    return Path.home() / '.local' / 'bin' / 'claude.exe'
+    # POSIX fallback: a .app launched by Finder/launchd inherits a minimal PATH
+    # that usually excludes Homebrew and other install dirs, so shutil.which
+    # fails inside the bundle even when claude is installed.  Probe the common
+    # locations directly so token refresh and the CLI-version display keep
+    # working from the app bundle.
+    for candidate in (
+        Path('/opt/homebrew/bin/claude'),           # Apple Silicon Homebrew
+        Path('/usr/local/bin/claude'),              # Intel Homebrew / manual
+        Path.home() / '.local' / 'bin' / 'claude',  # native installer / npm
+        Path('/usr/bin/claude'),
+    ):
+        if candidate.is_file():
+            return candidate
+    return Path.home() / '.local' / 'bin' / 'claude'
 
 
 # Resolved at import time. The CLI path doesn't move during runtime.

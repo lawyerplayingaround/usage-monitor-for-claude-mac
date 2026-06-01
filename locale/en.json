@@ -53,5 +53,10 @@
     "status_updated_s": "Updated {s}s ago",
     "status_next_update": "Next update in {duration}",
     "status_refreshing": "Refreshing...",
-    "already_running": "Usage Monitor for Claude v{running_version} is already running.\n\nDo you want to replace the running instance?"
+    "already_running": "Usage Monitor for Claude v{running_version} is already running.\n\nDo you want to replace the running instance?",
+    "menu_icon_style": "Icon style",
+    "icon_style_classic": "Classic",
+    "icon_style_compact": "Compact",
+    "menu_dblclick_open_claude": "Double-click opens Claude Desktop",
+    "menu_start_at_login": "Open at Login"
 }

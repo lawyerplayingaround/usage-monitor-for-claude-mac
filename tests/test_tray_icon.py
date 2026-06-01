@@ -242,6 +242,27 @@ class TestCreateIconImage(unittest.TestCase):
             self.assertEqual(left, [], f'glyph clipped at left edge for pct={pct_top}')
             self.assertEqual(right, [], f'glyph clipped at right edge for pct={pct_top}')
 
+    def test_classic_layout_renders_two_bars(self):
+        """The classic layout draws both the session (top) and weekly (bottom) bars."""
+        S = 64
+        bh = tray_icon_mod._BAR_H
+        img = tray_icon_mod.create_icon_image(50, 50, layout=tray_icon_mod.ICON_LAYOUT_CLASSIC)
+        px = img.load()
+        bottom_mid = (S - bh) + bh // 2
+        top_mid = (S - 2 * bh - tray_icon_mod._BAR_GAP) + bh // 2
+        self.assertNotEqual(px[0, bottom_mid][3], 0, 'bottom (weekly) bar missing')
+        self.assertNotEqual(px[0, top_mid][3], 0, 'top (session) bar missing')
+
+    def test_compact_layout_renders_single_bar(self):
+        """The compact layout draws only the single session bar (no top bar)."""
+        S = 64
+        bh = tray_icon_mod._BAR_H
+        img = tray_icon_mod.create_icon_image(50, 50, layout=tray_icon_mod.ICON_LAYOUT_COMPACT)
+        px = img.load()
+        self.assertNotEqual(px[0, (S - bh) + bh // 2][3], 0, 'session bar missing')
+        top_mid = (S - 2 * bh - tray_icon_mod._BAR_GAP) + bh // 2
+        self.assertEqual(px[0, top_mid][3], 0, 'compact should have no top bar')
+
     @patch.object(tray_icon_mod, 'load_font')
     def test_zero_usage_calls_font_size_42(self, mock_font):
         """Usage of 0% requests size 42 font for 'C' letter."""
@@ -341,12 +362,9 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         img = tray_icon_mod.create_icon_image(60, 60, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
-        layout = tray_icon_mod._ICON_LAYOUT
-        bar_h = layout['bar_h']
-        if layout.get('single_bar'):
-            bar_ys = (S - bar_h,)
-        else:
-            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
+        # create_icon_image() defaults to the compact (single-bar) layout.
+        bar_h = tray_icon_mod._BAR_H
+        bar_ys = (S - bar_h,)
         pixels = img.load()
         for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2
@@ -357,12 +375,9 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         """Usage below time_pct (ahead of schedule) also produces an empty bar."""
         # pct=40 < time_pct=60 -> overage=0 -> no fill; same result as pct=60
         S = 64
-        layout = tray_icon_mod._ICON_LAYOUT
-        bar_h = layout['bar_h']
-        if layout.get('single_bar'):
-            bar_ys = (S - bar_h,)
-        else:
-            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
+        # create_icon_image() defaults to the compact (single-bar) layout.
+        bar_h = tray_icon_mod._BAR_H
+        bar_ys = (S - bar_h,)
 
         img_ahead = tray_icon_mod.create_icon_image(40, 40, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
         pixels = img_ahead.load()
@@ -376,12 +391,9 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         img = tray_icon_mod.create_icon_image(80, 80, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
-        layout = tray_icon_mod._ICON_LAYOUT
-        bar_h = layout['bar_h']
-        if layout.get('single_bar'):
-            bar_ys = (S - bar_h,)
-        else:
-            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
+        # create_icon_image() defaults to the compact (single-bar) layout.
+        bar_h = tray_icon_mod._BAR_H
+        bar_ys = (S - bar_h,)
         pixels = img.load()
         for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2
@@ -396,12 +408,9 @@ class TestCreateIconImageOverageMode(unittest.TestCase):
         img = tray_icon_mod.create_icon_image(100, 100, mode_top='overage', mode_bottom='overage', time_pct_top=60, time_pct_bottom=60)
 
         S = 64
-        layout = tray_icon_mod._ICON_LAYOUT
-        bar_h = layout['bar_h']
-        if layout.get('single_bar'):
-            bar_ys = (S - bar_h,)
-        else:
-            bar_ys = (S - 2 * bar_h - layout['bar_gap'], S - bar_h)
+        # create_icon_image() defaults to the compact (single-bar) layout.
+        bar_h = tray_icon_mod._BAR_H
+        bar_ys = (S - bar_h,)
         pixels = img.load()
         for bar_y in bar_ys:
             mid_y = bar_y + bar_h // 2

@@ -29,7 +29,8 @@ def _make_app(thresholds: list[float] | None = None) -> UsageMonitorForClaude:
         thresholds = [80, 95]
     with patch('usage_monitor_for_claude.app.pystray'), \
          patch('usage_monitor_for_claude.app.create_icon_image'), \
-         patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=False):
+         patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=False), \
+         patch('usage_monitor_for_claude.app.get_icon_layout', return_value='classic'):
         app = UsageMonitorForClaude()
     app.icon = MagicMock()
     app._thresholds_patch = patch('usage_monitor_for_claude.app.get_alert_thresholds', return_value=thresholds)
@@ -860,7 +861,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day': {'utilization': 10.0}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(42.0, 10.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(42.0, 10.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
         self.assertEqual(self.app.icon.title, 'Usage: 42%')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='Error')
@@ -888,7 +889,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {}, 'seven_day': {'utilization': None}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(0, 0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -901,7 +902,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(75.0, 30.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(75.0, 30.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -911,7 +912,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -921,7 +922,7 @@ class TestRenderTray(unittest.TestCase):
         self.app._last_response = {'five_hour': {'utilization': 42.0}, 'seven_day_sonnet': None}
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -935,7 +936,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(60.0, 20.0, False, mode_top='overage', mode_bottom='utilization', time_pct_top=40.0, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(60.0, 20.0, False, mode_top='overage', mode_bottom='utilization', time_pct_top=40.0, time_pct_bottom=None, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -949,7 +950,7 @@ class TestRenderTray(unittest.TestCase):
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(30.0, 10.0, False, mode_top='overage', mode_bottom='overage', time_pct_top=50.0, time_pct_bottom=50.0, extra_usage_available=False)
+        mock_icon.assert_called_once_with(30.0, 10.0, False, mode_top='overage', mode_bottom='overage', time_pct_top=50.0, time_pct_bottom=50.0, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1046,7 +1047,7 @@ class TestOnThemeChanged(unittest.TestCase):
         self.app._on_theme_changed()
 
         self.assertTrue(self.app._light_taskbar)
-        mock_icon.assert_called_once_with(50.0, 20.0, True, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False)
+        mock_icon.assert_called_once_with(50.0, 20.0, True, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.taskbar_uses_light_theme', return_value=False)
     def test_same_theme_no_render(self, _theme):
@@ -1284,6 +1285,32 @@ class TestMenuActions(unittest.TestCase):
         self.app.on_quit()
         self.assertFalse(self.app.running)
         self.app.icon.stop.assert_called_once()
+
+    def test_set_icon_layout_classic_persists_and_restarts(self):
+        """Choosing Classic stores the pref and restarts to apply it."""
+        with patch('usage_monitor_for_claude.app.get_icon_layout', return_value='compact'), \
+             patch('usage_monitor_for_claude.app.set_icon_layout') as mock_set, \
+             patch.object(self.app, 'on_restart') as mock_restart:
+            self.app.on_set_icon_layout_classic()
+            mock_set.assert_called_once_with('classic')
+            mock_restart.assert_called_once()
+
+    def test_set_icon_layout_classic_is_noop_when_already_active(self):
+        """Re-selecting the active layout neither writes nor restarts."""
+        with patch('usage_monitor_for_claude.app.get_icon_layout', return_value='classic'), \
+             patch('usage_monitor_for_claude.app.set_icon_layout') as mock_set, \
+             patch.object(self.app, 'on_restart') as mock_restart:
+            self.app.on_set_icon_layout_classic()
+            mock_set.assert_not_called()
+            mock_restart.assert_not_called()
+
+    def test_toggle_dblclick_open_claude_flips_pref_and_restarts(self):
+        with patch('usage_monitor_for_claude.app.get_dblclick_open_claude', return_value=True), \
+             patch('usage_monitor_for_claude.app.set_dblclick_open_claude') as mock_set, \
+             patch.object(self.app, 'on_restart') as mock_restart:
+            self.app.on_toggle_dblclick_open_claude()
+            mock_set.assert_called_once_with(False)
+            mock_restart.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

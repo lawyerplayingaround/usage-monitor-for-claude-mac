@@ -61,5 +61,10 @@
     "status_updated_s": "Aggiornato {s}s fa",
     "status_next_update": "Prossimo aggiornamento tra {duration}",
     "status_refreshing": "Aggiornamento...",
-    "already_running": "Usage Monitor for Claude v{running_version} è già in esecuzione.\n\nVuoi sostituire l'istanza in esecuzione?"
+    "already_running": "Usage Monitor for Claude v{running_version} è già in esecuzione.\n\nVuoi sostituire l'istanza in esecuzione?",
+    "menu_icon_style": "Stile icona",
+    "icon_style_classic": "Classico",
+    "icon_style_compact": "Compatto",
+    "menu_dblclick_open_claude": "Doppio clic apre Claude Desktop",
+    "menu_start_at_login": "Apri all'accesso"
 }

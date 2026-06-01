@@ -422,5 +422,26 @@ class TestRefreshToken(unittest.TestCase):
         self.assertEqual(result.new_version, '2.1.69')
 
 
+class TestDiscoverCliPath(unittest.TestCase):
+    """CLI discovery, especially the POSIX fallback used by the macOS .app."""
+
+    def test_posix_fallback_when_not_on_path(self):
+        """When `claude` is not on PATH (a .app's minimal launchd PATH), the
+        discovery probes common POSIX install locations instead of returning a
+        non-existent Windows `.exe` path."""
+        with patch.object(claude_cli.shutil, 'which', return_value=None), \
+             patch.object(claude_cli.sys, 'platform', 'darwin'), \
+             patch.object(claude_cli.Path, 'is_file', lambda self: str(self) == '/opt/homebrew/bin/claude'):
+            result = claude_cli._discover_cli_path()
+        self.assertEqual(str(result), '/opt/homebrew/bin/claude')
+        self.assertFalse(str(result).endswith('.exe'))
+
+    def test_uses_path_result_when_available(self):
+        """A `claude` already on PATH is used directly."""
+        with patch.object(claude_cli.shutil, 'which', return_value='/opt/homebrew/bin/claude'):
+            result = claude_cli._discover_cli_path()
+        self.assertEqual(str(result), '/opt/homebrew/bin/claude')
+
+
 if __name__ == '__main__':
     unittest.main()
