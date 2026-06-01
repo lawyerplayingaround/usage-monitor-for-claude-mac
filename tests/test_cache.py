@@ -44,6 +44,18 @@ class TestLockBehavior(unittest.TestCase):
             cache._lock.release()
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    def test_force_does_not_bypass_lock(self, mock_fetch):
+        """force=True still yields to a held lock (force only skips the cooldown)."""
+        cache = _make_cache()
+        cache._lock.acquire()
+        try:
+            result = cache.update(force=True)
+            self.assertIsNone(result.data)
+            mock_fetch.assert_not_called()
+        finally:
+            cache._lock.release()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
     def test_update_succeeds_when_lock_free(self, _mock_fetch):
         """update() returns data when lock is not held."""
         cache = _make_cache()
@@ -295,6 +307,17 @@ class TestFailedTokenGuard(unittest.TestCase):
         cache._last_failed_token = 'same-token'
 
         result = cache.update()
+        self.assertIsNone(result.data)
+        mock_fetch.assert_not_called()
+
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='same-token')
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_AUTH_ERROR_DATA)
+    def test_force_does_not_bypass_failed_token_guard(self, mock_fetch, _mock_token):
+        """force=True still honors the failed-token guard (force only skips the cooldown)."""
+        cache = _make_cache()
+        cache._last_failed_token = 'same-token'
+
+        result = cache.update(force=True)
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
 
