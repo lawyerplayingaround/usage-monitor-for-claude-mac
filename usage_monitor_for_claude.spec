@@ -111,6 +111,14 @@ a = Analysis(
     noarchive=False,
 )
 
+if _IS_MAC:
+    # pywebview is Windows-only in this fork (macOS uses the native NSPanel +
+    # WKWebView popup with its own JS shim), but pywebview's PyInstaller hook
+    # still collects its ``webview/js`` data files even though the ``webview``
+    # module itself is excluded above.  Drop them so the macOS bundle ships
+    # zero Windows GUI assets.
+    a.datas = [d for d in a.datas if d[0].replace('\\', '/').split('/')[0] != 'webview']
+
 pyz = PYZ(a.pure)
 
 # ---------------------------------------------------------------------------
