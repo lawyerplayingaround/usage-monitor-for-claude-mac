@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.2...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.3...HEAD)
+
+## [1.15.1-fork.mac.3] - 2026-06-01
+
+### Fixed
+
+- **Popup footer no longer truncates.** The status line ("Updated X ago · Next in Ym") was getting cut off on the right next to the version; the countdown wording was shortened ("Next in ...") so the whole line fits.
+
+### Changed
+
+- **macOS autostart item is associated with the app bundle** (`AssociatedBundleIdentifiers`), so macOS can attribute the Login Items entry to the app rather than to a standalone binary. (An unsigned build still shows macOS's "unidentified developer" label and a generic icon there until the app is code-signed.)
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.2...v1.15.1-fork.mac.3)
 
 ## [1.15.1-fork.mac.2] - 2026-06-01
 

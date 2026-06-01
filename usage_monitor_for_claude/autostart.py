@@ -95,8 +95,10 @@ elif sys.platform == 'darwin':
             '    <key>KeepAlive</key>        <false/>\n'
             '    <key>ProcessType</key>      <string>Interactive</string>\n'
             # Associate the agent with the app bundle (the label equals the
-            # CFBundleIdentifier) so macOS shows the app's name + icon in the
-            # Login Items / background-items list instead of a generic binary.
+            # CFBundleIdentifier) so macOS can attribute the Login Items entry to
+            # the app.  macOS resolves this to the app's real name + icon only
+            # once the bundle is code-signed and trusted; an unsigned build still
+            # shows a generic icon and "unidentified developer" there.
             f'    <key>AssociatedBundleIdentifiers</key> <string>{LAUNCH_AGENT_LABEL}</string>\n'
             '</dict>\n'
             '</plist>\n'
