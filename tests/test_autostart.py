@@ -205,6 +205,10 @@ class TestMacOSAutostart(unittest.TestCase):
         self.assertIn('/Applications/UsageMonitorForClaude.app/Contents/MacOS/UsageMonitorForClaude', content)
         self.assertIn('<key>RunAtLoad</key>', content)
         self.assertIn('<true/>', content)
+        # Associated with the app bundle so Login Items shows the app icon/name.
+        self.assertIn('<key>AssociatedBundleIdentifiers</key>', content)
+        bundle_assoc = content.split('AssociatedBundleIdentifiers</key>', 1)[1]
+        self.assertIn('com.usage-monitor-for-claude', bundle_assoc.split('</string>', 1)[0])
 
     def test_enable_emits_valid_xml(self):
         """plist must parse as XML (a malformed file would never be loaded by launchd)."""

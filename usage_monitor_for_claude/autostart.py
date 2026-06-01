@@ -94,6 +94,10 @@ elif sys.platform == 'darwin':
             '    <key>RunAtLoad</key>        <true/>\n'
             '    <key>KeepAlive</key>        <false/>\n'
             '    <key>ProcessType</key>      <string>Interactive</string>\n'
+            # Associate the agent with the app bundle (the label equals the
+            # CFBundleIdentifier) so macOS shows the app's name + icon in the
+            # Login Items / background-items list instead of a generic binary.
+            f'    <key>AssociatedBundleIdentifiers</key> <string>{LAUNCH_AGENT_LABEL}</string>\n'
             '</dict>\n'
             '</plist>\n'
         )
