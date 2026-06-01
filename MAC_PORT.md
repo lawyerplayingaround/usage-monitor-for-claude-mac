@@ -409,6 +409,12 @@ namespace ``http://www.w3.org`` (used by ``plistlib``) - benign.
 - ``~/.usage-monitor-for-claude.lock`` - a small file containing PID + app
   version, opened in ``single_instance.py``.  Required for the
   POSIX-flock single-instance design; never contains credentials.
+- ``~/Library/Preferences/com.usage-monitor-for-claude.settings.plist`` -
+  the Icon Style and double-click-opens-Claude preferences, written via
+  ``NSUserDefaults`` (suite ``com.usage-monitor-for-claude.settings``) in
+  ``preferences.py`` when the user changes them from the menu.  Not a Python
+  file write (an AppKit API call), so it does not appear in the ``grep``
+  below.  No credentials, no usage data.
 - ``~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`` -
   written only when the user explicitly toggles "Start at login".
   Contains the literal label, ``sys.executable`` path, ``RunAtLoad`` /

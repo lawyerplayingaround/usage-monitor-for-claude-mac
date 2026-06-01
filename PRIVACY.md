@@ -31,15 +31,18 @@ The application does not write any usage data, credentials, or telemetry to disk
 kept in memory only and discarded when the application closes. An optional settings file
 (`usage-monitor-settings.json`) is read-only.
 
-Two small bookkeeping files are written outside the credential and usage-data flow, never contain
-your token, and exist only to keep a single instance running cleanly:
+A few small bookkeeping items are written outside the credential and usage-data flow. They never
+contain your token or any usage data - they only hold your UI preferences or keep a single instance
+running cleanly:
 
-- **macOS:** a small single-instance lock at `~/.usage-monitor-for-claude.lock` containing only the
-  running process's PID and the app version. When you enable autostart from the menu, a LaunchAgent
-  plist is written at `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`; disabling
-  autostart deletes it.
-- **Windows:** a named mutex and the autostart entry under
-  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` when "Start with Windows" is enabled.
+- **macOS:** a single-instance lock at `~/.usage-monitor-for-claude.lock` (only the running
+  process's PID and the app version); your Icon Style and double-click preferences in
+  `~/Library/Preferences/com.usage-monitor-for-claude.settings.plist`; and, when you enable autostart
+  from the menu, a LaunchAgent plist at `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`
+  (deleted when you disable it).
+- **Windows:** a named mutex; your preferences under `HKCU\Software\UsageMonitorForClaude`; and the
+  autostart entry under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` when "Start with
+  Windows" is enabled.
 
 ## Third-Party Services
 

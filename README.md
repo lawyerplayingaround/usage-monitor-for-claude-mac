@@ -18,7 +18,7 @@ A native tray/menu bar app that shows your Claude usage at a glance - lightweigh
 
 The only difference from upstream is a macOS port. The Windows experience is unchanged - if you only run Windows, the upstream release is what you want.
 
-- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock and the optional LaunchAgent plist.
+- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock, your saved UI preferences, and the optional LaunchAgent plist (none holding your token or usage data).
 - **Menu bar icon** rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density.
 - **Click behavior**: left single-click opens the usage popup, left double-click opens Claude Desktop (via `claude://`, falling back to the `com.anthropic.claudefordesktop` bundle ID, then to `claude.ai` in the default browser), right-click or Ctrl+click shows the context menu.
 - **Popup hosted in a native `NSPanel` + `WKWebView`** (no pywebview Cocoa backend), so AppKit's `NSApplication.run()` is owned cleanly by pystray. The upstream `popup.html`/`popup.css`/`popup.js` are reused unchanged - a small `WKUserScript` shims `window.pywebview.api.{close, open_url, refresh, report_height}` onto a `WKScriptMessageHandler`.
@@ -52,7 +52,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 
 - **Single network destination** - communicates exclusively with `api.anthropic.com`, no other hosts
 - **Credentials stay local** - the OAuth token is used only in HTTP Authorization headers, never logged, stored elsewhere, or transmitted to third parties. On Windows the token is read from `~/.claude/.credentials.json`; on macOS it is read from the system Keychain. Either way it is cached in memory only.
-- **No usage data, credentials, or telemetry written to disk.** The macOS port writes a small single-instance lock at `~/.usage-monitor-for-claude.lock` (PID + app version) and, only when "Start at login" is enabled, a LaunchAgent plist at `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`. Neither contains your token or any usage data. The Windows build is unchanged from upstream.
+- **No usage data, credentials, or telemetry written to disk.** The macOS port writes a small single-instance lock at `~/.usage-monitor-for-claude.lock` (PID + app version), your Icon Style and double-click preferences at `~/Library/Preferences/com.usage-monitor-for-claude.settings.plist`, and, only when "Start at login" is enabled, a LaunchAgent plist at `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`. None of them contains your token or any usage data. The Windows build is unchanged from upstream.
 - **No dynamic code execution** - no `eval()`, `exec()`, `compile()`, or dynamic imports
 - **No obfuscation** - no encoded strings, no hidden URLs, no minified logic
 - **Modular architecture** - small, focused modules with security-critical code (credentials, API calls) isolated in a single file ([`api.py`](usage_monitor_for_claude/api.py))
@@ -248,7 +248,7 @@ New features should follow the existing architecture. Key points from the guidel
 - Security-critical code (credentials, API calls) stays isolated in [`api.py`](usage_monitor_for_claude/api.py)
 - All user-facing changes need updates in [`CHANGELOG.md`](CHANGELOG.md), [`README.md`](README.md), and [`docs/configuration.md`](docs/configuration.md) where applicable
 - Tests are required - run `python -m unittest discover -s tests` before committing
-- The app never writes usage data, credentials, or telemetry to disk; the only writes are the single-instance lock and the optional macOS autostart plist (neither contains a token)
+- The app never writes usage data, credentials, or telemetry to disk; the only writes are the single-instance lock, the UI-preferences store (Icon Style / double-click choices), and the optional macOS autostart plist (none contains a token or usage data)
 
 </details>
 
