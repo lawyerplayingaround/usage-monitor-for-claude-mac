@@ -25,6 +25,8 @@ The only difference from upstream is a macOS port. The Windows experience is unc
 - **Autostart via LaunchAgent** (`~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`) when "Start at login" is toggled. The plist self-heals if the `.app` is moved to a new location.
 - **POSIX single-instance guard** using `flock` on `~/.usage-monitor-for-claude.lock` (a small file containing only PID + app version - no credentials).
 
+![macOS menu bar context menu showing the Icon style submenu, the double-click toggle, and Open at Login](screenshot-menu.png)
+
 See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergences, the network/filesystem audit performed before release, and build details.
 
 ## Features
