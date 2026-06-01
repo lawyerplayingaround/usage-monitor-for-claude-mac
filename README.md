@@ -75,7 +75,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 
 ### macOS (this fork)
 
-**No Python required.** Download the latest **`UsageMonitorForClaude.app`** from this fork's [Releases](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/releases/latest), drag it into `/Applications` (or anywhere you prefer), and double-click to launch. The icon appears in the menu bar.
+**No Python required.** Download the latest **`UsageMonitorForClaude.app.zip`** from this fork's [Releases](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/releases/latest), unzip it (Safari unzips automatically; in other browsers double-click the `.zip`), drag the `UsageMonitorForClaude.app` into `/Applications` (or anywhere you prefer), and launch it. The icon appears in the menu bar.
 
 > [!NOTE]
 > The `.app` is **unsigned and unnotarized**. On first launch macOS Gatekeeper will refuse to open it - **right-click → Open** the first time, then click "Open" in the confirmation dialog. Subsequent launches work normally. Signing/notarization would require Apple Developer enrollment, which is out of scope for this fork.

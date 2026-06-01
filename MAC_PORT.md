@@ -159,7 +159,7 @@ installs the tray patch from `_macos_tray.py` when running on macOS.
 delegates to a `PopupController` instance instead of pywebview's
 `webview.create_window` / `evaluate_js` / `destroy`.  A new
 `_on_bridge_message` method bridges incoming WKScriptMessage payloads to
-the original `_PopupApi.{close, open_url, report_height}` behaviour.
+the original `_PopupApi.{close, open_url, refresh, report_height}` behaviour.
 `_dismiss_watch` (Win32 hook pump) is left untouched but no longer started
 on macOS - dismissal there is handled by ``NSEvent`` monitors inside
 ``_macos_popup``.
@@ -184,7 +184,7 @@ Hosts the popup natively on macOS:
   glance.
 * `_PYWEBVIEW_BRIDGE_JS` - a single ``WKUserScript`` injected at
   ``WKUserScriptInjectionTimeAtDocumentStart`` that defines
-  ``window.pywebview.api.{close, open_url, report_height}`` so the
+  ``window.pywebview.api.{close, open_url, refresh, report_height}`` so the
   existing ``popup/popup.js`` runs unchanged.
 
 The panel is created at ``NSPopUpMenuWindowLevel`` with
@@ -359,7 +359,7 @@ Cocoa backend (3B's auditability goal).  Decision rationale:
   avoids pulling in pywebview's Cocoa code path on macOS at all.
 
 A short ``WKUserScript`` injected at ``documentStart`` defines
-``window.pywebview.api.{close, open_url, report_height}``, forwarding to
+``window.pywebview.api.{close, open_url, refresh, report_height}``, forwarding to
 ``window.webkit.messageHandlers.bridge`` so ``popup.js`` is platform-
 agnostic.
 
