@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.2...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.2...HEAD)
 
-## [1.15.1-fork.2] - 2026-06-01
+## [1.15.1-fork.mac.2] - 2026-06-01
 
 ### Added
 
@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Automatic token refresh now works from the `.app` (macOS).** A bundle launched by Finder/launchd inherits a minimal `PATH` that excludes Homebrew, so the app could not find the `claude` CLI and silently failed to refresh an expired token, leaving a stuck "Session expired". CLI discovery now also probes the common install locations (`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`), so the token refreshes and the popup's CLI version display work from the bundle.
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.1...v1.15.1-fork.2)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.1...v1.15.1-fork.mac.2)
 
 ## [1.15.1-fork.1] - 2026-05-28
 

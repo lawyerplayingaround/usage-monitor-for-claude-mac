@@ -17,11 +17,11 @@ VSVersionInfo(
                 [
                     StringStruct('CompanyName', 'Jens Duttke'),
                     StringStruct('FileDescription', 'Usage Monitor for Claude'),
-                    StringStruct('FileVersion', '1.15.1-fork.2'),
+                    StringStruct('FileVersion', '1.15.1-fork.mac.2'),
                     StringStruct('InternalName', 'UsageMonitorForClaude'),
                     StringStruct('OriginalFilename', 'UsageMonitorForClaude.exe'),
                     StringStruct('ProductName', 'Usage Monitor for Claude'),
-                    StringStruct('ProductVersion', '1.15.1-fork.2'),
+                    StringStruct('ProductVersion', '1.15.1-fork.mac.2'),
                 ],
             ),
         ]),
