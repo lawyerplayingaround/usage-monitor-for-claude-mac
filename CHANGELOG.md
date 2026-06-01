@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.4...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.5...HEAD)
+
+## [1.15.1-fork.mac.5] - 2026-06-01
+
+### Fixed
+
+- **Popup error messages are no longer cut off.** When the status line shows an error (for example a temporary API rate limit), it now wraps to display the full message instead of truncating it next to the version, and hovering reveals the complete text.
+
+### Changed
+
+- **The refresh button now has a short cooldown.** After a manual refresh it briefly greys out (about 15 seconds) so rapid repeat clicks cannot burst-fetch the usage endpoint into a rate limit. The first click is still immediate, and the disabled state is visible rather than a silent dead-click.
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.4...v1.15.1-fork.mac.5)
 
 ## [1.15.1-fork.mac.4] - 2026-06-01
 

@@ -2,6 +2,12 @@ let els;
 let statusState = {};
 let translations = {};
 let textTimerId = null;
+let refreshCooldownId = null;
+
+// After a manual refresh, briefly disable the button so rapid clicks cannot
+// burst-fetch the usage endpoint into a rate limit. The first click is still
+// instant; the disabled state is visible (greyed), never a silent dead-click.
+const REFRESH_COOLDOWN_MS = 15000;
 
 /**
  * Set CSS custom properties for theme colors and inject translation strings.
@@ -139,6 +145,7 @@ function updateStatus(status) {
     } else {
         statusState = {};
         els.statusText.textContent = status.text || '';
+        els.statusText.title = status.text || '';
         els.statusSection.classList.toggle('error', !!status.is_error);
     }
 
@@ -150,16 +157,34 @@ function updateStatus(status) {
  *
  * Optimistically shows the spinner and "refreshing" status right away;
  * Python re-fetches and pushes fresh data via updateData(), which clears
- * the spinner.  Ignored while a refresh is already in flight.
+ * the spinner.  Ignored while a refresh is already in flight or while the
+ * post-refresh cooldown is active (the button is disabled during both).
  */
 function requestRefresh() {
-    if (statusState.refreshing) return;
+    if (statusState.refreshing || els.refreshBtn.disabled) return;
+    if (!window.pywebview?.api?.refresh) return;
     statusState.refreshing = true;
     els.refreshBtn.classList.add('spinning');
+    startRefreshCooldown();
     tickStatusText();
-    if (window.pywebview?.api?.refresh) {
-        pywebview.api.refresh();
-    }
+    pywebview.api.refresh();
+}
+
+/**
+ * Disable the refresh button for REFRESH_COOLDOWN_MS, then re-enable it.
+ *
+ * Prevents rapid repeat clicks from bursting the usage endpoint into a rate
+ * limit. The spinner (cleared by the next data push) and this cooldown are
+ * independent: the button stays greyed for the full window even after the
+ * fetch returns.
+ */
+function startRefreshCooldown() {
+    els.refreshBtn.disabled = true;
+    if (refreshCooldownId) clearTimeout(refreshCooldownId);
+    refreshCooldownId = setTimeout(() => {
+        refreshCooldownId = null;
+        els.refreshBtn.disabled = false;
+    }, REFRESH_COOLDOWN_MS);
 }
 
 /**
@@ -192,6 +217,7 @@ function tickStatusText() {
     }
 
     els.statusText.textContent = parts.join(' \u00b7 ');
+    els.statusText.title = els.statusText.textContent;
 }
 
 /**
