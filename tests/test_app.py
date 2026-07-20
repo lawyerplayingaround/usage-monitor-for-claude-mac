@@ -1502,8 +1502,11 @@ class TestMenuActions(unittest.TestCase):
             mock_thread.assert_called_once()
 
     def test_on_quit_stops_running(self):
-        """on_quit() sets running to False and stops the icon."""
-        self.app.on_quit()
+        """on_quit() sets running to False and stops the icon (deferred on darwin)."""
+        immediate_timer = MagicMock()
+        immediate_timer.side_effect = lambda delay, fn: MagicMock(start=fn)
+        with patch.object(app_mod.threading, 'Timer', immediate_timer):
+            self.app.on_quit()
         self.assertFalse(self.app.running)
         self.app.icon.stop.assert_called_once()
 
@@ -3398,3 +3401,29 @@ class TestLoginTerminal(unittest.TestCase):
         argv = mock_subprocess.run.call_args[0][0]
         self.assertEqual(argv[0], '/usr/bin/osascript')
         self.assertIn('auth login', argv[2])
+
+
+class TestQuitStopDeferral(unittest.TestCase):
+    """on_quit defers icon.stop on darwin so menu-tracking cannot absorb it."""
+
+    def _quit(self, platform):
+        app = UsageMonitorForClaude.__new__(UsageMonitorForClaude)
+        app.running = True
+        app.icon = MagicMock()
+        with patch.object(app_mod.sys, 'platform', platform), patch.object(app_mod.threading, 'Timer') as mock_timer:
+            app.on_quit()
+        return app, mock_timer
+
+    def test_darwin_defers_stop_to_background_timer(self):
+        app, mock_timer = self._quit('darwin')
+        self.assertFalse(app.running)
+        app.icon.stop.assert_not_called()
+        args = mock_timer.call_args[0]
+        self.assertEqual(args[1], app.icon.stop)
+        mock_timer.return_value.start.assert_called_once()
+
+    def test_win32_stops_immediately(self):
+        app, mock_timer = self._quit('win32')
+        self.assertFalse(app.running)
+        app.icon.stop.assert_called_once()
+        mock_timer.assert_not_called()

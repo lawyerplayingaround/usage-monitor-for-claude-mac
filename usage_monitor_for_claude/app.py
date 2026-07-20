@@ -407,10 +407,19 @@ class UsageMonitorForClaude:
 
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
         self.running = False
-        self.icon.stop()
         if sys.platform == 'darwin':
-            from ._macos_tray import wake_runloop
-            wake_runloop()
+            # A stop issued from a menu action runs inside AppKit's
+            # menu-tracking session, which absorbs the stop flag and consumes
+            # pystray's wake event before NSApplication.run() sees either -
+            # the loop would only exit on the user's next click.  Deferring
+            # the whole stop to a background thread lands it after the
+            # tracking session has ended; pystray posts its wake event from
+            # the calling thread, which reliably breaks the main event wait.
+            timer = threading.Timer(0.2, self.icon.stop)
+            timer.daemon = True
+            timer.start()
+        else:
+            self.icon.stop()
 
     # Popup
 
