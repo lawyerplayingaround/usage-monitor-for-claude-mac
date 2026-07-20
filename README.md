@@ -1,7 +1,7 @@
-# Usage Monitor for Claude - macOS port
+# Usage Monitor for Claude - cross-platform fork (Windows + macOS)
 
 > **This is a personal fork of [`jens-duttke/usage-monitor-for-claude`](https://github.com/jens-duttke/usage-monitor-for-claude).**
-> All credit for the original app goes to [@jens-duttke](https://github.com/jens-duttke). The original is Windows-only; this fork adds a macOS port (Apple Silicon) while keeping the original's security promises and APIs unchanged. If you only run Windows, the upstream release is what you want.
+> All credit for the original app goes to [@jens-duttke](https://github.com/jens-duttke). The original is Windows-only; this fork adds a macOS port (Apple Silicon) plus a few opt-in extras on both platforms, while keeping the original's security promises and APIs unchanged. Each release ships the Windows portable EXE, an optional Windows installer, and the macOS app - all built from this one source tree.
 >
 > **AI assistance disclosure.** The macOS port (code, build configuration, and the macOS-specific test suite) was developed in collaboration with Claude (Anthropic), with every change reviewed and tested by the fork maintainer before publishing. Commits authored against the fork carry an `Assisted-by: Claude (Anthropic)` trailer.
 
@@ -23,7 +23,7 @@ A native tray/menu bar app that shows your Claude usage at a glance - lightweigh
 
 ## What this fork adds
 
-The only difference from upstream is a macOS port. The Windows experience is unchanged - if you only run Windows, the upstream release is what you want.
+Relative to upstream, this fork adds a macOS port, a popup refresh button, an Icon Style toggle, a double-click-opens-Claude toggle, a Language submenu, a "Log in to Claude Code" menu shortcut, an optional Windows installer, and a custom app icon. Prefer the pristine Windows original? Use the upstream release.
 
 - **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock, your saved UI preferences, and the optional LaunchAgent plist (none holding your token or usage data).
 - **Menu bar icon** rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density.
