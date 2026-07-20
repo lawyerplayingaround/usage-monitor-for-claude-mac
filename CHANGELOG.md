@@ -13,9 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The Windows and macOS forks are now one project.** Each release ships the Windows portable EXE, the optional Windows installer, and the macOS app, all built from this single source tree; versions drop the platform token (`-fork.N` instead of `-fork.win.N` / `-fork.mac.N`). The former Windows fork repository is archived and points here.
+- **The Windows and macOS forks are now one project.** Each release ships the Windows portable EXE and the macOS app, built from this single source tree (the Windows EXE by a public GitHub Actions workflow); versions drop the platform token (`-fork.N` instead of `-fork.win.N` / `-fork.mac.N`). The former Windows fork repository is archived and points here.
 - **Windows catches up to upstream v1.20.0 in one jump.** Windows builds from this tree include everything from upstream 1.16.0-1.20.0 (previously the Windows fork was based on 1.15.1) plus the fork's Language submenu and "Log in to Claude Code" menu item.
-- **The custom app icon and the Windows installer** from the former Windows fork now live in this tree (`icons/`, `installer/`), unchanged.
+- **The custom app icon** from the former Windows fork now lives in this tree (`icons/`). The optional Windows installer is retired - the fork returns to upstream's portable, zero-config distribution.
 
 [Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.mac.2...v1.20.0-fork.3)
 

@@ -18,32 +18,6 @@ optional Inno Setup installer).
 Inno Setup is only required if you want to (re)build the installer .exe.
 For the portable build, Python alone is enough.
 
-## One-shot build (portable + installer)
-
-```powershell
-cd installer
-.\build_installer.ps1
-```
-
-The script:
-
-1. Creates a local virtualenv at `~/Apps/UsageMonitorForClaude-build/.venv`
-   (default; override with `-BuildDir`).
-2. Installs runtime dependencies from `requirements.txt`.
-3. Runs PyInstaller using `usage_monitor_for_claude.spec` and writes the
-   portable EXE to `~/Apps/UsageMonitorForClaude-build/pyinstaller-dist/`.
-4. Stages the EXE plus `LICENSE` into the Inno Setup payload directory.
-5. Runs ISCC with `installer/setup.iss` and writes
-   `UsageMonitorForClaude-Setup-v<version>.exe` to
-   `~/Apps/UsageMonitorForClaude-build/installer-output/`.
-6. Prints SHA-256 and size for both artifacts.
-
-When iterating on `setup.iss` (or anything that does not require a fresh
-Python build), pass `-SkipPyInstaller` to reuse the existing portable EXE:
-
-```powershell
-.\build_installer.ps1 -SkipPyInstaller
-```
 
 ## Tests
 

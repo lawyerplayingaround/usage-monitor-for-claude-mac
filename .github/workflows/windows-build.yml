@@ -1,0 +1,38 @@
+# Builds the Windows portable EXE from this tree on GitHub's own runners.
+# Manually triggered only (workflow_dispatch); the maintainer downloads the
+# artifact, audits it, and attaches it to the release. Building on a public
+# runner from tagged source gives reproducible provenance and guarantees no
+# personal build-machine paths can end up inside the binary.
+name: windows-build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+      - name: Build portable EXE
+        run: python build.py
+      - name: Verify version resource
+        shell: python
+        run: |
+          import re
+          text = open('usage_monitor_for_claude/__init__.py', encoding='utf-8').read()
+          print('built version:', re.search(r"__version__ = '([^']+)'", text).group(1))
+      - uses: actions/upload-artifact@v4
+        with:
+          name: UsageMonitorForClaude-exe
+          path: dist/UsageMonitorForClaude.exe
+          if-no-files-found: error
