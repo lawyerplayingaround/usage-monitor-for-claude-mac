@@ -25,9 +25,9 @@ from typing import TYPE_CHECKING, Any
 
 from . import __version__
 from .claude_cli import CHANGELOG_URL, find_installations
-from .formatting import elapsed_pct, expand_popup_fields, field_period, format_credits, midnight_positions, popup_label, time_until
+from .formatting import divider_positions, elapsed_pct, expand_popup_fields, field_period, format_credits, popup_label, time_until
 from .i18n import T
-from .settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, FG, FG_DIM, FG_HEADING, FG_LINK, POPUP_FIELDS
+from .settings import BAR_BG, BAR_DIVIDER, BAR_FG, BAR_FG_WARN, BAR_MARKER, BG, COMPACT_HIDE, FG, FG_DIM, FG_HEADING, FG_LINK, POLL_FAST, POPUP_FIELDS
 
 # pywebview is the popup host on Windows only.  On macOS the popup is hosted
 # by ``_macos_popup.PopupController`` (native NSPanel + WKWebView), so the
@@ -46,6 +46,10 @@ _WS_EX_APPWINDOW = 0x00040000
 _WS_EX_TOOLWINDOW = 0x00000080
 _WS_EX_LAYERED = 0x00080000
 _LWA_ALPHA = 0x00000002
+_SWP_NOSIZE = 0x0001
+_SWP_NOZORDER = 0x0004
+_SWP_NOACTIVATE = 0x0010
+_WM_QUIT = 0x0012
 
 
 class _MONITORINFO(ctypes.Structure):
@@ -68,10 +72,14 @@ if TYPE_CHECKING:
 # Data helpers
 # ---------------------------------------------------------------------------
 
-def _usage_entries(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None, int | None]]:
-    """Return the list of usage entry tuples from the given usage data."""
+def _usage_entries(usage: dict[str, Any]) -> list[tuple[str, dict[str, Any] | None, int | None, str]]:
+    """Return ``(label, data, period, field)`` tuples from the given usage data.
+
+    The raw *field* name is included so the popup can hide individual bars
+    by field name when the pinned compact view is configured.
+    """
     fields = expand_popup_fields(POPUP_FIELDS, usage)
-    return [(popup_label(key), usage.get(key), field_period(key)) for key in fields]
+    return [(popup_label(key), usage.get(key), field_period(key), key) for key in fields]
 
 
 def _snapshot_to_dict(
@@ -92,8 +100,8 @@ def _snapshot_to_dict(
     # returns an empty or incomplete response, instead of rendering empty Email/Plan fields.
     profile = None
     if snap.profile:
-        account = snap.profile.get('account', {})
-        org = snap.profile.get('organization', {})
+        account = snap.profile.get('account') or {}
+        org = snap.profile.get('organization') or {}
         profile = {
             'email': account.get('email', ''),
             'plan': org.get('organization_type', '').replace('_', ' ').title(),
@@ -102,7 +110,7 @@ def _snapshot_to_dict(
     # Usage bars
     usage = []
     if snap.usage:
-        for label, entry, period in _usage_entries(snap.usage):
+        for label, entry, period, field in _usage_entries(snap.usage):
             if not entry or entry.get('utilization') is None:
                 continue
             pct = entry.get('utilization', 0) or 0
@@ -112,12 +120,13 @@ def _snapshot_to_dict(
             marker_rel = max(0.0, min(1.0, time_pct / 100)) if time_pct is not None else None
 
             usage.append({
+                'key': field,
                 'label': label,
                 'pct_text': f'{pct:.0f}%',
                 'fill_pct': max(0.0, min(1.0, pct / 100)),
                 'warn': warn,
                 'reset_text': time_until(resets_at) if resets_at else '',
-                'midnights': midnight_positions(resets_at, period) if period else [],
+                'dividers': divider_positions(resets_at, period) if period else [],
                 'marker_rel': marker_rel,
             })
 
@@ -130,11 +139,14 @@ def _snapshot_to_dict(
             if limit > 0:
                 used = extra_data.get('used_credits', 0) or 0
                 pct = used / limit * 100
+                currency = extra_data.get('currency')
+                decimal_places = extra_data.get('decimal_places')
                 extra = {
                     'pct_text': f'{pct:.0f}%',
                     'fill_pct': max(0.0, min(1.0, pct / 100)),
                     'spent_text': T['extra_usage_spent'].format(
-                        used=format_credits(used), limit=format_credits(limit),
+                        used=format_credits(used, currency, decimal_places),
+                        limit=format_credits(limit, currency, decimal_places),
                     ),
                 }
 
@@ -176,12 +188,14 @@ def _init_config(snap: CacheSnapshot, next_poll_time: float | None = None) -> di
             'title': T['popup_title'], 'account': T['account'], 'email': T['email'], 'plan': T['plan'],
             'usage': T['usage'], 'extra_usage': T['extra_usage'],
             'claude_code': T['claude_code'], 'changelog': T['changelog'],
+            'pin_popup': T['pin_popup'], 'unpin_popup': T['unpin_popup'],
             'status_updated_s': T['status_updated_s'], 'status_updated': T['status_updated'],
             'status_next_update': T['status_next_update'], 'status_refreshing': T['status_refreshing'],
             'duration_hm': T['duration_hm'], 'duration_m': T['duration_m'], 'duration_s': T['duration_s'],
             'refresh': T['refresh'],
         },
         'app_version': __version__,
+        'compact_hide': COMPACT_HIDE,
         'data': _snapshot_to_dict(snap, next_poll_time=next_poll_time),
     }
 
@@ -206,13 +220,37 @@ class _PopupApi:
         """Called by JS when the user clicks the footer refresh button."""
         self._popup._request_refresh()
 
+    def set_pinned(self, pinned: bool) -> bool:
+        return self._popup._set_pinned(pinned)
+
+    def begin_drag(self) -> bool:
+        return self._popup._begin_drag()
+
+    def drag(self) -> bool:
+        return self._popup._drag()
+
+    def end_drag(self) -> None:
+        self._popup._end_drag()
+
     def report_height(self, height: int) -> None:
-        """Called by JS ResizeObserver when content height changes."""
-        if height and height != self._popup._last_height:
-            self._popup._last_height = height
-            self._popup._resize_and_position(height)
-            if not self._popup._shown:
-                self._popup._show_window()
+        """Called by JS ResizeObserver when content height changes.
+
+        pywebview dispatches every bridge call on a fresh thread, so two
+        rapid reports could interleave and apply the earlier resize after
+        the later one, or both start the show path.  The geometry lock
+        serializes the whole check-resize-show sequence.
+        """
+        if not height:
+            return
+
+        popup = self._popup
+        with popup._geometry_lock:
+            if height == popup._last_height:
+                return
+            popup._last_height = height
+            popup._resize_and_position(height)
+            if not popup._shown:
+                popup._show_window()
 
 
 # ---------------------------------------------------------------------------
@@ -241,10 +279,23 @@ class UsagePopup:
         """
         self.app = app
         self._running = True
+        self._pinned = False
+        self._moved_while_pinned = False
+        self._dragging = False
+        self._drag_offset = (0, 0)
+        self._drag_start_dpi = 0
         self._closed = threading.Event()
         self._popup_hwnd = 0
+        self._pump_tid = 0
+        # Serializes the resize/show geometry path across pywebview's
+        # per-call bridge threads.
+        self._geometry_lock = threading.Lock()
         initial_height = 400
-        self._last_height = initial_height
+        # 0 means "no height reported yet": the first ResizeObserver report
+        # must always count as a change so the window gets resized,
+        # positioned, and shown even when the content is exactly
+        # initial_height tall.
+        self._last_height = 0
         snap = app.cache.snapshot
         self._last_version = snap.version
         self._shown = False
@@ -353,11 +404,17 @@ class UsagePopup:
         via ``NSEvent`` global/local monitors, so this method is not used.
         """
         this_thread = ctypes.windll.kernel32.GetCurrentThreadId()
-        WM_QUIT = 0x0012
+
+        # Force creation of this thread's message queue before publishing the
+        # thread id, so a WM_QUIT posted by _post_pump_quit() from another
+        # thread cannot be lost in the queue-creation window.
+        msg = ctypes.wintypes.MSG()
+        ctypes.windll.user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, 0)  # PM_NOREMOVE
+        self._pump_tid = this_thread
 
         def _post_quit() -> None:
-            if self._shown:
-                ctypes.windll.user32.PostThreadMessageW(this_thread, WM_QUIT, 0, 0)
+            if self._shown and not self._pinned:
+                ctypes.windll.user32.PostThreadMessageW(this_thread, _WM_QUIT, 0, 0)
 
         # -- Shared argtypes for CallNextHookEx --
         _call_next = ctypes.windll.user32.CallNextHookEx
@@ -443,7 +500,6 @@ class UsagePopup:
         fg_hook = ctypes.windll.user32.SetWinEventHook(0x0003, 0x0003, None, fg_proc, 0, 0, 0x0002)
 
         try:
-            msg = ctypes.wintypes.MSG()
             while self._running and ctypes.windll.user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 pass
         finally:
@@ -452,15 +508,29 @@ class UsagePopup:
             ctypes.windll.user32.UnhookWindowsHookEx(mouse_hook)
             ctypes.windll.user32.UnhookWindowsHookEx(kb_hook)
             ctypes.windll.user32.UnhookWinEvent(fg_hook)
+            self._pump_tid = 0
 
         self._close()
 
+    def _post_pump_quit(self) -> None:
+        """Wake the dismiss-watch pump so it can remove its hooks and exit.
+
+        The pump blocks inside ``GetMessageW`` and re-checks ``_running``
+        only after a message arrives, so setting the flag alone is not
+        enough - especially while pinned, where the user-dismissal path
+        (``_post_quit``) never posts.
+        """
+        if self._pump_tid:
+            ctypes.windll.user32.PostThreadMessageW(self._pump_tid, _WM_QUIT, 0, 0)
+
     def _on_window_closed(self) -> None:
         self._running = False
+        self._post_pump_quit()
         self._closed.set()
 
     def _close(self) -> None:
         self._running = False
+        self._post_pump_quit()
         try:
             if sys.platform == 'darwin':
                 self._controller.close()
@@ -469,6 +539,70 @@ class UsagePopup:
         except Exception:
             pass
         self._closed.set()
+
+    def _set_pinned(self, pinned: bool) -> bool:
+        self._pinned = bool(pinned)
+        if not self._pinned:
+            self._moved_while_pinned = False
+        return self._pinned
+
+    def _begin_drag(self) -> bool:
+        """Anchor the cursor to the window for a pinned-popup drag.
+
+        Records the physical offset between the cursor and the window's
+        top-left corner.  Dragging is then done entirely in physical
+        screen coordinates, which keeps the cursor anchored even across
+        monitors with different DPI scaling, where logical-pixel deltas
+        would jump at the boundary.
+        """
+        if not self._pinned or not self._popup_hwnd:
+            return False
+
+        cursor = ctypes.wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(cursor))
+        rect = ctypes.wintypes.RECT()
+        ctypes.windll.user32.GetWindowRect(self._popup_hwnd, ctypes.byref(rect))
+        self._drag_offset = (cursor.x - rect.left, cursor.y - rect.top)
+        self._drag_start_dpi = ctypes.windll.user32.GetDpiForWindow(self._popup_hwnd) or ctypes.windll.user32.GetDpiForSystem()
+        self._dragging = True
+        return True
+
+    def _drag(self) -> bool:
+        """Reposition the popup so the cursor keeps its initial grab offset.
+
+        Each step computes the absolute window position from the current
+        physical cursor position, so out-of-order calls converge on the
+        right spot instead of accumulating drift.
+        """
+        if not self._dragging or not self._pinned or not self._popup_hwnd:
+            return False
+
+        cursor = ctypes.wintypes.POINT()
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(cursor))
+        x = cursor.x - self._drag_offset[0]
+        y = cursor.y - self._drag_offset[1]
+        ctypes.windll.user32.SetWindowPos(self._popup_hwnd, 0, x, y, 0, 0, _SWP_NOSIZE | _SWP_NOZORDER | _SWP_NOACTIVATE)
+        self._moved_while_pinned = True
+        return True
+
+    def _end_drag(self) -> None:
+        """Finish a drag and correct the size after a cross-monitor DPI change.
+
+        Crossing a monitor boundary triggers Windows' Per-Monitor-V2
+        rescale, which can race with pywebview's size handling and leave
+        the popup mis-sized.  Re-asserting the size once, against the
+        destination monitor's DPI, makes the final dimensions
+        deterministic.  Position is preserved by ``resize``'s default
+        top-left fix point.
+        """
+        self._dragging = False
+        if not self._popup_hwnd:
+            return
+
+        current_dpi = ctypes.windll.user32.GetDpiForWindow(self._popup_hwnd) or ctypes.windll.user32.GetDpiForSystem()
+        if current_dpi != self._drag_start_dpi:
+            with self._geometry_lock:
+                self._window.resize(self.WIDTH, self._last_height)
 
     def _update_loop(self) -> None:
         """Poll for data changes and push updates to the popup."""
@@ -484,25 +618,39 @@ class UsagePopup:
                 if snap.version == self._last_version and next_poll_time == last_next_poll_time:
                     continue
                 if snap.version != self._last_version:
-                    self._last_version = snap.version
                     cached_installations = [{'name': i.name, 'version': i.version} for i in find_installations()]
-                last_next_poll_time = next_poll_time
                 data = _snapshot_to_dict(snap, installations=cached_installations, next_poll_time=next_poll_time)
                 script = f'updateData({json.dumps(data)})'
                 if sys.platform == 'darwin':
                     self._controller.evaluate_js(script)
                 else:
                     self._window.evaluate_js(script)
+                # Commit the markers only after a successful push, so a failed
+                # update is retried on the next tick instead of being skipped
+                # by the dedup check until the next data change.
+                self._last_version = snap.version
+                last_next_poll_time = next_poll_time
             except Exception:
-                break
+                # A transient failure (snapshot conversion, filesystem scan,
+                # one-off evaluate_js hiccup) must not end the update stream -
+                # a pinned popup can live for days.  The destroyed-window
+                # case exits via the _running flag on the next iteration.
+                continue
 
     def _request_refresh(self) -> None:
         """Force an immediate data refresh from the popup refresh button.
 
-        Re-fetches in a background thread - the same path the popup uses when
-        it opens with stale data - then pushes the fresh snapshot straight to
-        the popup instead of waiting for the periodic update loop.  Ignored
-        while a refresh is already in flight.
+        Re-fetches in a background thread - bypassing the cache cooldown but
+        not the 429 backoff - then pushes the fresh snapshot straight to the
+        popup instead of waiting for the periodic update loop.  Ignored while
+        a refresh is already in flight.
+
+        Defers to the reset-aligned poll near a quota reset (the same
+        deferral ``_should_refresh_usage`` applies to the popup-open
+        refresh): a fetch in the last ``POLL_FAST`` seconds before a reset
+        would consume the cooldown and force the reset-confirming poll to
+        overshoot.  In that window only the current snapshot is pushed,
+        which clears the button's spinner without touching the data.
         """
         if self._refreshing or not self._running:
             return
@@ -510,7 +658,9 @@ class UsagePopup:
 
         def _do() -> None:
             try:
-                self.app.update(force=True)
+                next_reset = self.app._seconds_until_next_reset()
+                if next_reset is None or next_reset >= POLL_FAST:
+                    self.app.update(bypass_cooldown=True)
             except Exception:
                 pass
             finally:
@@ -602,5 +752,7 @@ class UsagePopup:
         physical_width = int(self.WIDTH * scale)
         physical_height = int(height * scale)
         self._window.resize(self.WIDTH, height)
+        if self._pinned and self._moved_while_pinned:
+            return
         x, y = self._tray_position(physical_width, physical_height)
         self._window.move(x, y)

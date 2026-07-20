@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import ctypes
 import sys
+import threading
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.cache import CacheSnapshot
-from usage_monitor_for_claude.popup import UsagePopup, _BASELINE_DPI, _MONITORINFO, _PopupApi, _init_config, _snapshot_to_dict, _usage_entries
+from usage_monitor_for_claude.popup import (
+    UsagePopup, _BASELINE_DPI, _MONITORINFO, _PopupApi, _SWP_NOACTIVATE, _SWP_NOSIZE, _SWP_NOZORDER,
+    _init_config, _snapshot_to_dict, _usage_entries,
+)
 
 _WIN32_ONLY = unittest.skipUnless(sys.platform == 'win32', 'Win32-specific popup positioning and DPI hooks')
 
@@ -82,6 +87,16 @@ class TestUsageEntries(unittest.TestCase):
         self.assertEqual(len(entries), 2)
         self.assertIs(entries[0][1], five_hour)
         self.assertIs(entries[1][1], seven_day)
+
+    def test_entry_includes_field_key(self):
+        """Each entry's 4th element is the raw API field name."""
+        usage = {
+            'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T00:00:00Z'},
+            'seven_day_opus': {'utilization': 10, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        entries = _usage_entries(usage)
+        keys = [e[3] for e in entries]
+        self.assertEqual(keys, ['five_hour', 'seven_day_opus'])
 
     def test_empty_usage_returns_empty(self):
         """Empty usage dict returns no entries."""
@@ -175,6 +190,12 @@ class TestSnapshotToDict(unittest.TestCase):
         self.assertEqual(result['profile']['email'], '')
         self.assertEqual(result['profile']['plan'], '')
 
+    def test_profile_with_null_account_and_organization(self):
+        """A profile carrying account/organization as null must not crash the popup."""
+        result = _snapshot_to_dict(_snap(profile={'account': None, 'organization': None}), installations=[])
+        self.assertEqual(result['profile']['email'], '')
+        self.assertEqual(result['profile']['plan'], '')
+
     # -- usage bars --
 
     def test_no_usage_data(self):
@@ -196,8 +217,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='5h 0m')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_usage_bar_fields(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_usage_bar_fields(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Each usage bar dict has all required fields with correct types."""
         usage = {'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -209,12 +230,27 @@ class TestSnapshotToDict(unittest.TestCase):
         self.assertFalse(bar['warn'])
         self.assertIsNone(bar['marker_rel'])
         self.assertEqual(bar['reset_text'], '5h 0m')
-        self.assertEqual(bar['midnights'], [])
+        self.assertEqual(bar['dividers'], [])
+
+    def test_field_with_null_resets_at(self):
+        """An inactive scoped limit (resets_at None) renders a 0% bar with no reset text."""
+        usage = {'seven_day_fable': {'utilization': 0.0, 'resets_at': None}}
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+
+        self.assertEqual(len(result['usage']), 1)
+        bar = result['usage'][0]
+        self.assertEqual(bar['key'], 'seven_day_fable')
+        self.assertEqual(bar['pct_text'], '0%')
+        self.assertEqual(bar['fill_pct'], 0.0)
+        self.assertEqual(bar['reset_text'], '')
+        self.assertEqual(bar['dividers'], [])
+        self.assertIsNone(bar['marker_rel'])
+        self.assertFalse(bar['warn'])
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=30.0)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='3h 30m')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[0.5])
-    def test_warn_when_usage_ahead_of_time(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[0.5])
+    def test_warn_when_usage_ahead_of_time(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Bar is marked warn when utilization exceeds elapsed percentage."""
         usage = {'five_hour': {'utilization': 60, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -225,8 +261,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=80.0)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='1h 0m')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_no_warn_when_usage_behind_time(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_no_warn_when_usage_behind_time(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Bar is not warn when utilization is below elapsed percentage."""
         usage = {'five_hour': {'utilization': 40, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -236,8 +272,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=50.0)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='2h 30m')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_no_warn_when_equal(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_no_warn_when_equal(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Exactly equal usage and elapsed is not a warning (strictly greater)."""
         usage = {'five_hour': {'utilization': 50, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -245,8 +281,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_warn_at_100_without_time_period(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_warn_at_100_without_time_period(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Bar at 100% is warn even when no time period (time_pct is None)."""
         usage = {'five_hour': {'utilization': 100, 'resets_at': ''}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -254,8 +290,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=100.0)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_warn_at_100_when_time_also_100(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_warn_at_100_when_time_also_100(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Bar at 100% is warn even when elapsed time is also 100% (strict > would miss this)."""
         usage = {'five_hour': {'utilization': 100, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -263,8 +299,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_fill_pct_clamped_to_0_1(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_fill_pct_clamped_to_0_1(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Fill percentage is clamped between 0.0 and 1.0, and over-quota is always warn."""
         usage = {'five_hour': {'utilization': 150, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -273,8 +309,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_zero_utilization(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_zero_utilization(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Zero utilization produces 0% text and 0.0 fill."""
         usage = {'five_hour': {'utilization': 0, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
@@ -285,8 +321,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_multiple_usage_entries(self, _mock_midnights, _mock_time_until, _mock_elapsed):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_multiple_usage_entries(self, _mock_dividers, _mock_time_until, _mock_elapsed):
         """Multiple usage types each produce a bar entry."""
         usage = {
             'five_hour': {'utilization': 10, 'resets_at': '2026-01-01T05:00:00Z'},
@@ -298,11 +334,24 @@ class TestSnapshotToDict(unittest.TestCase):
         pcts = [b['pct_text'] for b in result['usage']]
         self.assertEqual(pcts, ['10%', '20%', '30%'])
 
+    @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
+    @patch('usage_monitor_for_claude.popup.time_until', return_value='')
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_usage_bar_includes_field_key(self, _mock_div, _mock_tu, _mock_ep):
+        """Each usage bar dict carries its API field name for compact hiding."""
+        usage = {
+            'five_hour': {'utilization': 10, 'resets_at': '2026-01-01T05:00:00Z'},
+            'seven_day_opus': {'utilization': 30, 'resets_at': '2026-01-07T00:00:00Z'},
+        }
+        result = _snapshot_to_dict(_snap(usage=usage), installations=[])
+        keys = [bar['key'] for bar in result['usage']]
+        self.assertEqual(keys, ['five_hour', 'seven_day_opus'])
+
     @patch('usage_monitor_for_claude.popup.POPUP_FIELDS', ['typo_field', 'seven_day'])
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_misspelled_popup_field_skipped_in_dict(self, _mock_mid, _mock_tu, _mock_ep):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_misspelled_popup_field_skipped_in_dict(self, _mock_div, _mock_tu, _mock_ep):
         """Misspelled popup_fields entry produces no bar, valid one shown."""
         usage = {
             'five_hour': {'utilization': 42, 'resets_at': '2026-01-01T05:00:00Z'},
@@ -320,8 +369,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_non_dict_values_in_response_ignored(self, _mock_mid, _mock_tu, _mock_ep):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_non_dict_values_in_response_ignored(self, _mock_div, _mock_tu, _mock_ep):
         """Non-dict values in the API response are not shown as bars."""
         usage = {
             'error': 'temporary',
@@ -351,7 +400,7 @@ class TestSnapshotToDict(unittest.TestCase):
         result = _snapshot_to_dict(_snap(usage=usage), installations=[])
         self.assertIsNone(result['extra'])
 
-    @patch('usage_monitor_for_claude.popup.format_credits', side_effect=lambda c: f'${c / 100:.2f}')
+    @patch('usage_monitor_for_claude.popup.format_credits', side_effect=lambda c, *_: f'${c / 100:.2f}')
     def test_extra_usage_calculation(self, _mock_credits):
         """Extra usage computes percentage and formatted text correctly."""
         usage = {'extra_usage': {'is_enabled': True, 'monthly_limit': 10000, 'used_credits': 2500}}
@@ -364,7 +413,7 @@ class TestSnapshotToDict(unittest.TestCase):
         self.assertIn('$25.00', extra['spent_text'])
         self.assertIn('$100.00', extra['spent_text'])
 
-    @patch('usage_monitor_for_claude.popup.format_credits', side_effect=lambda c: f'${c / 100:.2f}')
+    @patch('usage_monitor_for_claude.popup.format_credits', side_effect=lambda c, *_: f'${c / 100:.2f}')
     def test_extra_usage_fill_clamped(self, _mock_credits):
         """Extra usage fill is clamped to 1.0 when over limit."""
         usage = {'extra_usage': {'is_enabled': True, 'monthly_limit': 1000, 'used_credits': 2000}}
@@ -415,8 +464,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_status_live_mode_keys(self, _mock_mid, _mock_tu, _mock_ep):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_status_live_mode_keys(self, _mock_div, _mock_tu, _mock_ep):
         """Live mode status contains all required keys for the JS timer."""
         usage = {'five_hour': {'utilization': 50, 'resets_at': '2026-01-01T05:00:00Z'}}
         result = _snapshot_to_dict(
@@ -427,8 +476,8 @@ class TestSnapshotToDict(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.popup.elapsed_pct', return_value=None)
     @patch('usage_monitor_for_claude.popup.time_until', return_value='')
-    @patch('usage_monitor_for_claude.popup.midnight_positions', return_value=[])
-    def test_status_error_truncated_in_live_mode(self, _mock_mid, _mock_tu, _mock_ep):
+    @patch('usage_monitor_for_claude.popup.divider_positions', return_value=[])
+    def test_status_error_truncated_in_live_mode(self, _mock_div, _mock_tu, _mock_ep):
         """Error messages are truncated to 120 characters in live mode."""
         usage = {'five_hour': {'utilization': 50, 'resets_at': '2026-01-01T05:00:00Z'}}
         long_error = 'x' * 200
@@ -454,9 +503,15 @@ class TestInitConfig(unittest.TestCase):
     """Tests for _init_config - builds the JS init() config object."""
 
     def test_top_level_keys(self):
-        """Config has colors, t (translations), app_version, and data."""
+        """Config has colors, t (translations), app_version, compact_hide, and data."""
         config = _init_config(_snap())
-        self.assertEqual(set(config.keys()), {'colors', 't', 'app_version', 'data'})
+        self.assertEqual(set(config.keys()), {'colors', 't', 'app_version', 'compact_hide', 'data'})
+
+    @patch('usage_monitor_for_claude.popup.COMPACT_HIDE', ['account', 'seven_day_opus'])
+    def test_compact_hide_from_settings(self):
+        """compact_hide is taken from the COMPACT_HIDE setting."""
+        config = _init_config(_snap())
+        self.assertEqual(config['compact_hide'], ['account', 'seven_day_opus'])
 
     def test_colors_from_settings(self):
         """Color values come from settings module constants."""
@@ -489,6 +544,8 @@ class TestInitConfig(unittest.TestCase):
         self.assertEqual(t['extra_usage'], T['extra_usage'])
         self.assertEqual(t['claude_code'], T['claude_code'])
         self.assertEqual(t['changelog'], T['changelog'])
+        self.assertEqual(t['pin_popup'], T['pin_popup'])
+        self.assertEqual(t['unpin_popup'], T['unpin_popup'])
         self.assertEqual(t['status_updated_s'], T['status_updated_s'])
         self.assertEqual(t['status_updated'], T['status_updated'])
         self.assertEqual(t['status_refreshing'], T['status_refreshing'])
@@ -511,6 +568,405 @@ class TestInitConfig(unittest.TestCase):
         config = _init_config(snap)
         self.assertEqual(config['data']['profile']['email'], 'a@b.com')
         self.assertEqual(set(config['data'].keys()), {'profile', 'usage', 'extra', 'installations', 'status'})
+
+
+# ---------------------------------------------------------------------------
+# Pin state
+# ---------------------------------------------------------------------------
+
+class TestPinState(unittest.TestCase):
+    """Tests for UsagePopup pin state."""
+
+    def test_set_pinned_updates_state(self):
+        popup = object.__new__(UsagePopup)
+        popup._pinned = False
+
+        self.assertTrue(popup._set_pinned(True))
+        self.assertTrue(popup._pinned)
+
+        popup._moved_while_pinned = True
+        self.assertFalse(popup._set_pinned(False))
+        self.assertFalse(popup._pinned)
+        self.assertFalse(popup._moved_while_pinned)
+
+    def test_begin_drag_ignored_when_unpinned(self):
+        popup = object.__new__(UsagePopup)
+        popup._pinned = False
+        popup._popup_hwnd = 12345
+        popup._dragging = False
+
+        self.assertFalse(popup._begin_drag())
+        self.assertFalse(popup._dragging)
+
+    def test_begin_drag_anchors_physical_cursor_offset(self):
+        popup = object.__new__(UsagePopup)
+        popup._pinned = True
+        popup._popup_hwnd = 12345
+        popup._dragging = False
+
+        def fill_cursor(ptr):
+            point = ctypes.cast(ptr, ctypes.POINTER(ctypes.wintypes.POINT)).contents
+            point.x = 500
+            point.y = 400
+
+        def fill_rect(_hwnd, ptr):
+            rect = ctypes.cast(ptr, ctypes.POINTER(ctypes.wintypes.RECT)).contents
+            rect.left = 460
+            rect.top = 360
+
+        with patch('ctypes.windll.user32.GetCursorPos', side_effect=fill_cursor), \
+             patch('ctypes.windll.user32.GetWindowRect', side_effect=fill_rect), \
+             patch('ctypes.windll.user32.GetDpiForWindow', return_value=96):
+            self.assertTrue(popup._begin_drag())
+
+        self.assertTrue(popup._dragging)
+        self.assertEqual(popup._drag_offset, (40, 40))
+        self.assertEqual(popup._drag_start_dpi, 96)
+
+    def test_drag_ignored_when_not_dragging(self):
+        popup = object.__new__(UsagePopup)
+        popup._pinned = True
+        popup._dragging = False
+        popup._popup_hwnd = 12345
+
+        with patch('ctypes.windll.user32.SetWindowPos') as mock_set_pos:
+            self.assertFalse(popup._drag())
+        mock_set_pos.assert_not_called()
+
+    def test_drag_moves_popup_to_physical_cursor(self):
+        popup = object.__new__(UsagePopup)
+        popup._pinned = True
+        popup._dragging = True
+        popup._popup_hwnd = 12345
+        popup._drag_offset = (40, 40)
+        popup._moved_while_pinned = False
+
+        def fill_cursor(ptr):
+            point = ctypes.cast(ptr, ctypes.POINTER(ctypes.wintypes.POINT)).contents
+            point.x = 700
+            point.y = 620
+
+        with patch('ctypes.windll.user32.GetCursorPos', side_effect=fill_cursor), \
+             patch('ctypes.windll.user32.SetWindowPos') as mock_set_pos:
+            self.assertTrue(popup._drag())
+
+        mock_set_pos.assert_called_once_with(
+            12345, 0, 660, 580, 0, 0, _SWP_NOSIZE | _SWP_NOZORDER | _SWP_NOACTIVATE,
+        )
+        self.assertTrue(popup._moved_while_pinned)
+
+    def test_end_drag_reasserts_size_on_dpi_change(self):
+        popup = object.__new__(UsagePopup)
+        popup.WIDTH = UsagePopup.WIDTH
+        popup._popup_hwnd = 12345
+        popup._dragging = True
+        popup._drag_start_dpi = 96
+        popup._last_height = 500
+        popup._geometry_lock = threading.Lock()
+        popup._window = MagicMock()
+
+        with patch('ctypes.windll.user32.GetDpiForWindow', return_value=144):
+            popup._end_drag()
+
+        self.assertFalse(popup._dragging)
+        popup._window.resize.assert_called_once_with(UsagePopup.WIDTH, 500)
+
+    def test_end_drag_keeps_size_without_dpi_change(self):
+        popup = object.__new__(UsagePopup)
+        popup.WIDTH = UsagePopup.WIDTH
+        popup._popup_hwnd = 12345
+        popup._dragging = True
+        popup._drag_start_dpi = 96
+        popup._last_height = 500
+        popup._window = MagicMock()
+
+        with patch('ctypes.windll.user32.GetDpiForWindow', return_value=96):
+            popup._end_drag()
+
+        self.assertFalse(popup._dragging)
+        popup._window.resize.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# report_height / first show
+# ---------------------------------------------------------------------------
+
+class TestReportHeight(unittest.TestCase):
+    """Tests for _PopupApi.report_height - the first report must always show the window."""
+
+    def _build_popup(self):
+        """Run the real UsagePopup.__init__ with webview mocked, return (popup, api).
+
+        __init__ blocks on _closed.wait(), so it runs on a worker thread; the
+        _PopupApi instance is captured from the js_api argument passed to
+        webview.create_window.
+        """
+        patcher_watch = patch.object(UsagePopup, '_dismiss_watch', lambda self: None)
+        patcher_webview = patch('usage_monitor_for_claude.popup.webview')
+        patcher_watch.start()
+        mock_webview = patcher_webview.start()
+        self.addCleanup(patcher_webview.stop)
+        self.addCleanup(patcher_watch.stop)
+
+        app = MagicMock()
+        thread = threading.Thread(target=lambda: UsagePopup(app), daemon=True)
+        thread.start()
+
+        deadline = time.time() + 2.0
+        while not mock_webview.create_window.called and time.time() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(mock_webview.create_window.called)
+
+        api = mock_webview.create_window.call_args.kwargs['js_api']
+        popup = api._popup
+        self.addCleanup(popup._closed.set)
+
+        popup._resize_and_position = MagicMock()
+        popup._show_window = MagicMock()
+        return popup, api
+
+    def test_first_report_at_initial_window_height_shows_popup(self):
+        """A first content height equal to the initial window height must still show the window."""
+        popup, api = self._build_popup()
+        initial_window_height = mock_height = 400
+
+        api.report_height(mock_height)
+
+        popup._resize_and_position.assert_called_once_with(initial_window_height)
+        popup._show_window.assert_called_once()
+
+    def test_first_report_at_other_height_shows_popup(self):
+        """A first content height different from the window height shows the window."""
+        popup, api = self._build_popup()
+
+        api.report_height(523)
+
+        popup._resize_and_position.assert_called_once_with(523)
+        popup._show_window.assert_called_once()
+
+    def test_repeated_report_with_same_height_is_deduplicated(self):
+        """A second report with an unchanged height must not resize again."""
+        popup, api = self._build_popup()
+
+        api.report_height(523)
+        api.report_height(523)
+
+        popup._resize_and_position.assert_called_once_with(523)
+
+    def test_zero_height_ignored(self):
+        """A zero height report is ignored entirely."""
+        popup, api = self._build_popup()
+
+        api.report_height(0)
+
+        popup._resize_and_position.assert_not_called()
+        popup._show_window.assert_not_called()
+
+    def test_stale_height_report_cannot_overwrite_newer_resize(self):
+        """pywebview dispatches each bridge call on a fresh thread; two rapid
+        height reports must not interleave so that the earlier resize is
+        applied after (and overwrites) the later one."""
+        popup, api = self._build_popup()
+
+        first_entered = threading.Event()
+        release_first = threading.Event()
+        applied = []
+
+        def resize(height):
+            if height == 400:
+                first_entered.set()
+                release_first.wait(2)
+            applied.append(height)
+
+        popup._resize_and_position = MagicMock(side_effect=resize)
+
+        first = threading.Thread(target=lambda: api.report_height(400), daemon=True)
+        first.start()
+        self.assertTrue(first_entered.wait(2))
+
+        second = threading.Thread(target=lambda: api.report_height(523), daemon=True)
+        second.start()
+        time.sleep(0.1)
+        release_first.set()
+        first.join(2)
+        second.join(2)
+
+        # The window size (last applied resize) must match the tracked height.
+        self.assertEqual(applied[-1], popup._last_height)
+
+    def test_concurrent_first_reports_start_show_only_once(self):
+        """Two pre-show reports racing each other must not both run _show_window
+        (which would start two update-push loops for one popup)."""
+        popup, api = self._build_popup()
+
+        show_entered = threading.Event()
+        release_show = threading.Event()
+        show_calls = []
+
+        def show():
+            show_calls.append(1)
+            show_entered.set()
+            release_show.wait(2)
+            popup._shown = True
+
+        popup._show_window = MagicMock(side_effect=show)
+
+        first = threading.Thread(target=lambda: api.report_height(400), daemon=True)
+        first.start()
+        self.assertTrue(show_entered.wait(2))
+
+        second = threading.Thread(target=lambda: api.report_height(523), daemon=True)
+        second.start()
+        time.sleep(0.1)
+        release_show.set()
+        first.join(2)
+        second.join(2)
+
+        self.assertEqual(len(show_calls), 1)
+
+
+# ---------------------------------------------------------------------------
+# Dismiss-watch shutdown
+# ---------------------------------------------------------------------------
+
+class TestDismissWatchShutdown(unittest.TestCase):
+    """Tests that closing the popup terminates the dismiss-watch message pump.
+
+    The pump installs system-wide input hooks and only removes them when
+    its GetMessageW loop exits.  Closing the window must wake the pump in
+    every state - especially while pinned, where the user-dismissal path
+    (_post_quit) never fires.
+    """
+
+    def _start_pump(self, pinned):
+        """Build a minimal popup and run the real _dismiss_watch on a thread."""
+        popup = object.__new__(UsagePopup)
+        popup._running = True
+        popup._pinned = pinned
+        popup._shown = True
+        popup._popup_hwnd = 0
+        popup._pump_tid = 0
+        popup._closed = threading.Event()
+        popup._window = MagicMock()
+
+        thread = threading.Thread(target=popup._dismiss_watch, daemon=True)
+        thread.start()
+
+        # Wait until the pump published its thread id (pump is about to block
+        # in GetMessageW); fall back to a fixed delay if it never appears.
+        deadline = time.time() + 1.0
+        while not popup._pump_tid and time.time() < deadline:
+            time.sleep(0.01)
+        return popup, thread
+
+    def test_close_while_pinned_exits_pump(self):
+        """_close() on a pinned popup must end the pump so hooks are unhooked."""
+        popup, thread = self._start_pump(pinned=True)
+        popup._close()
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+
+    def test_close_while_unpinned_exits_pump(self):
+        """_close() on an unpinned popup must end the pump immediately, not on the next outside click."""
+        popup, thread = self._start_pump(pinned=False)
+        popup._close()
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+
+    def test_window_closed_event_exits_pump(self):
+        """The pywebview closed event must end the pump even while pinned."""
+        popup, thread = self._start_pump(pinned=True)
+        popup._on_window_closed()
+        thread.join(timeout=2)
+        self.assertFalse(thread.is_alive())
+
+
+# ---------------------------------------------------------------------------
+# _update_loop resilience
+# ---------------------------------------------------------------------------
+
+class TestUpdateLoopResilience(unittest.TestCase):
+    """Tests that a transient failure does not end the popup's update stream."""
+
+    def test_transient_failure_does_not_end_update_loop(self):
+        """One failing evaluate_js (or snapshot conversion) must not stop updates -
+        a pinned popup can live for days and would show stale bars forever."""
+        popup = object.__new__(UsagePopup)
+        popup._running = True
+        popup._last_version = 0
+        popup._window = MagicMock()
+
+        class FakeCache:
+            def __init__(self):
+                self.version_counter = 0
+
+            @property
+            def snapshot(self):
+                self.version_counter += 1
+                snap = MagicMock()
+                snap.version = self.version_counter
+                return snap
+
+        popup.app = MagicMock()
+        popup.app.cache = FakeCache()
+        popup.app._next_poll_time = 100.0
+
+        def eval_js(_script):
+            if popup._window.evaluate_js.call_count == 1:
+                raise RuntimeError('transient WebView2 hiccup')
+            popup._running = False
+
+        popup._window.evaluate_js.side_effect = eval_js
+
+        iterations = [0]
+
+        def guarded_sleep(_seconds):
+            iterations[0] += 1
+            if iterations[0] > 10:
+                popup._running = False
+
+        with patch('usage_monitor_for_claude.popup.time.sleep', side_effect=guarded_sleep), \
+             patch('usage_monitor_for_claude.popup.find_installations', return_value=[]), \
+             patch('usage_monitor_for_claude.popup._snapshot_to_dict', return_value={}):
+            popup._update_loop()
+
+        self.assertEqual(popup._window.evaluate_js.call_count, 2)
+
+    def test_failed_update_is_retried_on_next_tick(self):
+        """An update that failed to push is retried even when the data did not
+        change again - the version marker advances only on success."""
+        popup = object.__new__(UsagePopup)
+        popup._running = True
+        popup._last_version = 0
+        popup._window = MagicMock()
+
+        snap = MagicMock()
+        snap.version = 1
+        popup.app = MagicMock()
+        popup.app.cache.snapshot = snap
+        popup.app._next_poll_time = 100.0
+
+        def eval_js(_script):
+            if popup._window.evaluate_js.call_count == 1:
+                raise RuntimeError('transient WebView2 hiccup')
+            popup._running = False
+
+        popup._window.evaluate_js.side_effect = eval_js
+
+        iterations = [0]
+
+        def guarded_sleep(_seconds):
+            iterations[0] += 1
+            if iterations[0] > 10:
+                popup._running = False
+
+        with patch('usage_monitor_for_claude.popup.time.sleep', side_effect=guarded_sleep), \
+             patch('usage_monitor_for_claude.popup.find_installations', return_value=[]), \
+             patch('usage_monitor_for_claude.popup._snapshot_to_dict', return_value={}):
+            popup._update_loop()
+
+        self.assertEqual(popup._window.evaluate_js.call_count, 2)
+        self.assertEqual(popup._last_version, 1)
 
 
 # ---------------------------------------------------------------------------
@@ -632,6 +1088,8 @@ class TestResizeAndPosition(unittest.TestCase):
         popup = object.__new__(UsagePopup)
         popup.WIDTH = UsagePopup.WIDTH
         popup._popup_hwnd = 12345
+        popup._pinned = False
+        popup._moved_while_pinned = False
 
         mock_window = MagicMock()
         popup._window = mock_window
@@ -695,6 +1153,8 @@ class TestResizeAndPosition(unittest.TestCase):
         popup = object.__new__(UsagePopup)
         popup.WIDTH = UsagePopup.WIDTH
         popup._popup_hwnd = 12345
+        popup._pinned = False
+        popup._moved_while_pinned = False
 
         mock_window = MagicMock()
         popup._window = mock_window
@@ -721,13 +1181,30 @@ class TestResizeAndPosition(unittest.TestCase):
         mock_sys_dpi.assert_called()
         mock_window.resize.assert_called_once_with(340, 500)
 
+    def test_pinned_moved_popup_resizes_without_snapping_to_tray(self):
+        """A moved pinned popup keeps its position when content height changes."""
+        popup = object.__new__(UsagePopup)
+        popup.WIDTH = UsagePopup.WIDTH
+        popup._popup_hwnd = 12345
+        popup._pinned = True
+        popup._moved_while_pinned = True
+
+        mock_window = MagicMock()
+        popup._window = mock_window
+
+        with patch('ctypes.windll.user32.GetDpiForWindow', return_value=_BASELINE_DPI):
+            popup._resize_and_position(500)
+
+        mock_window.resize.assert_called_once_with(340, 500)
+        mock_window.move.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
-# Refresh button (force-update)
+# Refresh button (bypass-cooldown update)
 # ---------------------------------------------------------------------------
 
 class TestRefresh(unittest.TestCase):
-    """Force-refresh wiring: JS bridge -> _request_refresh -> app.update + push."""
+    """Refresh wiring: JS bridge -> _request_refresh -> app.update(bypass_cooldown=True) + push."""
 
     def test_windows_api_refresh_delegates(self):
         """_PopupApi.refresh() forwards to the popup's _request_refresh."""
@@ -762,9 +1239,10 @@ class TestRefresh(unittest.TestCase):
         popup.app.update.assert_not_called()
 
     def test_request_refresh_fetches_then_pushes(self):
-        """The worker calls app.update(), pushes fresh data, and clears the flag."""
+        """The worker calls app.update(bypass_cooldown=True), pushes fresh data, and clears the flag."""
         popup = UsagePopup.__new__(UsagePopup)
         popup.app = MagicMock()
+        popup.app._seconds_until_next_reset.return_value = 10 ** 9  # far from any reset
         popup._refreshing = False
         popup._running = True
         popup._push_snapshot = MagicMock()
@@ -773,7 +1251,39 @@ class TestRefresh(unittest.TestCase):
             self.assertTrue(popup._refreshing)
             worker = mock_thread.call_args.kwargs['target']
         worker()
-        popup.app.update.assert_called_once_with(force=True)
+        popup.app.update.assert_called_once_with(bypass_cooldown=True)
+        popup._push_snapshot.assert_called_once_with()
+        self.assertFalse(popup._refreshing)
+
+    def test_request_refresh_fetches_when_no_reset_known(self):
+        """Without a known reset time (cold start) the worker still fetches."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup.app = MagicMock()
+        popup.app._seconds_until_next_reset.return_value = None
+        popup._refreshing = False
+        popup._running = True
+        popup._push_snapshot = MagicMock()
+        with patch('usage_monitor_for_claude.popup.threading.Thread') as mock_thread:
+            popup._request_refresh()
+            worker = mock_thread.call_args.kwargs['target']
+        worker()
+        popup.app.update.assert_called_once_with(bypass_cooldown=True)
+
+    def test_request_refresh_skips_fetch_inside_danger_window(self):
+        """Inside the pre-reset danger window the worker only pushes a snapshot -
+        a discretionary fetch there would consume the cooldown and make the
+        reset-confirming poll overshoot the reset."""
+        popup = UsagePopup.__new__(UsagePopup)
+        popup.app = MagicMock()
+        popup.app._seconds_until_next_reset.return_value = 1.0
+        popup._refreshing = False
+        popup._running = True
+        popup._push_snapshot = MagicMock()
+        with patch('usage_monitor_for_claude.popup.threading.Thread') as mock_thread:
+            popup._request_refresh()
+            worker = mock_thread.call_args.kwargs['target']
+        worker()
+        popup.app.update.assert_not_called()
         popup._push_snapshot.assert_called_once_with()
         self.assertFalse(popup._refreshing)
 
@@ -781,6 +1291,7 @@ class TestRefresh(unittest.TestCase):
         """A failed fetch still clears the flag and pushes a snapshot (clears spinner)."""
         popup = UsagePopup.__new__(UsagePopup)
         popup.app = MagicMock()
+        popup.app._seconds_until_next_reset.return_value = None
         popup.app.update.side_effect = RuntimeError('network down')
         popup._refreshing = False
         popup._running = True

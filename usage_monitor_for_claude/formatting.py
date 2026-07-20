@@ -12,11 +12,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .i18n import T
-from .settings import CURRENCY_SYMBOL, TOOLTIP_FIELDS, _SYSTEM_CURRENCY_SYMBOL
+from .settings import CURRENCY_SYMBOL, TIME_FORMAT, TOOLTIP_FIELDS, _SYSTEM_CURRENCY_SYMBOL
 
 __all__ = [
-    'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits', 'format_tooltip',
-    'midnight_positions', 'parse_field_name', 'popup_label', 'time_until', 'tooltip_label',
+    'divider_positions', 'elapsed_pct', 'expand_popup_fields', 'field_period', 'format_credits',
+    'format_tooltip', 'parse_field_name', 'popup_label', 'time_until', 'tooltip_label',
 ]
 
 PERIOD_5H = 5 * 3600
@@ -28,6 +28,10 @@ _NUMBER_WORDS = {
 }
 _UNIT_SUFFIXES = {'hour': 'h', 'day': 'd'}
 _TITLE_CASE_EXCEPTIONS = {'oauth': 'OAuth', 'api': 'API', 'ai': 'AI'}
+_CURRENCY_SYMBOLS = {
+    'USD': '$', 'EUR': '€', 'GBP': '£', 'JPY': '¥', 'CNY': '¥',
+    'INR': '₹', 'KRW': '₩', 'BRL': 'R$', 'CAD': 'CA$', 'AUD': 'A$', 'CHF': 'CHF',
+}
 
 
 def parse_field_name(field: str) -> tuple[int, str, str | None] | None:
@@ -218,8 +222,14 @@ def elapsed_pct(resets_at: str, period_seconds: int) -> float | None:
         return None
 
 
-def midnight_positions(resets_at: str, period_seconds: int) -> list[float]:
-    """Return relative positions (0.0-1.0) of local midnight boundaries within a usage period.
+def divider_positions(resets_at: str, period_seconds: int) -> list[float]:
+    """Return relative positions (0.0-1.0) of divider marks within a usage period.
+
+    Five-hour periods are split into five equal hour sections, independent
+    of clock alignment.  Periods of a day or longer are subdivided at local
+    midnight boundaries (e.g. seven day marks on a weekly bar).  Other
+    sub-day periods have no dividers - their subdivision is a deliberate
+    design decision for if and when such quota types exist.
 
     Parameters
     ----------
@@ -231,52 +241,89 @@ def midnight_positions(resets_at: str, period_seconds: int) -> list[float]:
     Returns
     -------
     list[float]
-        Positions where local midnights fall within the period, each in the
-        range (0.0, 1.0) exclusive.  Positions that would round to 0px at
-        typical bar widths are omitted.
+        Divider positions within the period, each in the range (0.0, 1.0)
+        exclusive.  Positions that would round to 0px at typical bar
+        widths are omitted.
     """
     if not resets_at or period_seconds <= 0:
         return []
 
     try:
         reset_utc = datetime.fromisoformat(resets_at)
+
+        if period_seconds < 24 * 3600:
+            if period_seconds != PERIOD_5H:
+                return []
+            return [i / 5 for i in range(1, 5)]
+
         start_utc = reset_utc - timedelta(seconds=period_seconds)
 
         start_local = start_utc.astimezone()
         end_local = reset_utc.astimezone()
 
-        # First midnight after the period start
-        midnight = (start_local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        # Walk local calendar days and convert each naive midnight separately:
+        # astimezone() re-evaluates the UTC offset per date, so a DST
+        # changeover inside the period keeps every divider on a true local
+        # midnight (adding timedeltas would carry the period-start offset).
+        day = start_local.date() + timedelta(days=1)
 
         positions = []
-        while midnight < end_local:
+        while True:
+            midnight = datetime(day.year, day.month, day.day).astimezone()
+            if midnight >= end_local:
+                break
             elapsed = (midnight - start_local).total_seconds()
             rel = elapsed / period_seconds
             if rel > 0.003:
                 positions.append(rel)
-            midnight += timedelta(days=1)
+            day += timedelta(days=1)
 
         return positions
     except Exception:
         return []
 
 
-def time_until(iso_str: str) -> str:
+def _format_clock(when: datetime, clock_24h: bool) -> str:
+    """Format a local time as a 24-hour ('14:30') or 12-hour ('2:30 PM') clock string."""
+    if clock_24h:
+        return when.strftime('%H:%M')
+
+    # %I is zero-padded (e.g. '02:30 PM'); strip the single leading zero for '2:30 PM'.
+    return when.strftime('%I:%M %p').lstrip('0')
+
+
+def time_until(iso_str: str, clock_24h: bool | None = None) -> str:
     """Return human-readable reset time.
 
     Same day:  "Resets in 2h 20m (14:30)"
     Tomorrow:  "Resets tomorrow, 12:00"
     Later:     "Resets Sat., 12:00"
+
+    Parameters
+    ----------
+    iso_str : str
+        ISO 8601 timestamp when the limit resets.
+    clock_24h : bool or None
+        Format the clock time in 24-hour (True) or 12-hour (False) style.
+        ``None`` falls back to the ``time_format`` setting.
     """
+    if clock_24h is None:
+        clock_24h = TIME_FORMAT == '24h'
+
     try:
         reset = datetime.fromisoformat(iso_str)
         now = datetime.now(timezone.utc)
         diff = reset - now
+        total_seconds = diff.total_seconds()
 
-        total_min = max(0, int(diff.total_seconds() / 60))
-        if total_min == 0:
-            return ''
+        # Within the last minute before the reset (or the first moments after,
+        # while the server-side reset propagates), show an imminent marker
+        # instead of hiding the line - mirrors the native UI. Clearly-stale
+        # timestamps (far in the past) still collapse to empty so we do not lie.
+        if total_seconds < 60:
+            return T['resets_imminent'] if total_seconds > -60 else ''
 
+        total_min = int(total_seconds / 60)
         reset_local = reset.astimezone()
         today = datetime.now().date()
         if reset_local.second >= 30:
@@ -284,7 +331,7 @@ def time_until(iso_str: str) -> str:
         else:
             reset_local = reset_local.replace(second=0)
         reset_date = reset_local.date()
-        time_str = reset_local.strftime('%H:%M')
+        time_str = _format_clock(reset_local, clock_24h)
 
         if reset_date == today:
             if total_min >= 60:
@@ -302,31 +349,64 @@ def time_until(iso_str: str) -> str:
         return ''
 
 
-def format_credits(cents: float) -> str:
-    """Format a cent amount as a localized currency string.
+def _target_currency_symbol(currency: str | None) -> str:
+    """Return the symbol to display for a currency amount.
 
-    Uses the system locale for formatting (decimal separator, symbol placement,
-    grouping).  If the user overrides ``currency_symbol`` in settings, the
-    system symbol is replaced in the formatted output.
+    Precedence: an explicit ``currency_symbol`` user override (``None``
+    means unset; an empty override means "no symbol"), then the billing
+    currency reported by the API (its known symbol, or the ISO code itself
+    as a fallback), then the system locale symbol.
 
     Parameters
     ----------
-    cents : float
-        Amount in cents (e.g. 420.0 for 4.20 in the base currency unit).
+    currency : str or None
+        ISO 4217 currency code from the API (e.g. ``'EUR'``), or None.
     """
-    amount = cents / 100
+    if CURRENCY_SYMBOL is not None:
+        return CURRENCY_SYMBOL
+
+    if currency:
+        return _CURRENCY_SYMBOLS.get(currency.upper(), currency.upper())
+
+    return _SYSTEM_CURRENCY_SYMBOL
+
+
+def format_credits(minor_units: float, currency: str | None = None, decimal_places: int | None = None) -> str:
+    """Format a minor-unit amount as a localized currency string.
+
+    Uses the system locale for number formatting (decimal separator, symbol
+    placement, grouping).  The displayed symbol follows the billing currency
+    reported by the API when it differs from the system locale, so an account
+    billed in a currency other than the system's still shows correctly.
+
+    Parameters
+    ----------
+    minor_units : float
+        Amount in the currency's minor units (e.g. 420.0 for 4.20 at two
+        decimal places).
+    currency : str or None
+        ISO 4217 currency code from the API (e.g. ``'EUR'``).
+    decimal_places : int or None
+        Number of minor-unit decimal places reported by the API; defaults to
+        two when not provided.
+    """
+    places = decimal_places if decimal_places is not None else 2
+    amount = minor_units / (10 ** places)
+    symbol = _target_currency_symbol(currency)
 
     try:
         formatted = _locale.currency(amount, grouping=True)
 
-        if CURRENCY_SYMBOL != _SYSTEM_CURRENCY_SYMBOL and _SYSTEM_CURRENCY_SYMBOL:
-            formatted = formatted.replace(_SYSTEM_CURRENCY_SYMBOL, CURRENCY_SYMBOL)
+        # An empty symbol (explicit "no symbol" override) removes the system
+        # symbol instead of leaving it in place.
+        if symbol != _SYSTEM_CURRENCY_SYMBOL and _SYSTEM_CURRENCY_SYMBOL:
+            formatted = formatted.replace(_SYSTEM_CURRENCY_SYMBOL, symbol).strip()
 
         return formatted
     except (ValueError, _locale.Error):
-        if CURRENCY_SYMBOL:
-            return f'{CURRENCY_SYMBOL}\u00a0{amount:.2f}'
-        return f'{amount:.2f}'
+        if symbol:
+            return f'{symbol}\u00a0{amount:.{places}f}'
+        return f'{amount:.{places}f}'
 
 
 def format_tooltip(data: dict[str, Any]) -> str:
@@ -343,7 +423,7 @@ def format_tooltip(data: dict[str, Any]) -> str:
     lines = [T['tooltip_title']]
     for key in TOOLTIP_FIELDS:
         entry = data.get(key)
-        if entry and entry.get('utilization') is not None:
+        if isinstance(entry, dict) and entry.get('utilization') is not None:
             short = tooltip_label(key)
             pct = f"{entry['utilization']:.0f}%"
             reset = time_until(entry.get('resets_at', ''))

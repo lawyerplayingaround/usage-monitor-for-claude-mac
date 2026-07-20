@@ -1,11 +1,15 @@
 """Entry point for ``python -m usage_monitor_for_claude``."""
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import subprocess
 import sys
 import traceback
+from pathlib import Path
+
+from usage_monitor_for_claude.instance_id import parse_config_dir
 
 # --verbose triggers Win32-only diagnostics that read the registry and
 # attach a console.  On macOS the unfrozen run already prints to stderr
@@ -15,6 +19,22 @@ import traceback
 # macOS when the user passes --verbose.
 _verbose = '--verbose' in sys.argv and sys.platform == 'win32'
 
+# --config-dir selects which Claude account to monitor. It must be
+# resolved into CLAUDE_CONFIG_DIR before any other package import:
+# api, settings, verbose and i18n all read the variable at import or
+# first-use time. Keep every other package import below this block.
+_config_dir = parse_config_dir(sys.argv)
+if _config_dir is not None:
+    _config_path = Path(_config_dir)
+    if not _config_path.is_dir():
+        _config_error = f'--config-dir directory does not exist:\n{_config_dir}'
+        if sys.platform == 'win32':
+            ctypes.windll.user32.MessageBoxW(0, _config_error, 'Usage Monitor for Claude - Error', 0x10)
+        else:
+            print(_config_error, file=sys.stderr)
+        sys.exit(1)
+    os.environ['CLAUDE_CONFIG_DIR'] = str(_config_path.resolve())
+
 # In frozen builds (console=False), stdout/stderr go nowhere.
 # --verbose attaches a console so diagnostics are visible.
 if _verbose and getattr(sys, 'frozen', False):
@@ -22,10 +42,15 @@ if _verbose and getattr(sys, 'frozen', False):
     setup_console()
 
 if sys.platform == 'win32':
-    import ctypes
     # Per-Monitor V2 must be set before pywebview's legacy SetProcessDPIAware() call,
     # which only sets SYSTEM_DPI_AWARE and breaks native menu hover at high DPI.
-    ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_ssize_t(-4))
+    # The API exists only from Windows 10 1703; ctypes raises AttributeError for a
+    # missing export, which must not kill startup - pywebview's legacy call is the
+    # fallback on older systems.
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_ssize_t(-4))
+    except AttributeError:
+        pass
 
 if _verbose:
     from usage_monitor_for_claude.verbose import print_startup_diagnostics
@@ -36,6 +61,10 @@ if _verbose:
 # / clr_loader dependencies) is excluded from the PyInstaller bundle.
 if sys.platform == 'win32':
     import webview  # type: ignore[import-untyped]  # no type stubs available
+
+    # The notification identity is a Win32 concept (AppUserModelID) and the
+    # module imports winreg at module level, so it only exists on Windows.
+    from usage_monitor_for_claude.notification_identity import register_notification_identity
 
 from usage_monitor_for_claude.app import UsageMonitorForClaude, crash_log
 from usage_monitor_for_claude.single_instance import ensure_single_instance, release_instance_lock
@@ -92,6 +121,12 @@ try:
         sys.exit(0)
     _verbose_step('ensure_single_instance... OK')
 
+    if sys.platform == 'win32':
+        # Give notifications a fixed logo instead of the live tray icon.
+        # Must run before any window is created (AppUserModelID requirement).
+        _verbose_step('register_notification_identity...')
+        register_notification_identity()
+
     if sys.platform == 'darwin':
         # AppKit requires NSStatusItem and other GUI objects to live on the
         # main thread, and pystray's _darwin backend runs NSApp.run() on the
@@ -123,13 +158,19 @@ try:
         if sys.platform == 'win32':
             popen_kwargs['creationflags'] = subprocess.CREATE_NO_WINDOW
 
+        passthrough_args = []
+        if _config_dir is not None:
+            passthrough_args.append(f'--config-dir={os.environ["CLAUDE_CONFIG_DIR"]}')
+        if _verbose:
+            passthrough_args.append('--verbose')
+
         if getattr(sys, 'frozen', False):
             # Clear PyInstaller's internal env vars so the new
             # instance extracts to a fresh temp directory instead
             # of reusing the current (soon-to-be-deleted) one.
             env = {k: v for k, v in os.environ.items() if not k.startswith(('_PYI_', '_MEI'))}
-            subprocess.Popen([sys.executable], env=env, **popen_kwargs)
+            subprocess.Popen([sys.executable, *passthrough_args], env=env, **popen_kwargs)
         else:
-            subprocess.Popen([sys.executable, '-m', 'usage_monitor_for_claude'], **popen_kwargs)
+            subprocess.Popen([sys.executable, '-m', 'usage_monitor_for_claude', *passthrough_args], **popen_kwargs)
 except Exception:
     crash_log(traceback.format_exc())

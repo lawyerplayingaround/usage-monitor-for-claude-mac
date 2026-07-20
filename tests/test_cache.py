@@ -45,11 +45,23 @@ class TestLockBehavior(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
     def test_force_does_not_bypass_lock(self, mock_fetch):
-        """force=True still yields to a held lock (force only skips the cooldown)."""
+        """force=True still yields to a held lock (it skips cooldown and backoff, never the lock)."""
         cache = _make_cache()
         cache._lock.acquire()
         try:
             result = cache.update(force=True)
+            self.assertIsNone(result.data)
+            mock_fetch.assert_not_called()
+        finally:
+            cache._lock.release()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    def test_bypass_cooldown_does_not_bypass_lock(self, mock_fetch):
+        """bypass_cooldown=True still yields to a held lock (it skips only the cooldown)."""
+        cache = _make_cache()
+        cache._lock.acquire()
+        try:
+            result = cache.update(bypass_cooldown=True)
             self.assertIsNone(result.data)
             mock_fetch.assert_not_called()
         finally:
@@ -126,13 +138,13 @@ class TestCooldownBehavior(unittest.TestCase):
         self.assertIsNotNone(result.data)
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
-    def test_force_bypasses_cooldown(self, mock_fetch):
-        """update(force=True) fetches even within the cooldown window."""
+    def test_bypass_cooldown_bypasses_cooldown(self, mock_fetch):
+        """update(bypass_cooldown=True) fetches even within the cooldown window."""
         cache = _make_cache()
         cache.update()
         mock_fetch.reset_mock()
 
-        result = cache.update(force=True)
+        result = cache.update(bypass_cooldown=True)
         self.assertIsNotNone(result.data)
         mock_fetch.assert_called_once()
 
@@ -154,6 +166,48 @@ class TestCooldownBehavior(unittest.TestCase):
         result = cache.update()
         self.assertIsNotNone(result.data)
         mock_fetch.assert_called_once()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    def test_force_bypasses_cooldown(self, mock_fetch):
+        """update(force=True) fetches again within the cooldown window."""
+        cache = _make_cache()
+        cache.update()
+        mock_fetch.reset_mock()
+
+        result = cache.update(force=True)
+        self.assertIsNotNone(result.data)
+        mock_fetch.assert_called_once()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_backward_clock_jump_does_not_stall_cooldown(self, mock_time, mock_fetch):
+        """A backward clock jump (manual correction, VM restore) must not block
+        fetches until the wall clock catches up with the pre-jump timestamp."""
+        cache = _make_cache()
+        mock_time.time.return_value = 10000.0
+        cache.update()
+        mock_fetch.reset_mock()
+
+        # Clock jumps back one hour; without a clamp the cooldown would block
+        # for that whole hour (time since "last success" stays negative).
+        mock_time.time.return_value = 6400.0
+        result = cache.update()
+
+        self.assertIsNotNone(result.data)
+        mock_fetch.assert_called_once()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_backward_clock_jump_caps_rate_limit_backoff(self, mock_time, _mock_fetch):
+        """After a backward clock jump, the remaining 429 backoff is capped to
+        MAX_BACKOFF instead of lasting until the pre-jump timestamp."""
+        cache = _make_cache()
+        cache._rate_limit_until = 10000.0
+
+        mock_time.time.return_value = 5000.0
+        cache.update()
+
+        self.assertLessEqual(cache._rate_limit_until - 5000.0, 900)
 
 
 # ---------------------------------------------------------------------------
@@ -313,11 +367,22 @@ class TestFailedTokenGuard(unittest.TestCase):
     @patch('usage_monitor_for_claude.cache.read_access_token', return_value='same-token')
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_AUTH_ERROR_DATA)
     def test_force_does_not_bypass_failed_token_guard(self, mock_fetch, _mock_token):
-        """force=True still honors the failed-token guard (force only skips the cooldown)."""
+        """force=True still honors the failed-token guard (an unchanged bad token stays blocked)."""
         cache = _make_cache()
         cache._last_failed_token = 'same-token'
 
         result = cache.update(force=True)
+        self.assertIsNone(result.data)
+        mock_fetch.assert_not_called()
+
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='same-token')
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_AUTH_ERROR_DATA)
+    def test_bypass_cooldown_does_not_bypass_failed_token_guard(self, mock_fetch, _mock_token):
+        """bypass_cooldown=True still honors the failed-token guard (it skips only the cooldown)."""
+        cache = _make_cache()
+        cache._last_failed_token = 'same-token'
+
+        result = cache.update(bypass_cooldown=True)
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
 
@@ -376,18 +441,35 @@ class TestRateLimitGuard(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value={'error': 'HTTP 429', 'rate_limited': True})
     @patch('usage_monitor_for_claude.cache.time')
-    def test_force_still_respects_rate_limit(self, mock_time, mock_fetch):
-        """force=True bypasses the cooldown but NOT the server 429 backoff."""
+    def test_bypass_cooldown_still_respects_rate_limit(self, mock_time, mock_fetch):
+        """bypass_cooldown=True bypasses the cooldown but NOT the server 429 backoff."""
         cache = _make_cache()
         mock_time.time.return_value = 1000.0
         cache.update()
         mock_fetch.reset_mock()
 
-        # Still within backoff window - a forced refresh must not hammer a 429'd server
+        # Still within backoff window - a manual refresh must not hammer a 429'd server
         mock_time.time.return_value = 1050.0
-        result = cache.update(force=True)
+        result = cache.update(bypass_cooldown=True)
         self.assertIsNone(result.data)
         mock_fetch.assert_not_called()
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage')
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_force_bypasses_rate_limit_backoff(self, mock_time, mock_fetch):
+        """update(force=True) fetches even while the 429 backoff window is active."""
+        mock_fetch.return_value = {'error': 'HTTP 429', 'rate_limited': True}
+        cache = _make_cache()
+        mock_time.time.return_value = 1000.0
+        cache.update()
+        mock_fetch.reset_mock()
+
+        # Still within backoff, but a forced fetch proceeds anyway
+        mock_fetch.return_value = _SUCCESS_DATA
+        mock_time.time.return_value = 1050.0
+        result = cache.update(force=True)
+        self.assertIsNotNone(result.data)
+        mock_fetch.assert_called_once()
 
     @patch('usage_monitor_for_claude.cache.fetch_usage')
     @patch('usage_monitor_for_claude.cache.time')
@@ -534,28 +616,65 @@ class TestRateLimitRemaining(unittest.TestCase):
 class TestTokenRefresh(unittest.TestCase):
     """Tests for _try_token_refresh() automatic token renewal."""
 
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='old-token')
     @patch('usage_monitor_for_claude.cache.refresh_token')
-    def test_refresh_failure_returns_none(self, mock_refresh):
-        """When refresh_token() fails, returns None."""
+    def test_refresh_failure_returns_none(self, mock_refresh, _mock_token):
+        """When the token is unchanged and refresh_token() fails, returns None."""
         mock_refresh.return_value = RefreshResult(success=False, updated=False, old_version='', new_version='', error='CLI not found')
         cache = _make_cache()
-        self.assertIsNone(cache._try_token_refresh('old-token'))
+        self.assertEqual(cache._try_token_refresh('old-token'), (None, None))
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.refresh_token')
+    def test_refresh_success_with_new_token_retries(self, mock_refresh, _mock_token, _mock_fetch):
+        """When the CLI refresh changes the token, retries API and returns RefreshResult on success."""
+        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+        cache = _make_cache()
+
+        result, retry_data = cache._try_token_refresh('old-token')
+
+        assert result is not None
+        self.assertTrue(result.success)
+        self.assertEqual(retry_data, _SUCCESS_DATA)
+        self.assertEqual(cache.usage, _SUCCESS_DATA)
+        self.assertIsNone(cache.last_error)
+        self.assertEqual(cache.consecutive_errors, 0)
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
     @patch('usage_monitor_for_claude.cache.read_access_token', return_value='new-token')
     @patch('usage_monitor_for_claude.cache.refresh_token')
-    def test_refresh_success_with_new_token_retries(self, mock_refresh, _mock_token, _mock_fetch):
-        """When token changes after refresh, retries API and returns RefreshResult on success."""
-        mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
+    def test_token_already_changed_skips_cli_refresh(self, mock_refresh, _mock_token, mock_fetch):
+        """When the credentials already hold a different token (account switch), retry directly without claude update."""
         cache = _make_cache()
 
-        result = cache._try_token_refresh('old-token')
+        result, _retry_data = cache._try_token_refresh('old-token')
 
+        mock_refresh.assert_not_called()
+        mock_fetch.assert_called_once()
         assert result is not None
         self.assertTrue(result.success)
+        self.assertFalse(result.updated)
         self.assertEqual(cache.usage, _SUCCESS_DATA)
+
+    @patch('usage_monitor_for_claude.cache.fetch_usage')
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.refresh_token')
+    def test_switch_recovers_without_cli_refresh(self, mock_refresh, _mock_token, mock_fetch):
+        """A 401 whose token already changed recovers via a direct retry, not the slow claude update.
+
+        read_access_token calls: (1) token_before in _fetch_and_process,
+        (2) already-changed check in _try_token_refresh (returns the new token,
+        so the CLI refresh is skipped).
+        """
+        mock_fetch.side_effect = [_AUTH_ERROR_DATA, _SUCCESS_DATA]
+        cache = _make_cache()
+
+        result = cache.update()
+
+        mock_refresh.assert_not_called()
+        self.assertEqual(result.data, _SUCCESS_DATA)
         self.assertIsNone(cache.last_error)
-        self.assertEqual(cache.consecutive_errors, 0)
 
     @patch('usage_monitor_for_claude.cache.read_access_token', return_value='same-token')
     @patch('usage_monitor_for_claude.cache.refresh_token')
@@ -564,7 +683,7 @@ class TestTokenRefresh(unittest.TestCase):
         mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
         cache = _make_cache()
 
-        self.assertIsNone(cache._try_token_refresh('same-token'))
+        self.assertEqual(cache._try_token_refresh('same-token'), (None, None))
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_SUCCESS_DATA)
     @patch('usage_monitor_for_claude.cache.read_access_token', return_value='same-token')
@@ -579,16 +698,17 @@ class TestTokenRefresh(unittest.TestCase):
         mock_fetch.assert_not_called()
 
     @patch('usage_monitor_for_claude.cache.fetch_usage', return_value=_AUTH_ERROR_DATA)
-    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='new-token')
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
     @patch('usage_monitor_for_claude.cache.refresh_token')
     def test_refresh_success_but_retry_fails(self, mock_refresh, _mock_token, _mock_fetch):
-        """When token changes but retry still fails, returns RefreshResult and records error."""
+        """When the CLI refresh changes the token but retry still fails, returns RefreshResult and records error."""
         mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
         cache = _make_cache()
 
-        result = cache._try_token_refresh('old-token')
+        result, retry_data = cache._try_token_refresh('old-token')
         assert result is not None
         self.assertTrue(result.success)
+        self.assertEqual(retry_data, _AUTH_ERROR_DATA)
         self.assertEqual(cache.last_error, 'expired')
         # _try_token_refresh does not increment _consecutive_errors (caller already did)
         self.assertEqual(cache.consecutive_errors, 0)
@@ -616,13 +736,14 @@ class TestTokenRefresh(unittest.TestCase):
             spy.assert_not_called()
 
     @patch('usage_monitor_for_claude.cache.fetch_usage')
-    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'old-token', 'new-token'])
     @patch('usage_monitor_for_claude.cache.refresh_token')
     def test_successful_refresh_clears_error(self, mock_refresh, _mock_token, mock_fetch):
         """Auth error + successful token refresh + successful retry clears error state.
 
         read_access_token calls: (1) token_before in _fetch_and_process,
-        (2) post-refresh comparison in _try_token_refresh.
+        (2) unchanged-token check and (3) post-refresh comparison in
+        _try_token_refresh.
         """
         mock_refresh.return_value = RefreshResult(success=True, updated=False, old_version='2.1.69', new_version='2.1.69', error='')
         mock_fetch.side_effect = [_AUTH_ERROR_DATA, _SUCCESS_DATA]
@@ -637,27 +758,54 @@ class TestTokenRefresh(unittest.TestCase):
         self.assertEqual(result.data, _SUCCESS_DATA)
 
     @patch('usage_monitor_for_claude.cache.fetch_usage')
-    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'old-token', 'new-token'])
     @patch('usage_monitor_for_claude.cache.refresh_token')
-    def test_refresh_success_retry_fail_returns_error_data(self, mock_refresh, _mock_token, mock_fetch):
-        """Auth error + successful refresh + failed retry returns original error data.
+    def test_refresh_success_retry_fail_returns_retry_data(self, mock_refresh, _mock_token, mock_fetch):
+        """Auth error + successful refresh + failed retry returns the retry's error
+        data, so the caller reacts to the current failure, not the repaired 401.
 
         read_access_token calls: (1) token_before in _fetch_and_process,
-        (2) post-refresh comparison in _try_token_refresh.
+        (2) unchanged-token check and (3) post-refresh comparison in
+        _try_token_refresh.
         """
         mock_refresh.return_value = RefreshResult(success=True, updated=True, old_version='2.1.38', new_version='2.1.69', error='')
-        mock_fetch.side_effect = [_AUTH_ERROR_DATA, {'error': 'still broken', 'auth_error': True}]
+        retry_error = {'error': 'still broken', 'auth_error': True}
+        mock_fetch.side_effect = [_AUTH_ERROR_DATA, retry_error]
         cache = _make_cache()
 
         result = cache.update()
 
-        self.assertEqual(result.data, _AUTH_ERROR_DATA)
+        self.assertEqual(result.data, retry_error)
+        assert result.token_refresh is not None
+
+    @patch('usage_monitor_for_claude.cache.time.time', return_value=1000.0)
+    @patch('usage_monitor_for_claude.cache.fetch_usage')
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.refresh_token')
+    def test_rate_limited_retry_arms_backoff(self, mock_refresh, _mock_token, mock_fetch, _mock_time):
+        """A 429 on the post-refresh retry must arm the rate-limit backoff and be
+        reported to the caller, instead of re-polling an already limited endpoint
+        at the error cadence while showing the stale 401 state.
+
+        read_access_token calls: (1) token_before in _fetch_and_process,
+        (2) unchanged-token check and (3) post-refresh comparison in
+        _try_token_refresh.
+        """
+        mock_refresh.return_value = RefreshResult(success=True, updated=True, old_version='2.1.38', new_version='2.1.69', error='')
+        mock_fetch.side_effect = [_AUTH_ERROR_DATA, {'error': 'HTTP 429', 'rate_limited': True, 'retry_after': 300}]
+        cache = _make_cache()
+
+        result = cache.update()
+
+        self.assertGreater(cache.rate_limit_remaining, 0)
+        assert result.data is not None
+        self.assertTrue(result.data.get('rate_limited'))
         assert result.token_refresh is not None
         self.assertTrue(result.token_refresh.updated)
         self.assertIsNotNone(cache.last_error)
 
     @patch('usage_monitor_for_claude.cache.fetch_usage')
-    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'old-token', 'new-token'])
     @patch('usage_monitor_for_claude.cache.refresh_token')
     def test_refresh_retry_fail_does_not_block_new_token(self, mock_refresh, _mock_token, mock_fetch):
         """Auth error + successful refresh + failed retry does NOT set _last_failed_token.
@@ -674,7 +822,7 @@ class TestTokenRefresh(unittest.TestCase):
         self.assertIsNone(cache._last_failed_token)
 
     @patch('usage_monitor_for_claude.cache.fetch_usage')
-    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'new-token'])
+    @patch('usage_monitor_for_claude.cache.read_access_token', side_effect=['old-token', 'old-token', 'new-token'])
     @patch('usage_monitor_for_claude.cache.refresh_token')
     def test_auth_retry_fail_increments_errors_once(self, mock_refresh, _mock_token, mock_fetch):
         """Auth error + successful refresh + failed retry increments _consecutive_errors only once."""
@@ -749,6 +897,61 @@ class TestEnsureProfile(unittest.TestCase):
         cache._profile_token = 'token-x'
         cache.ensure_profile()
         mock_fetch.assert_not_called()
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'name': 'Test User'})
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_skips_during_rate_limit_backoff(self, mock_time, mock_fetch):
+        """ensure_profile() does not fetch while the 429 backoff window is active."""
+        cache = _make_cache()
+        cache._rate_limit_until = 1300.0
+        mock_time.time.return_value = 1000.0
+
+        cache.ensure_profile()
+
+        mock_fetch.assert_not_called()
+        self.assertIsNone(cache.profile)
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'name': 'Test User'})
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_bypass_rate_limit_fetches_during_backoff(self, mock_time, mock_fetch):
+        """ensure_profile(bypass_rate_limit=True) fetches even while the 429 backoff is active."""
+        cache = _make_cache()
+        cache._rate_limit_until = 1300.0
+        mock_time.time.return_value = 1000.0
+
+        cache.ensure_profile(bypass_rate_limit=True)
+
+        mock_fetch.assert_called_once()
+        self.assertEqual(cache.profile, {'name': 'Test User'})
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'name': 'Test User'})
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_fetches_after_rate_limit_expires(self, mock_time, mock_fetch):
+        """ensure_profile() fetches once the 429 backoff window has elapsed."""
+        cache = _make_cache()
+        cache._rate_limit_until = 1300.0
+        mock_time.time.return_value = 1400.0
+
+        cache.ensure_profile()
+
+        mock_fetch.assert_called_once()
+        self.assertEqual(cache.profile, {'name': 'Test User'})
+
+    @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'name': 'New User'})
+    @patch('usage_monitor_for_claude.cache.read_access_token', return_value='token-b')
+    @patch('usage_monitor_for_claude.cache.time')
+    def test_token_change_refetch_skipped_during_backoff(self, mock_time, _mock_token, mock_fetch):
+        """A token-change re-fetch is also suppressed while the 429 backoff is active."""
+        cache = _make_cache()
+        cache._profile = {'name': 'Old User'}
+        cache._profile_token = 'token-a'
+        cache._rate_limit_until = 1300.0
+        mock_time.time.return_value = 1000.0
+
+        cache.ensure_profile()
+
+        mock_fetch.assert_not_called()
+        self.assertEqual(cache.profile, {'name': 'Old User'})
 
     @patch('usage_monitor_for_claude.cache.fetch_profile', return_value={'name': 'Test User'})
     def test_concurrent_calls_fetch_only_once(self, mock_fetch):

@@ -2,7 +2,7 @@
 Tray Icon
 ==========
 
-Creates monochrome system tray icons and detects the host taskbar/menu bar theme.
+Creates system tray icons and detects the host taskbar/menu bar theme.
 """
 from __future__ import annotations
 
@@ -12,6 +12,10 @@ import subprocess
 import sys
 import time
 from typing import Callable
+
+if sys.platform == 'win32':
+    import ctypes
+    import winreg
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -61,6 +65,12 @@ else:
     _FONT_SYMBOL = 36
     _STATUS_FONT = 46
     _FONT_NUM = {ICON_LAYOUT_COMPACT: 58, ICON_LAYOUT_CLASSIC: 40}
+
+# Icon canvas and bar geometry (pixels)
+ICON_SIZE = 64
+BAR_HEIGHT = _BAR_H
+BAR_GAP = _BAR_GAP
+MARKER_WIDTH = 4
 
 
 @functools.lru_cache(maxsize=None)
@@ -126,7 +136,6 @@ def taskbar_uses_light_theme() -> bool:
     if sys.platform != 'win32':
         return False
 
-    import winreg
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, THEME_REG_KEY) as key:
             value, _ = winreg.QueryValueEx(key, THEME_REG_VALUE)
@@ -149,13 +158,17 @@ def watch_theme_change(callback: Callable[[], None]) -> None:
     if sys.platform != 'win32':
         return
 
-    import ctypes
-    import winreg
     with winreg.OpenKey(winreg.HKEY_CURRENT_USER, THEME_REG_KEY, 0, winreg.KEY_READ) as key:
         while True:
             if ctypes.windll.advapi32.RegNotifyChangeKeyValue(int(key), False, REG_NOTIFY_CHANGE_LAST_SET, None, False) != 0:
                 return
-            callback()
+            try:
+                callback()
+            except Exception:
+                # A transient callback failure (icon re-render, Shell_NotifyIcon
+                # during an Explorer restart) must not end theme watching for
+                # the rest of the session.
+                pass
 
 
 def _macos_menu_bar_uses_light_theme() -> bool:
@@ -184,20 +197,25 @@ def _watch_macos_theme_change(callback: Callable[[], None]) -> None:
         current = _macos_menu_bar_uses_light_theme()
         if current != last:
             last = current
-            callback()
+            try:
+                callback()
+            except Exception:
+                # A transient callback failure (icon re-render) must not end
+                # theme watching for the rest of the session.
+                pass
 
 
 def create_icon_image(
     pct_top: float, pct_bottom: float, light_taskbar: bool = False,
     *, mode_top: str = 'utilization', mode_bottom: str = 'utilization',
     time_pct_top: float | None = None, time_pct_bottom: float | None = None,
-    extra_usage_available: bool = False, layout: str = ICON_LAYOUT_COMPACT,
+    extra_usage_available: bool = False, layout: str = ICON_LAYOUT_CLASSIC,
 ) -> Image.Image:
-    """Create monochrome tray icon: a glyph (percentage / 'C' / '$' / '✕') over
-    the usage bar(s).
+    """Create tray icon: a glyph (percentage / 'C' / '$' / '✕') over the
+    usage bar(s).
 
-    The *layout* selects ``'compact'`` (a single session bar with a large
-    glyph) or ``'classic'`` (two bars - session over weekly).
+    The *layout* selects ``'classic'`` (two bars - session over weekly) or
+    ``'compact'`` (a single session bar with a large glyph).
 
     Parameters
     ----------
@@ -213,8 +231,8 @@ def create_icon_image(
     mode_bottom : str
         Display mode for the lower bar.  Same semantics as *mode_top*.
     time_pct_top : float or None
-        Elapsed-time percentage for the upper bar.  Required for ``overage``
-        mode; ignored otherwise.
+        Elapsed-time percentage for the upper bar.  Draws the reset-time
+        marker in ``utilization`` mode; required for ``overage`` mode.
     time_pct_bottom : float or None
         Elapsed-time percentage for the lower bar.  Same semantics as
         *time_pct_top*.
@@ -224,9 +242,9 @@ def create_icon_image(
         (continuing costs money) or ``✕`` (fully blocked).
     """
     colors = ICON_DARK if light_taskbar else ICON_LIGHT
-    fg, fg_half = colors['fg'], colors['fg_half']
+    fg, fg_half, fg_warn = colors['fg'], colors['fg_half'], colors['fg_warn']
 
-    S = 64
+    S = ICON_SIZE
     img = Image.new('RGBA', (S, S), TRANSPARENT)
     draw = ImageDraw.Draw(img)
 
@@ -234,7 +252,6 @@ def create_icon_image(
     # "$" when exhausted but paid extra-usage still available,
     # "C" while usage is still zero, otherwise the percentage.
     stroke_width = 0
-    weight = _WEIGHT
     any_exhausted = pct_top >= 100 or pct_bottom >= 100
     if any_exhausted and not extra_usage_available:
         text, font_size, symbol_glyph = '\u2715', _FONT_SYMBOL, True
@@ -243,32 +260,38 @@ def create_icon_image(
         text, font_size, symbol_glyph = '$', _FONT_LETTER, False
         stroke_width = 2
     elif pct_top > 0:
-        text, font_size, symbol_glyph = f'{pct_top:.0f}', _FONT_NUM[layout], False
+        # Clamp to 99: values in [99.5, 100) would round to a three-digit
+        # '100' that overflows the canvas and reads as exhausted.
+        text, font_size, symbol_glyph = f'{min(pct_top, 99):.0f}', _FONT_NUM[layout], False
     else:
         text, font_size, symbol_glyph = 'C', _FONT_LETTER, False
 
-    font = load_font(font_size, symbol=symbol_glyph, weight=weight)
-    # Shrink the glyph to fit the canvas width.  At the large macOS digit size a
-    # 3-character "100" (rendered for 99.5-99.9 %, just below the exhausted
-    # branch) would otherwise overflow the 64 px canvas and clip.
+    font_kwargs: dict[str, bool | str] = {}
+    if symbol_glyph:
+        font_kwargs['symbol'] = True
+    if _WEIGHT:
+        font_kwargs['weight'] = _WEIGHT
+    font = load_font(font_size, **font_kwargs)
+
+    # Shrink the glyph to fit the canvas width.  At the large compact digit
+    # size a wide two-digit percentage would otherwise overflow the 64 px
+    # canvas and clip.
     fit_bbox = draw.textbbox((0, 0), text, font=font, stroke_width=stroke_width)
     fit_w = fit_bbox[2] - fit_bbox[0]
     if fit_w > S - 2:
-        font = load_font(max(1, font_size * (S - 2) // fit_w), symbol=symbol_glyph, weight=weight)
+        font = load_font(max(1, font_size * (S - 2) // fit_w), **font_kwargs)
 
-    # Progress bar(s) - full width, flush to bottom.  The macOS menu bar mirrors
-    # the minimalist look: a single session bar (pct_top) with a large glyph
-    # above it; the weekly quota lives in the on-click popup.  Other platforms
-    # keep the original two-bar layout (session above weekly).
-    bar_h = _BAR_H
-    gap = _BAR_GAP
+    # Progress bar(s) - full width, flush to bottom.  The compact layout mirrors
+    # the minimalist macOS menu bar look: a single session bar (pct_top) with a
+    # large glyph above it; the weekly quota lives in the on-click popup.  The
+    # classic layout keeps the original two-bar stack (session above weekly).
     if layout == ICON_LAYOUT_COMPACT:
-        bar_top_y = S - bar_h
+        bar_top_y = S - BAR_HEIGHT
         bars = ((bar_top_y, pct_top, mode_top, time_pct_top),)
         text_area_h = bar_top_y
     else:
-        bar2_y = S - bar_h
-        bar1_y = bar2_y - gap - bar_h
+        bar2_y = S - BAR_HEIGHT
+        bar1_y = bar2_y - BAR_GAP - BAR_HEIGHT
         bars = (
             (bar1_y, pct_top, mode_top, time_pct_top),
             (bar2_y, pct_bottom, mode_bottom, time_pct_bottom),
@@ -287,19 +310,51 @@ def create_icon_image(
     draw.text(((S - tw) / 2 - bbox[0], text_y), text, fill=fg, font=font, stroke_width=stroke_width, stroke_fill=fg)
 
     for y, pct, mode, time_pct in bars:
-        draw.rectangle([0, y, S - 1, y + bar_h - 1], fill=fg_half)
-        if mode == 'overage' and time_pct is not None and time_pct < 100:
-            overage = max(0.0, pct - time_pct)
-            fill_ratio = min(1.0, overage / (100 - time_pct))
-            fill_w = max(0, int(S * fill_ratio))
-            if fill_w > 0:
-                draw.rectangle([0, y, fill_w - 1, y + bar_h - 1], fill=fg)
-        else:
-            fill_w = max(0, min(S, int(S * pct / 100)))
-            if fill_w > 0:
-                draw.rectangle([0, y, fill_w - 1, y + bar_h - 1], fill=fg)
+        _draw_usage_bar(draw, y, pct, mode, time_pct, fg, fg_half, fg_warn)
 
     return img
+
+
+def _draw_usage_bar(draw: ImageDraw.ImageDraw, y: int, pct: float, mode: str, time_pct: float | None, fg: tuple, fg_half: tuple, fg_warn: tuple) -> None:
+    """Draw one full-width usage bar at vertical offset *y*.
+
+    In ``utilization`` mode the bar fills linearly with *pct* and shows a
+    reset-time marker in *fg* at the *time_pct* position; the fill switches
+    to *fg_warn* when usage is ahead of the elapsed time or fully exhausted,
+    mirroring the popup's warning fill.  In ``overage`` mode the bar fills
+    as *pct* exceeds *time_pct* and no marker is drawn - elapsed time is
+    already encoded in the fill.
+    """
+    draw.rectangle([0, y, ICON_SIZE - 1, y + BAR_HEIGHT - 1], fill=fg_half)
+
+    if mode == 'overage' and time_pct is not None:
+        if time_pct >= 100:
+            # End state for a stale window (elapsed time clamped to 100%,
+            # e.g. between a reset and the confirming poll): usage below the
+            # limit stayed within budget (empty bar), an exhausted quota
+            # keeps the bar full - never the linear utilization fill.
+            if pct >= 100:
+                draw.rectangle([0, y, ICON_SIZE - 1, y + BAR_HEIGHT - 1], fill=fg)
+            return
+
+        overage = max(0.0, pct - time_pct)
+        fill_ratio = min(1.0, overage / (100 - time_pct))
+        fill_w = max(0, int(ICON_SIZE * fill_ratio))
+        if fill_w > 0:
+            draw.rectangle([0, y, fill_w - 1, y + BAR_HEIGHT - 1], fill=fg)
+        return
+
+    fill_w = max(0, min(ICON_SIZE, int(ICON_SIZE * pct / 100)))
+    if fill_w > 0:
+        warn = mode == 'utilization' and (pct >= 100 or (time_pct is not None and pct > time_pct))
+        draw.rectangle([0, y, fill_w - 1, y + BAR_HEIGHT - 1], fill=fg_warn if warn else fg)
+
+    if mode != 'utilization' or time_pct is None:
+        return
+
+    marker_x = min(ICON_SIZE - MARKER_WIDTH, max(0, int(ICON_SIZE * time_pct / 100) - MARKER_WIDTH // 2))
+    marker_end = marker_x + MARKER_WIDTH - 1
+    draw.rectangle([marker_x, y, marker_end, y + BAR_HEIGHT - 1], fill=fg)
 
 
 def create_status_image(text: str, light_taskbar: bool = False) -> Image.Image:
@@ -309,7 +364,7 @@ def create_status_image(text: str, light_taskbar: bool = False) -> Image.Image:
     S = 64
     img = Image.new('RGBA', (S, S), TRANSPARENT)
     draw = ImageDraw.Draw(img)
-    font = load_font(_STATUS_FONT, weight=_WEIGHT)
+    font = load_font(_STATUS_FONT, weight=_WEIGHT) if _WEIGHT else load_font(_STATUS_FONT)
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
     draw.text(((S - tw) / 2 - bbox[0], (S - th) / 2 - bbox[1]), text, fill=fg_dim, font=font)

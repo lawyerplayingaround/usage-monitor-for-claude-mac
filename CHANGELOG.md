@@ -7,7 +7,128 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.5...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.mac.1...HEAD)
+
+## [1.20.0-fork.mac.1] - 2026-07-19
+
+### Changed
+
+- **Merged upstream v1.20.0.** Everything from upstream releases 1.16.0 through 1.20.0 - the sections below - is now included in the fork: per-model weekly limit bars, extra usage amounts in your billing currency, reset times that follow your clock format, pace markers and a warning fill on the tray icon bars, hour dividers on the session bar, multi-account support via `--config-dir`, the `cli_command` setting for installs the app cannot see (such as WSL), the app logo on notifications, the `notify_claude_update` setting, and all of upstream's fixes.
+- **Not yet on macOS:** upstream's pinned popup - including moving it while pinned and the compact `compact_hide` view - is currently available on Windows only; the macOS popup does not implement pinning yet.
+- **Clock format works on macOS too.** Upstream's new reset-time formatting detects the Windows clock setting; the fork extends it with a native macOS implementation, so reset times follow your system's 24-hour or 12-hour format on both platforms (override with the `time_format` setting).
+- **Refresh button retained.** The fork's manual refresh button in the popup carries over unchanged and now works alongside upstream's immediate refresh on account switch - both force a prompt update instead of waiting for the next poll.
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.15.1-fork.mac.5...v1.20.0-fork.mac.1)
+
+## [1.20.0] - 2026-07-17
+
+### Added
+
+- [Multi-account support](https://github.com/jens-duttke/usage-monitor-for-claude/discussions/23) - launch additional instances with `--config-dir="<path>"` to monitor a second Claude account side by side; each instance reads its own credentials and settings, gets its own tray tooltip prefix and autostart entry, and keeps its `--config-dir` across restarts (thanks to [@hybrid2102](https://github.com/hybrid2102) for the contribution)
+- [Custom CLI command](https://github.com/jens-duttke/usage-monitor-for-claude/issues/65) - set `cli_command` (e.g. `{"WSL": ["wsl", "/home/<user>/.local/bin/claude"]}`) to list the Claude Code version of an install the app cannot detect on its own, such as one running inside WSL, alongside the native CLI and the IDE extensions
+
+### Changed
+
+- When a custom config directory is in effect (`--config-dir` or `CLAUDE_CONFIG_DIR`), a `usage-monitor-settings.json` in that directory now takes priority over the one next to the EXE, so each instance can have its own settings
+
+### Fixed
+
+- Closing a pinned popup no longer keeps its system-wide input hooks installed - previously every pin-and-close cycle left another set of hooks behind, gradually adding input lag machine-wide until the app was restarted
+- The popup no longer stays invisible (and permanently refuses to open again until restart) when its rendered content happens to be exactly 400 pixels tall
+- Starting the app while another instance runs with different rights (e.g. one of them "as administrator") now shows the usual "already running" dialog instead of silently starting a second instance with a second tray icon and doubled API polling
+- Answering "Yes" in the "already running" dialog now verifies that the old instance is really gone before starting - if it could not be terminated (for example because it runs with administrator rights), an error message appears instead of both instances silently running side by side
+- An account switch is no longer missed for the rest of the session when the profile request fails once around the switch - previously that also suppressed the "account switched" notification and could fire a false "quota reset" notification and reset command instead
+- Opening the popup roughly 3 to 5 minutes before a quota reset no longer delays the reset-confirming poll - the tray and the "quota reset" notification/command now react a few seconds after the reset instead of up to two minutes late
+- On Chinese, Hindi, and Indonesian Windows systems the app now starts in the system language instead of silently falling back to English (the shipped zh-CN, zh-TW, hi, and id translations were never picked up by the automatic language detection)
+- A credentials file with an unexpected structure (e.g. `claudeAiOauth` left empty by a logout, or a file rewritten by another tool) no longer crashes the app and kills polling until restart - it is treated as "no token available right now"
+- A profile response with an empty account or organization section no longer crashes the poll loop or the popup
+- Configuring `tooltip_fields` or `icon_fields` with a response key that is not a quota field (e.g. `limits`) no longer freezes the tray on stale data - the entry is skipped in the tooltip and rendered as 0% in the icon
+- An IDE extensions folder that exists but cannot be read (permission denied, broken junction) no longer breaks the popup or its live updates - the folder is skipped in the Claude Code version list
+- Confirming the "already running" dialog after the old instance already exited on its own can no longer terminate an unrelated process that happened to receive the same process ID
+- A settings file saved as UTF-8 with BOM (the default of older PowerShell and Notepad versions) is now accepted instead of being rejected with an "Invalid JSON" error that discarded all settings
+- Notifications deferred while you were away can no longer stay stuck in the queue for hours (or get lost to a rare crash) when you return at just the wrong moment - they now appear promptly once you are back
+- Setting an event command to an empty string (`"on_double_click_command": ""`) now disables it like `[]` does - previously it still activated the double-click machinery, delaying every single click by the double-click interval and launching an empty shell on double-click
+- Two quotas resetting at the same time (e.g. a weekly window together with its per-model limit) now produce a single "quota reset" notification instead of identical back-to-back toasts
+- When the retry after an expired-token refresh is answered with a rate limit (HTTP 429), the app now honors the server's requested wait time and shows the rate-limit state instead of keeping the credentials-error icon and re-polling the already limited endpoint too early
+- Setting the system clock backwards (manual correction, time sync, resuming a virtual machine snapshot) no longer freezes the tray on stale data for the duration of the jump - polling re-anchors to the new clock right away
+- A pinned popup no longer stops receiving live updates after a single transient failure (it could previously show stale bars for days with only the clock still ticking) - a failed update is retried on the next tick
+- The tray icon no longer permanently stops following light/dark theme switches after a single failed re-render (e.g. during an Explorer restart)
+- Two content-height changes arriving in quick succession (e.g. toggling the compact view right as a data update lands) can no longer leave the popup clipped or oversized until the next content change
+- When the set of quota bars changes while the popup is open but their number stays the same (e.g. an account switch between two plans), the bars now rebuild with the correct labels instead of showing the new values under the old quota names
+- The tray icon shows "99" instead of a clipped, three-digit "100" while utilization is between 99.5% and 100% - "100" stays reserved for the actually-exhausted state
+- A tray bar in `overage` mode no longer flips to a plain utilization fill in the short window between a quota reset and the confirming poll - it keeps its overage reading (empty while within budget)
+- A `currency_symbol` override that happens to match the system's currency symbol now works - previously it was silently ignored and the billing currency reported by the API won; an empty override now consistently means "no symbol"
+- On a weekly usage bar spanning a daylight-saving changeover, the day dividers after the changeover now stay on the actual local midnights instead of drifting by one hour
+- The `--verbose` diagnostics now redact the Windows username from paths reliably - previously a differently-cased path (e.g. a lowercase `CLAUDE_CONFIG_DIR`) slipped through unredacted, and a neighboring user profile could be partially mangled
+- On Windows 10 versions older than 1703 the app no longer dies at startup with an unhandled error dialog - it now starts with the legacy DPI behavior instead
+- The popup's time marker and day dividers no longer shift by one pixel (with a visible slide animation on the marker) after the first live data update
+- [Notification icon](https://github.com/jens-duttke/usage-monitor-for-claude/issues/67) - alerts and reset notifications now show the app logo instead of the current tray icon, so the icon no longer says "you have nothing left" when a limit was just reset or is only partway used
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.19.0...v1.20.0)
+
+## [1.19.0] - 2026-07-14
+
+### Added
+
+- New `on_double_click_command` event - run a custom command when you double-click the tray icon, while a single click still opens the usage popup. Handy for launching a companion tool like [Agent Monitor for Claude](https://github.com/jens-duttke/agent-monitor-for-claude) straight from the tray. Since a double-click is a user-driven action, a command that fails (non-zero exit code) shows its error output in a dialog instead of failing silently
+- [Turn off the Claude update notification](https://github.com/jens-duttke/usage-monitor-for-claude/issues/64) - set the new `notify_claude_update` setting to `false` to stop the notification shown when a background token refresh installs a new Claude CLI version
+
+### Changed
+
+- The **Test event commands** menu now prints each command's exit code, stdout, and stderr once it finishes (visible when running from source or with `--verbose`), and pops up an error dialog with stderr when a command exits with a non-zero code, so a command that silently does nothing - a wrong path, for example - is easy to diagnose
+- Switching your Claude account now updates the tray icon and popup right away instead of at the next poll (previously up to several minutes, and slower still when the old token had already been rejected and triggered a background `claude update`) - the new account's usage loads as soon as the credentials change
+- After your access token expires and gets refreshed, the app now recovers usage and account info as soon as the new token appears, instead of waiting for the next poll or needing a restart
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.18.1...v1.19.0)
+
+## [1.18.1] - 2026-07-09
+
+### Fixed
+
+- Usage again refreshes promptly right after a session limit resets when the detail popup was opened, or you returned from idle, shortly before the reset - such a fetch no longer delays the reset-confirming poll by up to a full update interval, so the tray and popup stop showing the exhausted state late
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.18.0...v1.18.1)
+
+## [1.18.0] - 2026-07-02
+
+### Added
+
+- Per-model weekly limits (for example a Fable limit) now appear as their own usage bar, tooltip entry, and alert - Claude's newer usage data reports model-scoped limits in a format the app did not read before, so such a limit would otherwise stay invisible until it blocked you
+- Extra usage amounts now show in the account's actual billing currency and precision - Claude's usage data now reports the currency and decimal places, so the amount no longer guesses the symbol from the Windows locale and stays correct even when the billing currency differs from the system's
+
+### Fixed
+
+- Usage now refreshes right after a session limit resets instead of up to a few minutes late - the poll that confirms the reset is timed to land just after it, so the tray icon and popup stop showing the old, exhausted state
+- The reset time no longer vanishes from the popup during the last minute before a reset - it now shows a "Reset imminent" note (matching Claude's own usage screen) instead of leaving the line blank
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.17.0...v1.18.0)
+
+## [1.17.0] - 2026-06-27
+
+### Added
+
+- The detail popup can now be pinned open and moved while pinned, so usage details stay visible during long Claude Code sessions (thanks to [@nmxi](https://github.com/nmxi) for the contribution)
+- [New `compact_hide` setting](https://github.com/jens-duttke/usage-monitor-for-claude/issues/55) shrinks the pinned popup to a compact view by hiding chosen sections (account, extra usage, Claude Code versions, status footer) and individual usage bars while it is pinned, so you can keep just the bars you care about on screen; when only the usage bars remain, the "Usage" heading is dropped as well
+- Reset times now follow your Windows clock format automatically, showing 24-hour (14:30) or 12-hour (2:30 PM) without any setup; override with the `time_format` setting (thanks to [@rohitjalan142](https://github.com/rohitjalan142) for the contribution)
+
+### Fixed
+
+- [The status footer no longer cuts off text in several languages](https://github.com/jens-duttke/usage-monitor-for-claude/issues/53) - the "next update" line was too long to fit the popup width in Spanish, French, Italian, Portuguese, Ukrainian, and Indonesian and got truncated; the affected phrases are now shorter so the full status fits on one line, and a long error message now shows in full on hover
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.16.0...v1.17.0)
+
+## [1.16.0] - 2026-06-13
+
+### Added
+
+- Tray icon bars now mirror the detail popup's pace cues: each bar in `utilization` mode shows a thin marker at the elapsed-time position of the quota period, and the bar fill turns red once usage moves ahead of the elapsed time (or reaches 100%), so you can tell at a glance whether you are ahead of or behind the clock without opening the popup. A new `fg_warn` color in the `icon_light`/`icon_dark` settings controls the warning fill (thanks to [@timyjsong](https://github.com/timyjsong) for the contribution)
+- The five-hour session bar in the detail popup is now subdivided into five equal hour sections by subtle dividers, matching the day dividers on the weekly bars, so you can gauge your position within the session window at a glance (thanks to [@timyjsong](https://github.com/timyjsong) for the contribution)
+
+### Fixed
+
+- [Profile requests no longer ignore the rate-limit backoff](https://github.com/jens-duttke/usage-monitor-for-claude/issues/48) - while the API is returning HTTP 429, opening the popup could keep firing account-profile requests against the already rate-limited endpoint and prolong the backoff; profile fetches now wait out the backoff window like usage fetches do
+
+[Show all code changes](https://github.com/jens-duttke/usage-monitor-for-claude/compare/v1.15.1...v1.16.0)
 
 ## [1.15.1-fork.mac.5] - 2026-06-01
 

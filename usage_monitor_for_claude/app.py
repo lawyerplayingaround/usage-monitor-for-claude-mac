@@ -18,15 +18,16 @@ from typing import Any
 
 import pystray  # type: ignore[import-untyped]  # no type stubs available
 
-from .api import api_headers
+from .api import api_headers, read_access_token
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .cache import UsageCache
 from .claude_cli import PROJECT_URL
 from .command import run_event_command
 from .idle import get_idle_seconds, is_workstation_locked
+from .instance_id import effective_config_dir, is_default_config_dir
 from .settings import (
-    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, ICON_FIELDS, IDLE_PAUSE,
-    ON_RESET_COMMAND, ON_STARTUP_COMMAND, ON_THRESHOLD_COMMAND,
+    ALERT_TIME_AWARE, ALERT_TIME_AWARE_BELOW, ICON_FIELDS, IDLE_PAUSE, NOTIFY_CLAUDE_UPDATE,
+    ON_DOUBLE_CLICK_COMMAND, ON_RESET_COMMAND, ON_STARTUP_COMMAND, ON_THRESHOLD_COMMAND,
     POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds,
 )
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label
@@ -39,13 +40,21 @@ from .preferences import (
 from .tray_dblclick import _SINGLE_CLICK_DEFER_S, launch_claude_desktop
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
 
-if sys.platform == 'win32':
-    from .tray_dblclick import IconWithDoubleClick
-elif sys.platform == 'darwin':
+if sys.platform == 'darwin':
     from ._macos_tray import install_macos_tray_patch
     from .tray_dblclick import install_macos_dblclick_handler
 
 __all__ = ['UsageMonitorForClaude', 'crash_log']
+
+# Seconds after a reset at which to place the confirming poll.  A small buffer
+# absorbs minor timing differences (clocks, caches, server-side propagation).
+RESET_BUFFER = 5
+
+# Win32 tray mouse messages, delivered by the shell as the WM_NOTIFY lParam.
+# pystray natively acts only on WM_LBUTTONUP; WM_LBUTTONDBLCLK drives the
+# optional double-click command.
+WM_LBUTTONUP = 0x0202
+WM_LBUTTONDBLCLK = 0x0203
 
 # Ignore reopen requests for this long after the popup closes. On macOS the
 # dismiss happens on mouse-down on the menu-bar icon, which the click dispatcher
@@ -59,6 +68,56 @@ _POPUP_REOPEN_GUARD_S = (_SINGLE_CLICK_DEFER_S + 0.2) if sys.platform == 'darwin
 def _future_iso(**kwargs: float) -> str:
     """Return an ISO 8601 timestamp offset from now by the given timedelta kwargs."""
     return (datetime.now(timezone.utc) + timedelta(**kwargs)).isoformat()
+
+
+def _align_to_reset(interval: int, next_reset: float | None) -> tuple[int, bool]:
+    """Shift the next poll so the confirming poll lands just after the reset.
+
+    Every returned interval stays at or above ``POLL_FAST`` (the cache
+    cooldown), so the reset is caught without polling faster.  The poll before
+    the reset is pulled forward to ``POLL_FAST - RESET_BUFFER`` seconds before
+    it (the danger-window start); from there the confirming poll lands
+    ``RESET_BUFFER`` seconds after the reset.  When the current poll is
+    already too close to pull the previous one forward without breaking the
+    cooldown, the confirming poll is committed directly.
+
+    Parameters
+    ----------
+    interval : int
+        The normal cadence interval before reset alignment.
+    next_reset : float or None
+        Seconds until the nearest upcoming reset, or None.
+
+    Returns
+    -------
+    tuple[int, bool]
+        The (possibly adjusted) interval and whether alignment engaged.
+    """
+    if next_reset is None or next_reset <= 0:
+        return interval, False
+
+    danger = POLL_FAST - RESET_BUFFER          # last window where a poll can no longer be exact
+    post = int(next_reset) + RESET_BUFFER      # offset that lands the poll just after the reset
+
+    if next_reset <= danger:
+        # Already inside that last window: the confirming poll can only land
+        # POLL_FAST after this one (small, unavoidable overshoot).
+        return POLL_FAST, True
+
+    if post <= interval * 1.5:
+        # Reset near enough: commit the confirming poll to just after it.
+        return post, True
+
+    if next_reset < interval + danger:
+        # A normal interval would drop the next poll into that last window,
+        # from where the confirming poll would overshoot.  Pull it forward to
+        # the window start (POLL_FAST - RESET_BUFFER before the reset); if
+        # that is too close to keep POLL_FAST spacing, commit to the
+        # confirming poll directly.
+        pre = int(next_reset) - danger
+        return (pre if pre >= POLL_FAST else post), True
+
+    return interval, False                     # reset still far - keep the normal cadence
 
 
 class UsageMonitorForClaude:
@@ -81,6 +140,9 @@ class UsageMonitorForClaude:
         # Adaptive polling state
         self._fast_polls_remaining = 0
         self._idle_reset_pending = False
+        # Guarded by _notify_lock: deferrals arrive from the popup and poll
+        # threads while the poll loop flushes.
+        self._notify_lock = threading.Lock()
         self._deferred_notifications: dict[str, tuple[str, str]] = {}
 
         # Popup state
@@ -99,20 +161,15 @@ class UsageMonitorForClaude:
 
         self.restart_requested = False
 
-        if sys.platform == 'win32':
-            icon_class = IconWithDoubleClick
-            icon_kwargs = {'on_double_click': launch_claude_desktop if self._dblclick_open_claude else None}
-        else:
-            icon_class = pystray.Icon
-            icon_kwargs = {}
+        # Non-default config dirs get a tooltip prefix so multiple
+        # instances (one per Claude account) can be told apart.
+        self._tooltip_prefix = '' if is_default_config_dir() else f'[{effective_config_dir().name}] '
 
-        self.icon = icon_class(
-            'usage_monitor',
-            icon=create_icon_image(0, 0, self._light_taskbar, layout=self._icon_layout),
-            title=T['loading'],
-            menu=pystray.Menu(
-                pystray.MenuItem(T['menu_show'], self.on_show_popup, default=True),
-                pystray.Menu.SEPARATOR,
+        # Menu entries for the macOS-only tray preferences (icon layout and
+        # double-click opens Claude Desktop).
+        darwin_menu_items: tuple[pystray.MenuItem, ...] = ()
+        if sys.platform == 'darwin':
+            darwin_menu_items = (
                 pystray.MenuItem(T['menu_icon_style'], pystray.Menu(
                     pystray.MenuItem(
                         T['icon_style_classic'], self.on_set_icon_layout_classic,
@@ -127,6 +184,16 @@ class UsageMonitorForClaude:
                     T['menu_dblclick_open_claude'], self.on_toggle_dblclick_open_claude,
                     checked=lambda item: get_dblclick_open_claude(),
                 ),
+            )
+
+        self.icon = pystray.Icon(
+            'usage_monitor',
+            icon=create_icon_image(0, 0, self._light_taskbar, layout=self._icon_layout),
+            title=self._tooltip_prefix + T['loading'],
+            menu=pystray.Menu(
+                pystray.MenuItem(T['menu_show'], self.on_show_popup, default=True),
+                pystray.Menu.SEPARATOR,
+                *darwin_menu_items,
                 pystray.MenuItem(
                     T['menu_start_at_login'] if sys.platform == 'darwin' else T['autostart'],
                     self.on_toggle_autostart,
@@ -139,15 +206,27 @@ class UsageMonitorForClaude:
                     pystray.MenuItem(T['test_threshold_5h'], self.on_test_threshold_5h, enabled=bool(ON_THRESHOLD_COMMAND)),
                     pystray.MenuItem(T['test_threshold_7d'], self.on_test_threshold_7d, enabled=bool(ON_THRESHOLD_COMMAND)),
                     pystray.MenuItem(T['test_startup'], self.on_test_startup, enabled=bool(ON_STARTUP_COMMAND)),
-                ), enabled=bool(ON_RESET_COMMAND or ON_STARTUP_COMMAND or ON_THRESHOLD_COMMAND)),
+                    pystray.MenuItem(T['test_double_click'], self.on_test_double_click, enabled=bool(ON_DOUBLE_CLICK_COMMAND)),
+                ), enabled=bool(ON_RESET_COMMAND or ON_STARTUP_COMMAND or ON_THRESHOLD_COMMAND or ON_DOUBLE_CLICK_COMMAND)),
                 pystray.MenuItem(T['restart'], self.on_restart),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['menu_project'], self.on_open_project),
                 pystray.Menu.SEPARATOR,
                 pystray.MenuItem(T['quit'], self.on_quit),
             ),
-            **icon_kwargs,
         )
+
+        # Double-click support.  pystray fires the default action (the popup) on
+        # every left-button release, so a double-click command requires deferring
+        # that single click by the system double-click interval and cancelling it
+        # when a second click arrives.  Only wired up when a command is
+        # configured, so the default single-click behavior is otherwise untouched.
+        self._click_lock = threading.Lock()
+        self._single_click_timer: threading.Timer | None = None
+        self._swallow_next_up = False
+        if sys.platform == 'win32' and ON_DOUBLE_CLICK_COMMAND:
+            self._double_click_seconds = ctypes.windll.user32.GetDoubleClickTime() / 1000.0
+            self._install_double_click_handler()
 
         if sys.platform == 'darwin':
             install_macos_tray_patch(self.icon)
@@ -203,7 +282,7 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_RESETS_AT': _future_iso(hours=5),
             'USAGE_MONITOR_TITLE': T['notify_reset_title'],
             'USAGE_MONITOR_MESSAGE': T['notify_reset'],
-        })
+        }, capture_output=True)
 
     def on_test_reset_7d(self, icon: Any = None, item: Any = None) -> None:
         run_event_command(ON_RESET_COMMAND, {
@@ -216,7 +295,7 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_RESETS_AT': _future_iso(days=7),
             'USAGE_MONITOR_TITLE': T['notify_reset_title'],
             'USAGE_MONITOR_MESSAGE': T['notify_reset'],
-        })
+        }, capture_output=True)
 
     def on_test_threshold_5h(self, icon: Any = None, item: Any = None) -> None:
         run_event_command(ON_THRESHOLD_COMMAND, {
@@ -227,7 +306,7 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_RESETS_AT': _future_iso(hours=3),
             'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
             'USAGE_MONITOR_MESSAGE': T['notify_threshold_generic'].format(label=popup_label('five_hour'), pct='82'),
-        })
+        }, capture_output=True)
 
     def on_test_threshold_7d(self, icon: Any = None, item: Any = None) -> None:
         run_event_command(ON_THRESHOLD_COMMAND, {
@@ -238,7 +317,7 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_RESETS_AT': _future_iso(days=4),
             'USAGE_MONITOR_TITLE': T['notify_threshold_title'],
             'USAGE_MONITOR_MESSAGE': T['notify_threshold_generic'].format(label=popup_label('seven_day'), pct='81'),
-        })
+        }, capture_output=True)
 
     def on_test_startup(self, icon: Any = None, item: Any = None) -> None:
         run_event_command(ON_STARTUP_COMMAND, {
@@ -247,7 +326,16 @@ class UsageMonitorForClaude:
             'USAGE_MONITOR_RESETS_AT_FIVE_HOUR': '',
             'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '45',
             'USAGE_MONITOR_RESETS_AT_SEVEN_DAY': _future_iso(days=3),
-        })
+        }, capture_output=True)
+
+    def on_test_double_click(self, icon: Any = None, item: Any = None) -> None:
+        run_event_command(ON_DOUBLE_CLICK_COMMAND, {
+            'USAGE_MONITOR_EVENT': 'double_click',
+            'USAGE_MONITOR_UTILIZATION_FIVE_HOUR': '30',
+            'USAGE_MONITOR_RESETS_AT_FIVE_HOUR': _future_iso(hours=3),
+            'USAGE_MONITOR_UTILIZATION_SEVEN_DAY': '55',
+            'USAGE_MONITOR_RESETS_AT_SEVEN_DAY': _future_iso(days=4),
+        }, capture_output=True)
 
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
         self.running = False
@@ -255,13 +343,32 @@ class UsageMonitorForClaude:
 
     # Popup
 
+    def _should_refresh_usage(self) -> bool:
+        """Return whether opening the popup should trigger a background usage fetch.
+
+        Refreshes stale data, with one exception: when a quota reset is closer
+        than the cache cooldown, a fetch now would advance
+        ``last_success_time`` into the last ``POLL_FAST`` window before the
+        reset and force the reset-aligned poll to overshoot.  Such a fetch is
+        deferred to the scheduled reset poll, whose fresh data the open popup
+        picks up live.  The very first fetch (no data yet) always refreshes.
+        """
+        last = self.cache.last_success_time
+        if last is None:
+            return True
+        if time.time() - last < POLL_FAST:
+            return False
+
+        next_reset = self._seconds_until_next_reset()
+        return not (next_reset is not None and next_reset < POLL_FAST)
+
     def _open_popup(self) -> None:
         # _popup_open is set True under _popup_lock (in on_show_popup) and
         # reset here without the lock.  This is safe because False is the
         # permissive default - a momentary stale True only delays the next open.
         try:
             needs_profile = not self.cache.profile
-            needs_refresh = self.cache.last_success_time is None or time.time() - self.cache.last_success_time >= POLL_FAST
+            needs_refresh = self._should_refresh_usage()
             if needs_profile or needs_refresh:
                 # Single thread: ensure_profile() and update() both acquire
                 # cache._lock, so they must run sequentially.  Two threads
@@ -278,6 +385,67 @@ class UsageMonitorForClaude:
             self._popup_closed_at = time.time()
             self._popup_open = False
 
+    # Double-click handling
+
+    def _install_double_click_handler(self) -> None:
+        """Replace pystray's tray-message handler with a double-click-aware one.
+
+        Locates the ``WM_NOTIFY`` entry in pystray's handler table by identity
+        and swaps in :meth:`_on_tray_message`, keeping the original handler for
+        right-click and every other message.
+        """
+        self._pystray_on_notify = self.icon._on_notify
+        for code, handler in self.icon._message_handlers.items():
+            if handler == self._pystray_on_notify:
+                self.icon._message_handlers[code] = self._on_tray_message
+                break
+
+    def _on_tray_message(self, wparam: int, lparam: int) -> int:
+        """Dispatch a tray mouse message, adding double-click handling.
+
+        A left-button release schedules the popup after the double-click
+        interval; a double-click cancels that pending popup and runs the
+        configured command instead.  The trailing release that follows every
+        double-click is swallowed so it does not schedule a second popup.  All
+        other messages (right-click menu, etc.) fall through to pystray's own
+        handler.
+        """
+        if lparam == WM_LBUTTONUP:
+            with self._click_lock:
+                if self._swallow_next_up:
+                    self._swallow_next_up = False
+                    return 0
+                if self._single_click_timer is not None:
+                    self._single_click_timer.cancel()
+                self._single_click_timer = threading.Timer(self._double_click_seconds, self._fire_single_click)
+                self._single_click_timer.daemon = True
+                self._single_click_timer.start()
+            return 0
+
+        if lparam == WM_LBUTTONDBLCLK:
+            with self._click_lock:
+                self._swallow_next_up = True
+                if self._single_click_timer is not None:
+                    self._single_click_timer.cancel()
+                    self._single_click_timer = None
+            self._run_double_click_command()
+            return 0
+
+        return self._pystray_on_notify(wparam, lparam)
+
+    def _fire_single_click(self) -> None:
+        """Open the popup once the double-click interval passes without a second click.
+
+        Bails out if the timer was cleared meanwhile - a double-click that
+        arrived right as the timer fired cancels it here, so the popup never
+        opens for a completed double-click.
+        """
+        with self._click_lock:
+            if self._single_click_timer is None:
+                return
+            self._single_click_timer = None
+        self.on_show_popup()
+
     # Tray rendering
 
     def _render_tray(self) -> None:
@@ -288,14 +456,20 @@ class UsageMonitorForClaude:
         else:
             top_field, top_mode = ICON_FIELDS[0].split(':', 1) if ':' in ICON_FIELDS[0] else (ICON_FIELDS[0], 'utilization')
             bottom_field, bottom_mode = ICON_FIELDS[1].split(':', 1) if ':' in ICON_FIELDS[1] else (ICON_FIELDS[1], 'utilization')
-            top_entry = data.get(top_field) or {}
-            bottom_entry = data.get(bottom_field) or {}
+            # isinstance instead of truthiness: a configured field may point at
+            # a non-dict response value (e.g. the raw limits array).
+            top_entry = data.get(top_field)
+            bottom_entry = data.get(bottom_field)
+            if not isinstance(top_entry, dict):
+                top_entry = {}
+            if not isinstance(bottom_entry, dict):
+                bottom_entry = {}
             pct_top = top_entry.get('utilization', 0) or 0
             pct_bottom = bottom_entry.get('utilization', 0) or 0
             top_period = field_period(top_field)
             bottom_period = field_period(bottom_field)
-            time_pct_top = elapsed_pct(top_entry.get('resets_at', ''), top_period) if top_mode == 'overage' and top_period else None
-            time_pct_bottom = elapsed_pct(bottom_entry.get('resets_at', ''), bottom_period) if bottom_mode == 'overage' and bottom_period else None
+            time_pct_top = elapsed_pct(top_entry.get('resets_at', ''), top_period) if top_period else None
+            time_pct_bottom = elapsed_pct(bottom_entry.get('resets_at', ''), bottom_period) if bottom_period else None
             extra = data.get('extra_usage') or {}
             extra_limit = extra.get('monthly_limit') or 0
             extra_used = extra.get('used_credits') or 0
@@ -306,7 +480,7 @@ class UsageMonitorForClaude:
                 time_pct_top=time_pct_top, time_pct_bottom=time_pct_bottom,
                 extra_usage_available=extra_usage_available, layout=self._icon_layout,
             )
-        self.icon.title = format_tooltip(data)
+        self.icon.title = self._tooltip_prefix + format_tooltip(data)
 
     def _on_theme_changed(self) -> None:
         """Re-render the tray icon when the Windows theme changes."""
@@ -320,17 +494,22 @@ class UsageMonitorForClaude:
 
     # Update orchestration
 
-    def update(self, force: bool = False) -> None:
+    def update(self, force: bool = False, bypass_cooldown: bool = False) -> None:
         """Request a data refresh from the cache and process the result.
 
         Parameters
         ----------
         force : bool
-            When True, bypass the poll cooldown so the fetch happens
-            immediately.  Used by the popup's manual refresh button; the
-            periodic poller leaves it False.
+            When True, bypass the cache cooldown and the 429 rate-limit
+            backoff so the refresh happens immediately.  Used after a
+            confirmed account switch, where the freshly selected account
+            has no polling history that those throttles need to protect.
+        bypass_cooldown : bool
+            When True, bypass only the cache cooldown (the 429 backoff
+            still applies).  Used by the popup's manual refresh button;
+            the periodic poller leaves both flags False.
         """
-        result = self.cache.update(force=force)
+        result = self.cache.update(force=force, bypass_cooldown=bypass_cooldown)
         if result.data is None:
             return
 
@@ -338,7 +517,7 @@ class UsageMonitorForClaude:
         self._render_tray()
 
         # Handle CLI update notification from token refresh
-        if result.token_refresh and result.token_refresh.updated:
+        if NOTIFY_CLAUDE_UPDATE and result.token_refresh and result.token_refresh.updated:
             self.icon.notify(
                 T['notify_update'].format(old=result.token_refresh.old_version, new=result.token_refresh.new_version),
                 T['notify_update_title'],
@@ -352,9 +531,18 @@ class UsageMonitorForClaude:
         # returns a different account UUID, preventing a false quota-reset notification.
         self.cache.ensure_profile()
         current_profile = self.cache.profile
-        current_account_uuid = current_profile.get('account', {}).get('uuid') if isinstance(current_profile, dict) else None
+        current_account_uuid = (current_profile.get('account') or {}).get('uuid') if isinstance(current_profile, dict) else None
+
+        # Unknown identity with a known baseline: the profile fetch failed
+        # after a token change, so this usage data may already belong to a
+        # different account.  Skip all cross-poll comparisons and keep the
+        # baselines untouched; the poll where the profile is readable again
+        # detects the switch (or resumes normally for the same account).
+        if self._prev_account_uuid is not None and current_account_uuid is None:
+            return
+
         if self._prev_account_uuid is not None and current_account_uuid is not None and current_account_uuid != self._prev_account_uuid:
-            email = current_profile.get('account', {}).get('email', '')
+            email = (current_profile.get('account') or {}).get('email', '')
             message = T['notify_account_switched'].format(email=email) if email else T['notify_account_switched_title']
             self._notify_or_defer('account_switched', message, T['notify_account_switched_title'])
             self._prev_utilization = {}
@@ -373,6 +561,9 @@ class UsageMonitorForClaude:
 
         # Notify when quota resets after being nearly exhausted, but only if no other quota is blocking usage.
         # While idle/locked, defer notifications until the user returns (avoids lock screen privacy concerns).
+        # The message carries no field information, so several quotas resetting
+        # within one polling gap still produce a single notification.
+        reset_detected = False
         for key, pct in quota_fields.items():
             prev = self._prev_utilization.get(key)
             if prev is None:
@@ -387,7 +578,10 @@ class UsageMonitorForClaude:
             any_blocking = any(other_pct >= 99 for other_key, other_pct in quota_fields.items() if other_key != key)
 
             if prev > reset_threshold and pct < prev and not any_blocking:
-                self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
+                reset_detected = True
+
+        if reset_detected:
+            self._notify_or_defer('reset', T['notify_reset'], T['notify_reset_title'])
 
         # Run reset command on any detected usage drop (independent of notification threshold)
         for key, pct in quota_fields.items():
@@ -431,15 +625,22 @@ class UsageMonitorForClaude:
             Notification title.
         """
         if self._is_user_away():
-            self._deferred_notifications[category] = (message, title)
+            with self._notify_lock:
+                self._deferred_notifications[category] = (message, title)
         else:
             self.icon.notify(message, title)
 
     def _flush_deferred_notifications(self) -> None:
-        """Show all deferred notifications and clear the queue."""
-        for message, title in self._deferred_notifications.values():
+        """Show all deferred notifications and clear the queue.
+
+        The queue is swapped out under the lock so a deferral landing
+        mid-flush (from the popup thread) is kept for the next flush
+        instead of mutating the dict being iterated.
+        """
+        with self._notify_lock:
+            pending, self._deferred_notifications = self._deferred_notifications, {}
+        for message, title in pending.values():
             self.icon.notify(message, title)
-        self._deferred_notifications.clear()
 
     def _check_threshold_alerts(self, data: dict[str, Any]) -> None:
         """Show a notification when usage crosses a configured threshold.
@@ -514,19 +715,49 @@ class UsageMonitorForClaude:
 
         if highest_exceeded > last_notified:
             title = T['notify_threshold_title']
+            currency = extra.get('currency')
+            decimal_places = extra.get('decimal_places')
+            used_text = format_credits(used, currency, decimal_places)
+            limit_text = format_credits(limit, currency, decimal_places)
             message = T['notify_threshold_extra_usage'].format(
-                pct=f'{pct:.0f}', used=format_credits(used), limit=format_credits(limit),
+                pct=f'{pct:.0f}', used=used_text, limit=limit_text,
             )
             self._notify_or_defer('threshold_extra_usage', message, title)
             self._run_threshold_command(
                 'extra_usage', pct, highest_exceeded, extra, title, message,
-                extra_used=format_credits(used), extra_limit=format_credits(limit),
+                extra_used=used_text, extra_limit=limit_text,
             )
             self._notified_thresholds['extra_usage'] = highest_exceeded
         elif highest_exceeded < last_notified:
             self._notified_thresholds['extra_usage'] = highest_exceeded
 
     # Event commands
+
+    def _quota_snapshot_env(self, data: dict[str, Any]) -> dict[str, str]:
+        """Build environment variables describing the current quota state.
+
+        Emits one ``USAGE_MONITOR_UTILIZATION_<FIELD>`` /
+        ``USAGE_MONITOR_RESETS_AT_<FIELD>`` pair per detected quota field, plus
+        ``USAGE_MONITOR_EXTRA_USED`` / ``USAGE_MONITOR_EXTRA_LIMIT`` when paid
+        extra usage is enabled.  Shared by the startup and double-click commands.
+        """
+        env_vars: dict[str, str] = {}
+        for key, entry in data.items():
+            if key == 'extra_usage' or not isinstance(entry, dict) or 'utilization' not in entry:
+                continue
+            env_vars[f'USAGE_MONITOR_UTILIZATION_{key.upper()}'] = str(round(entry.get('utilization', 0) or 0))
+            env_vars[f'USAGE_MONITOR_RESETS_AT_{key.upper()}'] = entry.get('resets_at') or ''
+
+        extra = data.get('extra_usage') or {}
+        if extra.get('is_enabled'):
+            limit = extra.get('monthly_limit', 0) or 0
+            used = extra.get('used_credits', 0) or 0
+            currency = extra.get('currency')
+            decimal_places = extra.get('decimal_places')
+            env_vars['USAGE_MONITOR_EXTRA_USED'] = format_credits(used, currency, decimal_places)
+            env_vars['USAGE_MONITOR_EXTRA_LIMIT'] = format_credits(limit, currency, decimal_places)
+
+        return env_vars
 
     def _run_startup_command(self, data: dict[str, Any]) -> None:
         """Run the user-configured startup command if set.
@@ -538,23 +769,24 @@ class UsageMonitorForClaude:
         if not ON_STARTUP_COMMAND:
             return
 
-        env_vars: dict[str, str] = {
-            'USAGE_MONITOR_EVENT': 'startup',
-        }
-        for key, entry in data.items():
-            if key == 'extra_usage' or not isinstance(entry, dict) or 'utilization' not in entry:
-                continue
-            env_vars[f'USAGE_MONITOR_UTILIZATION_{key.upper()}'] = str(round(entry.get('utilization', 0) or 0))
-            env_vars[f'USAGE_MONITOR_RESETS_AT_{key.upper()}'] = entry.get('resets_at') or ''
-
-        extra = data.get('extra_usage') or {}
-        if extra.get('is_enabled'):
-            limit = extra.get('monthly_limit', 0) or 0
-            used = extra.get('used_credits', 0) or 0
-            env_vars['USAGE_MONITOR_EXTRA_USED'] = format_credits(used)
-            env_vars['USAGE_MONITOR_EXTRA_LIMIT'] = format_credits(limit)
-
+        env_vars = {'USAGE_MONITOR_EVENT': 'startup', **self._quota_snapshot_env(data)}
         run_event_command(ON_STARTUP_COMMAND, env_vars)
+
+    def _run_double_click_command(self) -> None:
+        """Run the user-configured double-click command if set.
+
+        Receives the latest quota state (from the most recent successful
+        update) so the command can act on current usage, mirroring the
+        startup command's environment.  A double-click is a user-driven
+        action, so a command that exits with a non-zero code surfaces its
+        stderr in an error dialog (``capture_output``) instead of failing
+        silently - unlike the automatic reset/threshold/startup commands.
+        """
+        if not ON_DOUBLE_CLICK_COMMAND:
+            return
+
+        env_vars = {'USAGE_MONITOR_EVENT': 'double_click', **self._quota_snapshot_env(self._last_response)}
+        run_event_command(ON_DOUBLE_CLICK_COMMAND, env_vars, capture_output=True)
 
     def _run_reset_command(
         self, variant: str, pct: float, prev_pct: float, *, data: dict[str, Any], entry: dict[str, Any],
@@ -627,6 +859,42 @@ class UsageMonitorForClaude:
 
         return earliest
 
+    def _account_switched(self) -> bool:
+        """Return whether the current credentials belong to a different account.
+
+        Probes the account profile with the token now in the credentials
+        file (bypassing the 429 backoff, since a freshly selected account
+        cannot be the source of that rate limit) and compares its UUID
+        against the last seen one.  Returns False until a baseline UUID is
+        known, so the first successful update is never taken for a switch.
+        """
+        if self._prev_account_uuid is None:
+            return False
+
+        self.cache.ensure_profile(bypass_rate_limit=True)
+        profile = self.cache.profile
+        current_uuid = (profile.get('account') or {}).get('uuid') if isinstance(profile, dict) else None
+
+        return current_uuid is not None and current_uuid != self._prev_account_uuid
+
+    def _reset_aligned_poll_target(self, next_reset: float) -> float:
+        """Return the absolute time for a poll landing just after a reset.
+
+        Clamped to the cache cooldown (``last_success_time + POLL_FAST``) so
+        the confirming poll never fires before a fresh fetch is permitted.
+
+        Parameters
+        ----------
+        next_reset : float
+            Seconds until the upcoming reset.
+        """
+        target = time.time() + next_reset + RESET_BUFFER
+        last = self.cache.last_success_time
+        if last is not None:
+            target = max(target, last + POLL_FAST)
+
+        return target
+
     def _calculate_poll_interval(self) -> int:
         """Determine the next poll interval based on current state.
 
@@ -647,13 +915,12 @@ class UsageMonitorForClaude:
         else:
             interval = POLL_INTERVAL
 
-        # Align next poll to an imminent reset for faster feedback.
-        # The +5s buffer guards against minor timing differences
-        # (clocks, caches, processing delays). Follow-up uses POLL_FAST
-        # regardless of user activity (quota was likely exhausted).
+        # Align the next poll around an imminent reset for faster feedback.
+        # The confirming poll is placed just after the reset; a follow-up uses
+        # POLL_FAST regardless of user activity (quota was likely exhausted).
         next_reset = self._seconds_until_next_reset()
-        if next_reset is not None and next_reset + 5 <= interval * 1.5:
-            interval = max(int(next_reset) + 5, POLL_FAST)
+        interval, aligned = _align_to_reset(interval, next_reset)
+        if aligned:
             self._fast_polls_remaining = max(self._fast_polls_remaining, 2)
 
         return interval
@@ -687,23 +954,71 @@ class UsageMonitorForClaude:
         has elapsed since the last successful fetch.
         """
         self.cache.ensure_profile()
+        force_next = False
         while self.running:
-            self.update()
+            self.update(force=force_next)
+            force_next = False
             interval = self._calculate_poll_interval()
 
             target = time.time() + interval
             self._next_poll_time = target
+            last_success_seen = self.cache.last_success_time
+            token_seen = read_access_token()
             while self.running and time.time() < target:
                 time.sleep(1)
-                # If another thread (popup) fetched successfully,
-                # push the next poll forward to avoid a redundant
-                # fetch right after.
+
+                # React to a credentials token change between polls. A switch to
+                # a different account forces an immediate refresh (bypassing the
+                # cooldown) so the new account's usage shows right away. A token
+                # change while the last fetch failed auth is retried at once so a
+                # freshly refreshed token recovers usage and profile without
+                # waiting out the error cadence or needing a restart.
+                current_token = read_access_token()
+                if current_token and current_token != token_seen:
+                    token_seen = current_token
+                    if self._account_switched():
+                        force_next = True
+                        break
+                    if self._last_response.get('auth_error'):
+                        break
+
+                # Re-anchor the wait target after a backward clock jump -
+                # otherwise the poll would stall until the wall clock catches
+                # up with the pre-jump target, potentially for hours.  The
+                # bound leaves room for reset-aligned targets, which may lie
+                # up to roughly POLL_FAST past a normal interval.
+                if target - time.time() > interval + POLL_FAST:
+                    target = time.time() + interval
+                    self._next_poll_time = target
+
+                # If another thread (popup) fetched successfully, push the next
+                # poll a full interval past that fetch to avoid a redundant one.
+                # Only react to an actual new fetch (last_success advanced), not
+                # to a target the idle-return path lowered on its own.
                 lst = self.cache.last_success_time
-                if lst is not None:
+                if lst is not None and (last_success_seen is None or lst > last_success_seen):
+                    last_success_seen = lst
                     new_target = max(target, lst + interval)
-                    if new_target != target:
-                        target = new_target
-                        self._next_poll_time = target
+                    # Never let that push move the poll past a reset-aligned
+                    # slot, nor drop it into the danger window (the last
+                    # POLL_FAST - RESET_BUFFER seconds before the reset): a
+                    # poll there consumes the cooldown, so the confirming poll
+                    # would overshoot the reset by up to a full cooldown.
+                    next_reset = self._seconds_until_next_reset()
+                    if next_reset is not None:
+                        reset_epoch = time.time() + next_reset
+                        aligned = self._reset_aligned_poll_target(next_reset)
+                        if new_target > aligned or reset_epoch - (POLL_FAST - RESET_BUFFER) < new_target < reset_epoch:
+                            new_target = aligned
+                    target = new_target
+                    self._next_poll_time = target
+
+                # Show notifications deferred while the user was away as soon
+                # as they are present, even when the away branch below is
+                # never entered (the user returned in the short gap between a
+                # deferral and this loop's next away check).
+                if self._deferred_notifications and not self._is_user_away():
+                    self._flush_deferred_notifications()
 
                 # Pause polling while the user is away.
                 # Regular polling stops entirely during idle/lock.
@@ -720,7 +1035,7 @@ class UsageMonitorForClaude:
                     if ON_RESET_COMMAND:
                         next_reset = self._seconds_until_next_reset()
                         if next_reset is not None:
-                            reset_deadline = time.time() + next_reset + 5
+                            reset_deadline = time.time() + next_reset + RESET_BUFFER
                             self._idle_reset_pending = True
                         elif self._idle_reset_pending:
                             reset_deadline = time.time() + POLL_INTERVAL
@@ -740,7 +1055,20 @@ class UsageMonitorForClaude:
                     # when a usage drop is actually detected.
                     self._flush_deferred_notifications()
                     lst = self.cache.last_success_time
-                    if lst is not None and time.time() - lst >= interval:
+                    if lst is None:
+                        continue
+
+                    next_reset = self._seconds_until_next_reset()
+                    if next_reset is not None and next_reset < POLL_FAST:
+                        # Returned within the cooldown window before a reset:
+                        # polling now would advance last_success into that window
+                        # and force the confirming poll to overshoot.  Realign the
+                        # wait to just after the reset and keep waiting for it.
+                        target = self._reset_aligned_poll_target(next_reset)
+                        self._next_poll_time = target
+                        continue
+
+                    if time.time() - lst >= interval:
                         break
 
     # Lifecycle

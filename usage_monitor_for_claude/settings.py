@@ -8,8 +8,8 @@ registry keys, file paths) remain in their respective modules.
 Loads an optional ``usage-monitor-settings.json`` to let users override
 any constant.  Search order:
 
-1. Next to the executable (frozen) or project root (source)
-2. ``$CLAUDE_CONFIG_DIR/usage-monitor-settings.json`` (if set and different from ``~/.claude/``)
+1. ``$CLAUDE_CONFIG_DIR/usage-monitor-settings.json`` (if set and different from ``~/.claude/``)
+2. Next to the executable (frozen) or project root (source)
 3. ``~/.claude/usage-monitor-settings.json``
 
 The app never creates this file - users place it manually.
@@ -17,22 +17,24 @@ The app never creates this file - users place it manually.
 from __future__ import annotations
 
 import ctypes
+import ctypes.wintypes
 import json
 import locale as _locale
-import os
 import sys
 from pathlib import Path
 
+from .instance_id import effective_config_dir, is_default_config_dir
+
 __all__ = [
     'ALERT_TIME_AWARE', 'ALERT_TIME_AWARE_BELOW',
-    'BAR_BG', 'BAR_FG', 'BAR_FG_WARN', 'BAR_MARKER', 'BG',
-    'CURRENCY_SYMBOL',
+    'BAR_BG', 'BAR_DIVIDER', 'BAR_FG', 'BAR_FG_WARN', 'BAR_MARKER', 'BG',
+    'CLI_COMMAND', 'COMPACT_HIDE', 'CURRENCY_SYMBOL',
     'FG', 'FG_DIM', 'FG_HEADING', 'FG_LINK',
     'ICON_DARK', 'ICON_FIELDS', 'ICON_LIGHT', 'IDLE_PAUSE',
-    'LANGUAGE', 'MAX_BACKOFF',
-    'ON_RESET_COMMAND', 'ON_STARTUP_COMMAND', 'ON_THRESHOLD_COMMAND',
+    'LANGUAGE', 'MAX_BACKOFF', 'NOTIFY_CLAUDE_UPDATE',
+    'ON_DOUBLE_CLICK_COMMAND', 'ON_RESET_COMMAND', 'ON_STARTUP_COMMAND', 'ON_THRESHOLD_COMMAND',
     'POLL_ERROR', 'POLL_FAST', 'POLL_FAST_EXTRA', 'POLL_INTERVAL',
-    'POPUP_FIELDS', 'SETTINGS_FILENAME', 'TOOLTIP_FIELDS',
+    'POPUP_FIELDS', 'SETTINGS_FILENAME', 'TIME_FORMAT', 'TOOLTIP_FIELDS',
     'get_alert_thresholds',
 ]
 
@@ -51,9 +53,10 @@ _ICON_KEYS = frozenset({'icon_light', 'icon_dark'})
 _THRESHOLD_KEY_PREFIX = 'alert_thresholds_'
 _PERCENT_KEYS = frozenset({'alert_time_aware_below'})
 _STRING_KEYS = frozenset({'currency_symbol', 'language'})
-_COMMAND_KEYS = frozenset({'on_reset_command', 'on_startup_command', 'on_threshold_command'})
-_BOOL_KEYS = frozenset({'alert_time_aware'})
-_STRING_LIST_KEYS = frozenset({'tooltip_fields'})
+_VALID_TIME_FORMATS = frozenset({'24h', '12h'})
+_COMMAND_KEYS = frozenset({'on_double_click_command', 'on_reset_command', 'on_startup_command', 'on_threshold_command'})
+_BOOL_KEYS = frozenset({'alert_time_aware', 'notify_claude_update'})
+_STRING_LIST_KEYS = frozenset({'tooltip_fields', 'compact_hide'})
 _WILDCARD_STRING_LIST_KEYS = frozenset({'popup_fields'})
 _VALID_BAR_MODES = frozenset({'utilization', 'overage'})
 
@@ -66,17 +69,21 @@ def _load_settings() -> dict:
         app_dir = Path(__file__).resolve().parent.parent
 
     home_claude = Path.home() / '.claude'
-    custom_config = Path(os.environ['CLAUDE_CONFIG_DIR']) if os.environ.get('CLAUDE_CONFIG_DIR') else None
 
-    search_paths = [app_dir / SETTINGS_FILENAME]
-    if custom_config and custom_config != home_claude:
-        search_paths.append(custom_config / SETTINGS_FILENAME)
+    # A custom config dir takes precedence over the exe-adjacent file so
+    # each instance (one per Claude account) can have its own settings.
+    search_paths = []
+    if not is_default_config_dir():
+        search_paths.append(effective_config_dir() / SETTINGS_FILENAME)
+    search_paths.append(app_dir / SETTINGS_FILENAME)
     search_paths.append(home_claude / SETTINGS_FILENAME)
 
     for path in search_paths:
         if path.is_file():
             try:
-                text = path.read_text(encoding='utf-8').strip()
+                # utf-8-sig reads BOM-less UTF-8 identically and strips a BOM
+                # when present (written by e.g. PowerShell 5 or legacy Notepad).
+                text = path.read_text(encoding='utf-8-sig').strip()
                 if not text:
                     return {}
                 data = json.loads(text)
@@ -148,12 +155,20 @@ def _validate(data: dict, path: Path) -> dict:
                 errors.append(f'  {key}: expected a string, got {type(value).__name__}')
                 drop.append(key)
 
+        elif key == 'time_format':
+            if value not in _VALID_TIME_FORMATS:
+                errors.append(f'  {key}: must be "24h" or "12h", got {value!r}')
+                drop.append(key)
+
         elif key in _COMMAND_KEYS:
             if isinstance(value, str):
-                data[key] = [value]
+                # An empty or whitespace-only string means "not set" (like [])
+                # so it never activates the command machinery, e.g. the
+                # double-click handler with its deferred single click.
+                data[key] = [value] if value.strip() else []
             elif isinstance(value, list):
-                if any(not isinstance(item, str) for item in value):
-                    errors.append(f'  {key}: all items must be strings')
+                if any(not isinstance(item, str) or not item.strip() for item in value):
+                    errors.append(f'  {key}: all items must be non-empty strings')
                     drop.append(key)
             else:
                 errors.append(f'  {key}: expected a string or array of strings, got {type(value).__name__}')
@@ -231,6 +246,26 @@ def _validate(data: dict, path: Path) -> dict:
                     errors.append(f'  {key}.{k}: expected [R, G, B, A] with integers 0\u2013255')
                     del value[k]
 
+        elif key == 'cli_command':
+            # An empty object is valid and means "not set" - the native CLI
+            # auto-detection stays active.
+            if not isinstance(value, dict):
+                errors.append(f'  {key}: expected an object mapping a name to a command array, got {type(value).__name__}')
+                drop.append(key)
+            else:
+                invalid = False
+                for name, command in value.items():
+                    if not name.strip():
+                        errors.append(f'  {key}: names must be non-empty strings')
+                        invalid = True
+                        break
+                    if not isinstance(command, list) or not command or any(not isinstance(item, str) or not item.strip() for item in command):
+                        errors.append(f'  {key}.{name}: expected a non-empty array of non-empty strings')
+                        invalid = True
+                        break
+                if invalid:
+                    drop.append(key)
+
     for key in drop:
         del data[key]
 
@@ -276,11 +311,13 @@ ICON_LIGHT = _icon_colors('icon_light', {
     'fg': (255, 255, 255, 255),
     'fg_half': (255, 255, 255, 80),
     'fg_dim': (255, 255, 255, 140),
+    'fg_warn': (224, 80, 80, 255),
 })
 ICON_DARK = _icon_colors('icon_dark', {
     'fg': (0, 0, 0, 255),
     'fg_half': (0, 0, 0, 80),
     'fg_dim': (0, 0, 0, 140),
+    'fg_warn': (224, 80, 80, 255),
 })
 
 # Tray icon fields
@@ -292,9 +329,15 @@ TOOLTIP_FIELDS: list[str] = _S.get('tooltip_fields', ['five_hour', 'seven_day'])
 # Popup fields
 POPUP_FIELDS: list[str] = _S.get('popup_fields', ['*'])
 
+# Sections and usage bars hidden while the popup is pinned (compact view)
+COMPACT_HIDE: list[str] = _S.get('compact_hide', [])
+
 # Alert thresholds
 ALERT_TIME_AWARE: bool = _S.get('alert_time_aware', True)
 ALERT_TIME_AWARE_BELOW: float = _S.get('alert_time_aware_below', 90)
+
+# Notify when a background token refresh installs a new Claude CLI version
+NOTIFY_CLAUDE_UPDATE: bool = _S.get('notify_claude_update', True)
 
 # Currency
 
@@ -308,12 +351,61 @@ def _detect_currency_symbol() -> str:
 
 
 _SYSTEM_CURRENCY_SYMBOL = _detect_currency_symbol()
-CURRENCY_SYMBOL: str = _S.get('currency_symbol', _SYSTEM_CURRENCY_SYMBOL)
+# None when the user set no override: presence must be explicit, because an
+# override that happens to equal the system symbol still has to win over the
+# API billing currency.
+CURRENCY_SYMBOL: str | None = _S.get('currency_symbol')
 
 # Language override
 LANGUAGE: str = _S.get('language', '')
 
+# Clock format for reset times: '24h' (e.g. 14:30) or '12h' (e.g. 2:30 PM)
+
+def _detect_system_time_format() -> str:
+    """Detect whether the system clock uses a 24-hour or 12-hour format.
+
+    On Windows, reads ``LOCALE_ITIME`` for the current user locale, which
+    returns ``1`` for a 24-hour clock and ``0`` for a 12-hour (AM/PM) clock
+    and honors any regional customizations.  On macOS, asks
+    ``NSDateFormatter`` for the locale's preferred hour-cycle template,
+    which contains the ``a`` (AM/PM) symbol only for 12-hour clocks and
+    honors the "24-Hour Time" system setting.  Falls back to ``'24h'`` if
+    the query fails.
+    """
+    if sys.platform == 'darwin':
+        try:
+            from Foundation import NSDateFormatter, NSLocale  # type: ignore[import-untyped]  # pyobjc has no type stubs
+            template = NSDateFormatter.dateFormatFromTemplate_options_locale_('j', 0, NSLocale.currentLocale())
+            return '12h' if 'a' in str(template) else '24h'
+        except Exception:
+            return '24h'
+    if sys.platform != 'win32':
+        return '24h'
+
+    LOCALE_NAME_USER_DEFAULT = None  # NULL selects the current user locale
+    LOCALE_ITIME = 0x00000023
+    LOCALE_RETURN_NUMBER = 0x20000000
+    value = ctypes.wintypes.DWORD()
+    chars = ctypes.windll.kernel32.GetLocaleInfoEx(
+        LOCALE_NAME_USER_DEFAULT, LOCALE_ITIME | LOCALE_RETURN_NUMBER,
+        ctypes.cast(ctypes.byref(value), ctypes.c_wchar_p), 2,
+    )
+    if chars == 0:
+        return '24h'
+    return '24h' if value.value == 1 else '12h'
+
+
+_SYSTEM_TIME_FORMAT = _detect_system_time_format()
+TIME_FORMAT: str = _S.get('time_format', _SYSTEM_TIME_FORMAT)
+
+# Extra Claude CLI command(s) to report a version for - name -> base command
+# (e.g. run the version check inside WSL).  Display only: these are listed in
+# addition to the auto-detected native binary and the IDE extensions, and never
+# take part in authentication (see claude_cli.py).
+CLI_COMMAND: dict[str, list[str]] = _S.get('cli_command', {})
+
 # Event commands
+ON_DOUBLE_CLICK_COMMAND: list[str] = _S.get('on_double_click_command', [])
 ON_RESET_COMMAND: list[str] = _S.get('on_reset_command', [])
 ON_STARTUP_COMMAND: list[str] = _S.get('on_startup_command', [])
 ON_THRESHOLD_COMMAND: list[str] = _S.get('on_threshold_command', [])

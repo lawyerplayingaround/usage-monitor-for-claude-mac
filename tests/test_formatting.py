@@ -14,8 +14,8 @@ from unittest.mock import MagicMock, patch
 
 from usage_monitor_for_claude.formatting import (
     PERIOD_5H, PERIOD_7D,
-    elapsed_pct, expand_popup_fields, field_period, format_credits, format_tooltip,
-    midnight_positions, parse_field_name, popup_label, time_until, tooltip_label,
+    divider_positions, elapsed_pct, expand_popup_fields, field_period, format_credits,
+    format_tooltip, parse_field_name, popup_label, time_until, tooltip_label,
 )
 from usage_monitor_for_claude.i18n import LOCALE_DIR
 
@@ -412,13 +412,13 @@ class TestElapsedPct(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# midnight_positions
+# divider_positions
 # ---------------------------------------------------------------------------
 
-class TestMidnightPositions(unittest.TestCase):
-    """Tests for midnight_positions().
+class TestDividerPositions(unittest.TestCase):
+    """Tests for divider_positions().
 
-    Because midnight_positions converts to local time via astimezone(), tests
+    Because divider_positions converts to local time via astimezone(), tests
     construct inputs relative to the system timezone so results are predictable
     on any machine.
     """
@@ -430,76 +430,116 @@ class TestMidnightPositions(unittest.TestCase):
 
     def test_empty_resets_at(self):
         """Empty resets_at returns empty list."""
-        self.assertEqual(midnight_positions('', PERIOD_7D), [])
+        self.assertEqual(divider_positions('', PERIOD_7D), [])
 
     def test_zero_period(self):
         """period_seconds=0 returns empty list."""
-        self.assertEqual(midnight_positions('2025-01-15T12:00:00+00:00', 0), [])
+        self.assertEqual(divider_positions('2025-01-15T12:00:00+00:00', 0), [])
 
     def test_negative_period(self):
         """Negative period_seconds returns empty list."""
-        self.assertEqual(midnight_positions('2025-01-15T12:00:00+00:00', -100), [])
+        self.assertEqual(divider_positions('2025-01-15T12:00:00+00:00', -100), [])
 
     def test_invalid_iso_string(self):
         """Invalid ISO string returns empty list."""
-        self.assertEqual(midnight_positions('not-a-date', PERIOD_7D), [])
+        self.assertEqual(divider_positions('not-a-date', PERIOD_7D), [])
+        self.assertEqual(divider_positions('not-a-date', PERIOD_5H), [])
 
-    def test_5h_period_no_midnight(self):
-        """5h period within a single day has no midnight crossings."""
-        # Period: 10:00-15:00 local on the same day - no midnight
+    def test_5h_period_has_four_hour_dividers(self):
+        """5h period is split into five equal sections by four dividers."""
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 15, 15, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_5H)
-        self.assertEqual(result, [])
+        result = divider_positions(reset_iso, PERIOD_5H)
+        self.assertEqual(len(result), 4)
+        for pos, expected in zip(result, (0.2, 0.4, 0.6, 0.8)):
+            self.assertAlmostEqual(pos, expected, places=4)
+
+    def test_5h_dividers_independent_of_window_start(self):
+        """Sub-day dividers do not shift with the window's clock alignment."""
+        # Hour-aligned (15:00), mid-hour (15:30), and midnight-spanning (04:00) windows split identically
+        for reset_local in (datetime(2025, 1, 15, 15, 0, 0), datetime(2025, 1, 15, 15, 30, 0), datetime(2025, 1, 16, 4, 0, 0)):
+            result = divider_positions(self._local_to_utc_iso(reset_local), PERIOD_5H)
+            self.assertEqual(len(result), 4)
+            self.assertAlmostEqual(result[0], 0.2, places=4)
+
+    def test_other_subday_periods_have_no_dividers(self):
+        """Sub-day periods other than five hours are not subdivided."""
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 15, 15, 0, 0))
+        for period_seconds in (3600, 3 * 3600, 23 * 3600):
+            self.assertEqual(divider_positions(reset_iso, period_seconds), [])
 
     def test_7d_period_has_seven_midnights(self):
         """7-day period from noon to noon has exactly 7 internal midnight boundaries."""
         # Period: Jan 15 12:00 to Jan 22 12:00 local - midnights on Jan 16-22
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_7D)
+        result = divider_positions(reset_iso, PERIOD_7D)
         self.assertEqual(len(result), 7)
+
+    def test_exactly_one_day_period_uses_midnights(self):
+        """A period of exactly 24h subdivides at midnights, not hours."""
+        # Period: Jan 15 12:00 to Jan 16 12:00 local - single midnight at 0.5
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 12, 0, 0))
+        result = divider_positions(reset_iso, 24 * 3600)
+        self.assertEqual(len(result), 1)
+        self.assertAlmostEqual(result[0], 0.5, places=4)
 
     def test_positions_are_sorted_ascending(self):
         """Positions must be in ascending order."""
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_7D)
+        result = divider_positions(reset_iso, PERIOD_7D)
         self.assertEqual(result, sorted(result))
 
     def test_positions_in_valid_range(self):
         """All positions must be in the range (0.0, 1.0) exclusive."""
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_7D)
+        result = divider_positions(reset_iso, PERIOD_7D)
         for pos in result:
             self.assertGreater(pos, 0.0)
             self.assertLess(pos, 1.0)
 
-    def test_5h_period_spanning_midnight(self):
-        """5h period crossing local midnight has exactly one midnight position."""
-        # Period: 23:00-04:00 local, crosses one midnight
-        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 4, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_5H)
-        self.assertEqual(len(result), 1)
-
-    def test_5h_midnight_position_is_correct(self):
-        """Midnight position in a 5h period crossing midnight at the expected fraction."""
-        # Period: 23:00-04:00 local. Midnight is 1h into a 5h period = 0.2
-        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 4, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_5H)
-        self.assertEqual(len(result), 1)
-        self.assertAlmostEqual(result[0], 0.2, places=2)
-
     def test_near_zero_positions_filtered(self):
-        """Positions very close to 0.0 (< 0.003) are filtered out."""
-        # Period: 23:59:50-04:59:50 local. Midnight is 10s in = 10/18000 ≈ 0.00056, filtered.
-        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 16, 4, 59, 50))
-        result = midnight_positions(reset_iso, PERIOD_5H)
+        """Midnight positions very close to 0.0 (< 0.003) are filtered out."""
+        # Period: Jan 15 23:59:50 to Jan 22 23:59:50 local. First midnight is 10s in ≈ 0.0000165, filtered.
+        reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 23, 59, 50))
+        result = divider_positions(reset_iso, PERIOD_7D)
+        self.assertEqual(len(result), 6)
         for pos in result:
             self.assertGreater(pos, 0.003)
+
+    def _assert_dividers_on_local_midnights(self, reset_iso: str):
+        """Every 7-day divider must land on a real local midnight - also when a
+        DST changeover falls inside the period (the section lengths then differ,
+        but each boundary is still a true midnight)."""
+        positions = divider_positions(reset_iso, PERIOD_7D)
+        self.assertEqual(len(positions), 7)
+
+        start_utc = datetime.fromisoformat(reset_iso) - timedelta(seconds=PERIOD_7D)
+        for rel in positions:
+            local = (start_utc + timedelta(seconds=round(rel * PERIOD_7D))).astimezone()
+            self.assertEqual(
+                (local.hour, local.minute, local.second), (0, 0, 0),
+                f'divider at {local.isoformat()} is not a local midnight',
+            )
+
+    def test_dividers_stay_on_midnights_across_autumn_dst(self):
+        """A week spanning the late-October changeover (EU zones) keeps every
+        divider on a local midnight instead of drifting by the DST shift."""
+        self._assert_dividers_on_local_midnights('2026-10-28T11:00:00+00:00')
+
+    def test_dividers_stay_on_midnights_across_early_november_dst(self):
+        """A week spanning the early-November changeover (US zones) keeps every
+        divider on a local midnight instead of drifting by the DST shift."""
+        self._assert_dividers_on_local_midnights('2026-11-04T11:00:00+00:00')
+
+    def test_dividers_stay_on_midnights_across_spring_dst(self):
+        """A week spanning the late-March changeover (EU zones) keeps every
+        divider on a local midnight instead of drifting by the DST shift."""
+        self._assert_dividers_on_local_midnights('2027-03-31T11:00:00+00:00')
 
     def test_7d_first_position_approximately_correct(self):
         """First midnight in a 7d period starting at noon is at roughly 1/14 of the bar."""
         # Period: Jan 15 12:00 to Jan 22 12:00 local. First midnight is 12h into 168h = 1/14
         reset_iso = self._local_to_utc_iso(datetime(2025, 1, 22, 12, 0, 0))
-        result = midnight_positions(reset_iso, PERIOD_7D)
+        result = divider_positions(reset_iso, PERIOD_7D)
         self.assertGreater(len(result), 0)
         self.assertAlmostEqual(result[0], 12 / 168, places=2)
 
@@ -508,6 +548,7 @@ class TestMidnightPositions(unittest.TestCase):
 # time_until
 # ---------------------------------------------------------------------------
 
+@patch('usage_monitor_for_claude.formatting.TIME_FORMAT', '24h')
 @patch('usage_monitor_for_claude.formatting.T', EN)
 @patch('usage_monitor_for_claude.formatting.datetime')
 class TestTimeUntil(unittest.TestCase):
@@ -515,7 +556,8 @@ class TestTimeUntil(unittest.TestCase):
 
     Uses MagicMock for fromisoformat's return value so that
     astimezone() returns a controlled local datetime, making
-    tests timezone-independent.
+    tests timezone-independent.  ``TIME_FORMAT`` is pinned to ``'24h'`` so the
+    default-format assertions do not depend on the test machine's locale.
     """
 
     def _setup(self, mock_dt, utc_now, local_now, reset_local, remaining):
@@ -574,6 +616,30 @@ class TestTimeUntil(unittest.TestCase):
             datetime(2025, 1, 15, 12, 1, 0), timedelta(minutes=1))
         self.assertEqual(time_until('ignored'), 'Resets in 1m (12:01)')
 
+    def test_imminent_last_minute(self, mock_dt):
+        """Under a minute before the reset shows the imminent marker, not empty."""
+        utc_now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        local_now = datetime(2025, 1, 15, 12, 0, 0)
+        self._setup(mock_dt, utc_now, local_now,
+            datetime(2025, 1, 15, 12, 0, 30), timedelta(seconds=30))
+        self.assertEqual(time_until('ignored'), 'Reset imminent')
+
+    def test_imminent_just_after_reset(self, mock_dt):
+        """Just past the reset (server not caught up yet) still shows the marker."""
+        utc_now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        local_now = datetime(2025, 1, 15, 12, 0, 0)
+        self._setup(mock_dt, utc_now, local_now,
+            datetime(2025, 1, 15, 11, 59, 30), timedelta(seconds=-30))
+        self.assertEqual(time_until('ignored'), 'Reset imminent')
+
+    def test_long_past_reset_returns_empty(self, mock_dt):
+        """A clearly stale (long-past) reset time collapses to empty."""
+        utc_now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
+        local_now = datetime(2025, 1, 15, 12, 0, 0)
+        self._setup(mock_dt, utc_now, local_now,
+            datetime(2025, 1, 15, 11, 58, 0), timedelta(seconds=-120))
+        self.assertEqual(time_until('ignored'), '')
+
     def test_tomorrow(self, mock_dt):
         """Reset tomorrow."""
         utc_now = datetime(2025, 1, 15, 22, 0, 0, tzinfo=timezone.utc)
@@ -615,13 +681,13 @@ class TestTimeUntil(unittest.TestCase):
             datetime(2025, 1, 15, 12, 30, 30), timedelta(hours=2, minutes=30, seconds=30))
         self.assertIn('12:31', time_until('ignored'))
 
-    def test_less_than_60_seconds_returns_empty(self, mock_dt):
-        """Less than 60 seconds remaining rounds to 0 minutes, returns empty."""
+    def test_less_than_60_seconds_shows_imminent(self, mock_dt):
+        """Under a minute before the reset shows the imminent marker instead of empty."""
         utc_now = datetime(2025, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
         local_now = datetime(2025, 1, 15, 12, 0, 0)
         self._setup(mock_dt, utc_now, local_now,
             datetime(2025, 1, 15, 12, 0, 59), timedelta(seconds=59))
-        self.assertEqual(time_until('ignored'), '')
+        self.assertEqual(time_until('ignored'), 'Reset imminent')
 
     def test_exactly_60_seconds_shows_one_minute(self, mock_dt):
         """Exactly 60 seconds remaining rounds to 1 minute, shown."""
@@ -642,6 +708,34 @@ class TestTimeUntil(unittest.TestCase):
 
         self.assertIn('00:00', result)
         self.assertIn('tomorrow', result)
+
+    def test_twelve_hour_pm(self, mock_dt):
+        """clock_24h=False formats an afternoon reset in 12-hour style."""
+        utc_now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        local_now = datetime(2025, 1, 15, 10, 0, 0)
+        self._setup(mock_dt, utc_now, local_now,
+            datetime(2025, 1, 15, 14, 30, 0), timedelta(hours=4, minutes=30))
+        result = time_until('ignored', clock_24h=False)
+        self.assertIn('2:30', result)
+        self.assertNotIn('14:30', result)
+
+    def test_twelve_hour_strips_leading_zero(self, mock_dt):
+        """12-hour morning reset drops the leading zero from the hour."""
+        utc_now = datetime(2025, 1, 15, 5, 0, 0, tzinfo=timezone.utc)
+        local_now = datetime(2025, 1, 15, 5, 0, 0)
+        self._setup(mock_dt, utc_now, local_now,
+            datetime(2025, 1, 15, 9, 5, 0), timedelta(hours=4, minutes=5))
+        result = time_until('ignored', clock_24h=False)
+        self.assertIn('9:05', result)
+        self.assertNotIn('09:05', result)
+
+    def test_twenty_four_hour_explicit(self, mock_dt):
+        """clock_24h=True keeps the existing 24-hour clock string."""
+        utc_now = datetime(2025, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+        local_now = datetime(2025, 1, 15, 10, 0, 0)
+        self._setup(mock_dt, utc_now, local_now,
+            datetime(2025, 1, 15, 14, 30, 0), timedelta(hours=4, minutes=30))
+        self.assertEqual(time_until('ignored', clock_24h=True), 'Resets in 4h 30m (14:30)')
 
 
 # ---------------------------------------------------------------------------
@@ -776,6 +870,17 @@ class TestFormatTooltip(unittest.TestCase):
         data = {'five_hour': {'utilization': 50.0, 'resets_at': ''}}
         self.assertEqual(format_tooltip(data), 'Claude Usage')
 
+    @patch('usage_monitor_for_claude.formatting.time_until', return_value='')
+    @patch('usage_monitor_for_claude.formatting.TOOLTIP_FIELDS', ['five_hour', 'limits'])
+    def test_custom_field_pointing_to_non_dict_skipped(self, _mock_tu):
+        """A configured field holding a non-dict response value (e.g. the limits
+        array) is skipped instead of crashing the poll loop."""
+        data = {
+            'five_hour': {'utilization': 50.0, 'resets_at': ''},
+            'limits': [{'percent': 12, 'group': 'weekly'}],
+        }
+        self.assertEqual(format_tooltip(data), 'Claude Usage\n5h: 50%')
+
 
 # ---------------------------------------------------------------------------
 # tooltip length - Windows limits tooltip text to 127 characters
@@ -830,7 +935,7 @@ class TestFormatCredits(unittest.TestCase):
     """Tests for format_credits()."""
 
     @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
-    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
     @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$4.20')
     def test_uses_locale_currency(self, mock_currency):
         """Uses locale.currency() for formatting."""
@@ -845,7 +950,7 @@ class TestFormatCredits(unittest.TestCase):
         self.assertEqual(format_credits(1000.0), '10,00 $')
 
     @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '')
-    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
     @patch('usage_monitor_for_claude.formatting._locale.currency', side_effect=ValueError)
     def test_no_symbol_plain_number(self, mock_currency):
         """No currency symbol falls back to plain number."""
@@ -859,11 +964,64 @@ class TestFormatCredits(unittest.TestCase):
         self.assertEqual(format_credits(420.0), '¥\u00a04.20')
 
     @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
-    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
     @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$0.00')
     def test_zero_cents(self, mock_currency):
         """Zero cents formats correctly."""
         self.assertEqual(format_credits(0.0), '$0.00')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$10.00')
+    def test_api_currency_overrides_system_symbol(self, mock_currency):
+        """The API billing currency replaces the system symbol when they differ."""
+        self.assertEqual(format_credits(1000.0, 'EUR'), '€10.00')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '€')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', 'CHF')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='10,00 €')
+    def test_user_override_wins_over_api_currency(self, mock_currency):
+        """An explicit currency_symbol override takes precedence over the API currency."""
+        self.assertEqual(format_credits(1000.0, 'USD'), '10,00 CHF')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$10.00')
+    def test_override_equal_to_system_symbol_wins_over_api_currency(self, mock_currency):
+        """An override that happens to equal the system symbol still takes
+        precedence over the API billing currency (e.g. forcing dollars on an
+        en-US system for an account billed in EUR)."""
+        self.assertEqual(format_credits(1000.0, 'EUR'), '$10.00')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '€')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', '')
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='10,00 €')
+    def test_empty_override_suppresses_symbol(self, mock_currency):
+        """An empty currency_symbol override means "no symbol" in the locale
+        formatting path too, not only in the fallback path."""
+        self.assertEqual(format_credits(1000.0), '10,00')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
+    @patch('usage_monitor_for_claude.formatting._locale.currency', side_effect=ValueError)
+    def test_decimal_places_zero_divides_by_one(self, mock_currency):
+        """decimal_places=0 treats the amount as whole units (no /100)."""
+        self.assertEqual(format_credits(1000.0, 'JPY', 0), '¥ 1000')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
+    @patch('usage_monitor_for_claude.formatting._locale.currency', side_effect=ValueError)
+    def test_unknown_currency_uses_iso_code(self, mock_currency):
+        """An unmapped currency code is shown verbatim as the symbol."""
+        self.assertEqual(format_credits(500.0, 'XYZ'), 'XYZ 5.00')
+
+    @patch('usage_monitor_for_claude.formatting._SYSTEM_CURRENCY_SYMBOL', '$')
+    @patch('usage_monitor_for_claude.formatting.CURRENCY_SYMBOL', None)
+    @patch('usage_monitor_for_claude.formatting._locale.currency', return_value='$1.00')
+    def test_decimal_places_scales_amount(self, mock_currency):
+        """decimal_places controls the minor-unit divisor passed to locale.currency."""
+        format_credits(1000.0, 'USD', 3)
+        mock_currency.assert_called_once_with(1.0, grouping=True)
 
 
 if __name__ == '__main__':

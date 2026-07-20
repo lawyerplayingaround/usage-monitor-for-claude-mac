@@ -127,11 +127,21 @@ class UsageCache:
 
     # Public methods
 
-    def ensure_profile(self) -> None:
+    def ensure_profile(self, *, bypass_rate_limit: bool = False) -> None:
         """Fetch the account profile if not yet loaded, or re-fetch if the access token changed (thread-safe).
 
         Acquires ``_lock`` around the HTTP call to prevent concurrent
-        API requests with ``update()``.
+        API requests with ``update()``.  Skips the fetch while a
+        rate-limit backoff is active so a failed profile request does not
+        keep hammering an already 429-limited endpoint.
+
+        Parameters
+        ----------
+        bypass_rate_limit : bool
+            When True, probe the profile even during a 429 backoff.  Used
+            for the immediate account-switch check: the newly selected
+            account has its own quota and cannot be the source of the
+            backoff, so its identity must be readable right away.
         """
         current_token = read_access_token()
         if self._profile is not None and self._profile_token == current_token:
@@ -141,6 +151,15 @@ class UsageCache:
             current_token = read_access_token()
             if self._profile is not None and self._profile_token == current_token:
                 return
+
+            # Respect the rate-limit backoff window. A failed profile fetch
+            # leaves _profile as None, so without this guard every popup open
+            # would re-fire a request against an already 429-limited endpoint
+            # and could prolong the backoff.
+            if not bypass_rate_limit and time.time() < self._rate_limit_until:
+                log.debug('ensure_profile skipped (rate-limit backoff, %.0fs remaining)', self._rate_limit_until - time.time())
+                return
+
             log.info('fetch_profile started')
             with self._lock:
                 profile = fetch_profile()
@@ -150,15 +169,23 @@ class UsageCache:
                 self._version += 1
             log.info('fetch_profile -> %s', 'OK' if profile else 'failed')
 
-    def update(self, force: bool = False) -> UpdateResult:
+    def update(self, *, force: bool = False, bypass_cooldown: bool = False) -> UpdateResult:
         """Fetch usage data with lock and cooldown protection.
 
         Parameters
         ----------
         force : bool
-            When True, bypass the ``POLL_FAST`` minimum-interval cooldown so a
-            user-initiated refresh fetches immediately.  The concurrency lock,
-            rate-limit backoff, and failed-token guard still apply.
+            When True, bypass the ``POLL_FAST`` cooldown and the 429
+            rate-limit backoff for this single fetch.  Used only for an
+            immediate refresh after a confirmed account switch: the newly
+            selected account has no polling history, so it cannot be the
+            source of a rate limit those throttles guard against.  The
+            update lock is still honored, so concurrent fetches never run.
+        bypass_cooldown : bool
+            When True, bypass only the ``POLL_FAST`` cooldown so a
+            user-initiated refresh fetches immediately.  Unlike ``force``,
+            the 429 rate-limit backoff still applies.  The update lock and
+            the failed-token guard are honored by both flags.
 
         Returns
         -------
@@ -172,19 +199,38 @@ class UsageCache:
             return UpdateResult(data=None)
 
         try:
-            return self._update_locked(force=force)
+            return self._update_locked(force=force, bypass_cooldown=bypass_cooldown)
         finally:
             self._lock.release()
 
     # Private helpers
 
-    def _update_locked(self, force: bool = False) -> UpdateResult:
-        """Execute the actual update while holding ``_lock``."""
-        if not force and self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
+    def _update_locked(self, *, force: bool = False, bypass_cooldown: bool = False) -> UpdateResult:
+        """Execute the actual update while holding ``_lock``.
+
+        Parameters
+        ----------
+        force : bool
+            Account-switch fetch - skips both the cooldown and the
+            rate-limit backoff.
+        bypass_cooldown : bool
+            User-initiated refresh - skips only the cooldown.
+        """
+        # Clamp epoch-based throttle state after a backward clock jump
+        # (manual correction, NTP step, VM restore) - otherwise cooldown and
+        # backoff would block fetches until the wall clock catches up with
+        # the pre-jump timestamps, potentially for hours.
+        now = time.time()
+        if self._last_success_time is not None and now < self._last_success_time:
+            self._last_success_time = now - POLL_FAST
+        if self._rate_limit_until - now > MAX_BACKOFF:
+            self._rate_limit_until = now + MAX_BACKOFF
+
+        if not (force or bypass_cooldown) and self._last_success_time is not None and time.time() - self._last_success_time < POLL_FAST:
             log.debug('update skipped (cooldown, %.0fs remaining)', POLL_FAST - (time.time() - self._last_success_time))
             return UpdateResult(data=None)
 
-        if time.time() < self._rate_limit_until:
+        if not force and time.time() < self._rate_limit_until:
             log.debug('update skipped (rate-limit backoff, %.0fs remaining)', self._rate_limit_until - time.time())
             return UpdateResult(data=None)
 
@@ -216,24 +262,23 @@ class UsageCache:
             self._record_error(data)
 
             if data.get('rate_limited'):
-                retry_after = data.get('retry_after')
-                if retry_after is not None and retry_after > 0:
-                    delay = min(max(retry_after, POLL_INTERVAL), MAX_BACKOFF)
-                else:
-                    delay = min(POLL_INTERVAL * (2 ** max(self._consecutive_errors - 1, 0)), MAX_BACKOFF)
-                self._rate_limit_until = time.time() + delay
-                log.warning('fetch_usage -> rate limited, backoff %.0fs', delay)
+                self._apply_rate_limit_backoff(data)
 
             token_refresh = None
             if data.get('auth_error'):
                 log.warning('fetch_usage -> auth error, attempting token refresh')
-                token_refresh = self._try_token_refresh(token_before)
+                token_refresh, retry_data = self._try_token_refresh(token_before)
                 if token_refresh is not None and self._last_error is None:
                     # Token refresh succeeded and retry was successful
                     return UpdateResult(data=self._usage, token_refresh=token_refresh)
                 if token_refresh is None:
                     # Refresh failed or token unchanged - block this token
                     self._last_failed_token = token_before
+                if retry_data is not None:
+                    # Report the retry's failure, not the repaired 401, so the
+                    # caller reacts to the current state (e.g. a 429 backoff
+                    # instead of a stale credentials error).
+                    data = retry_data
             elif not data.get('rate_limited'):
                 log.warning('fetch_usage -> error: %s', data['error'])
 
@@ -247,6 +292,21 @@ class UsageCache:
         log.info('fetch_usage -> OK (5h: %s%%, 7d: %s%%)', pct_5h if pct_5h is not None else '?', pct_7d if pct_7d is not None else '?')
         self._record_success(data)
         return UpdateResult(data=data)
+
+    def _apply_rate_limit_backoff(self, data: dict[str, Any]) -> None:
+        """Arm the 429 backoff window from a rate-limited error response.
+
+        Uses the server's ``Retry-After`` when present (clamped between
+        ``POLL_INTERVAL`` and ``MAX_BACKOFF``), otherwise an exponential
+        backoff based on the consecutive error count.
+        """
+        retry_after = data.get('retry_after')
+        if retry_after is not None and retry_after > 0:
+            delay = min(max(retry_after, POLL_INTERVAL), MAX_BACKOFF)
+        else:
+            delay = min(POLL_INTERVAL * (2 ** max(self._consecutive_errors - 1, 0)), MAX_BACKOFF)
+        self._rate_limit_until = time.time() + delay
+        log.warning('fetch_usage -> rate limited, backoff %.0fs', delay)
 
     def _record_error(self, data: dict[str, Any], *, count: bool = True) -> None:
         """Apply common state updates after a failed API response.
@@ -281,41 +341,56 @@ class UsageCache:
             self._refreshing = False
             self._version += 1
 
-    def _try_token_refresh(self, token_before: str | None) -> RefreshResult | None:
-        """Attempt to refresh the OAuth token via ``claude update``.
+    def _try_token_refresh(self, token_before: str | None) -> tuple[RefreshResult | None, dict[str, Any] | None]:
+        """Obtain a working access token after a 401 and retry the usage fetch.
+
+        If the credentials already hold a different token - the user
+        switched accounts, or the token was refreshed out of band since
+        this request began - it is retried directly, skipping the slow
+        ``claude update``.  Only an unchanged token is refreshed via the
+        CLI.
 
         Parameters
         ----------
         token_before : str or None
-            The token that was used for the failed request.  Used to
-            detect whether the refresh actually produced a new token.
+            The token that was used for the failed request.
 
         Returns
         -------
-        RefreshResult or None
-            The refresh outcome, or ``None`` if the CLI is not available
-            or the token didn't change.
+        tuple[RefreshResult | None, dict | None]
+            The refresh outcome to report to the caller (``None`` when no
+            usable token could be obtained: CLI unavailable, or token
+            unchanged after the refresh), and the retry's API response
+            (``None`` when no retry was made).
         """
-        result = refresh_token()
-        if not result.success:
-            log.info('token refresh failed: %s', result.error)
-            return None
+        result = RefreshResult(success=True, updated=False, old_version='', new_version='', error='')
 
-        if read_access_token() == token_before:
-            log.info('token refresh succeeded but token unchanged')
-            return None
+        if read_access_token() in (token_before, None):
+            # Token unchanged - refresh it via the CLI (claude update).
+            result = refresh_token()
+            if not result.success:
+                log.info('token refresh failed: %s', result.error)
+                return None, None
 
-        # Token changed - retry the API call
-        log.info('token changed, retrying fetch_usage')
+            if read_access_token() == token_before:
+                log.info('token refresh succeeded but token unchanged')
+                return None, None
+
+            log.info('token changed via refresh, retrying fetch_usage')
+        else:
+            log.info('token already changed, retrying fetch_usage without CLI refresh')
+
         data = fetch_usage()
         if 'error' not in data:
             log.info('retry -> OK')
             self._record_success(data)
-            return result
+            return result, data
 
         log.warning('retry -> error: %s', data['error'])
         # Update error message but do not increment _consecutive_errors
         # again (the caller already counted this update cycle as one error).
         self._record_error(data, count=False)
+        if data.get('rate_limited'):
+            self._apply_rate_limit_backoff(data)
 
-        return result
+        return result, data

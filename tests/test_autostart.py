@@ -19,8 +19,20 @@ _WIN32_ONLY = unittest.skipUnless(sys.platform == 'win32', 'Win32 registry autos
 _MAC_ONLY = unittest.skipUnless(sys.platform == 'darwin', 'macOS LaunchAgent autostart')
 
 
+class _DefaultConfigDirTestCase(unittest.TestCase):
+    """Base class pinning the default config dir (no per-instance suffix)."""
+
+    def setUp(self):
+        patcher_suffix = patch.object(autostart_mod, 'config_dir_suffix', return_value='')
+        patcher_default = patch.object(autostart_mod, 'is_default_config_dir', return_value=True)
+        patcher_suffix.start()
+        patcher_default.start()
+        self.addCleanup(patcher_suffix.stop)
+        self.addCleanup(patcher_default.stop)
+
+
 @_WIN32_ONLY
-class TestIsAutostartEnabled(unittest.TestCase):
+class TestIsAutostartEnabled(_DefaultConfigDirTestCase):
     """Tests for is_autostart_enabled()."""
 
     @patch.object(autostart_mod, 'winreg')
@@ -31,7 +43,7 @@ class TestIsAutostartEnabled(unittest.TestCase):
         mock_winreg.OpenKey.return_value.__exit__ = MagicMock(return_value=False)
 
         self.assertTrue(autostart_mod.is_autostart_enabled())
-        mock_winreg.QueryValueEx.assert_called_once_with(mock_key, autostart_mod.AUTOSTART_REG_NAME)
+        mock_winreg.QueryValueEx.assert_called_once_with(mock_key, autostart_mod.AUTOSTART_REG_BASE_NAME)
 
     @patch.object(autostart_mod, 'winreg')
     def test_returns_false_when_key_missing(self, mock_winreg):
@@ -64,7 +76,7 @@ class TestIsAutostartEnabled(unittest.TestCase):
 
 
 @_WIN32_ONLY
-class TestSetAutostart(unittest.TestCase):
+class TestSetAutostart(_DefaultConfigDirTestCase):
     """Tests for set_autostart()."""
 
     @patch.object(autostart_mod, 'winreg')
@@ -77,7 +89,7 @@ class TestSetAutostart(unittest.TestCase):
         autostart_mod.set_autostart(True)
 
         mock_winreg.SetValueEx.assert_called_once_with(
-            mock_key, autostart_mod.AUTOSTART_REG_NAME, 0,
+            mock_key, autostart_mod.AUTOSTART_REG_BASE_NAME, 0,
             mock_winreg.REG_SZ, f'"{sys.executable}"',
         )
 
@@ -90,7 +102,7 @@ class TestSetAutostart(unittest.TestCase):
 
         autostart_mod.set_autostart(False)
 
-        mock_winreg.DeleteValue.assert_called_once_with(mock_key, autostart_mod.AUTOSTART_REG_NAME)
+        mock_winreg.DeleteValue.assert_called_once_with(mock_key, autostart_mod.AUTOSTART_REG_BASE_NAME)
         mock_winreg.SetValueEx.assert_not_called()
 
     @patch.object(autostart_mod, 'winreg')
@@ -127,13 +139,13 @@ class TestSetAutostart(unittest.TestCase):
             autostart_mod.set_autostart(True)
 
         mock_winreg.SetValueEx.assert_called_once_with(
-            mock_key, autostart_mod.AUTOSTART_REG_NAME, 0,
+            mock_key, autostart_mod.AUTOSTART_REG_BASE_NAME, 0,
             mock_winreg.REG_SZ, r'"C:\Program Files\MyApp\app.exe"',
         )
 
 
 @_WIN32_ONLY
-class TestSyncAutostartPath(unittest.TestCase):
+class TestSyncAutostartPath(_DefaultConfigDirTestCase):
     """Tests for sync_autostart_path()."""
 
     @patch.object(autostart_mod, 'winreg')
@@ -176,18 +188,19 @@ class TestSyncAutostartPath(unittest.TestCase):
 
 
 @_MAC_ONLY
-class TestMacOSAutostart(unittest.TestCase):
+class TestMacOSAutostart(_DefaultConfigDirTestCase):
     """Tests for the macOS LaunchAgent plist write path.
 
-    Each test patches ``LAUNCH_AGENT_PATH`` to a tmp file so the real
+    Each test repoints ``_launch_agent_path()`` to a tmp file so the real
     ``~/Library/LaunchAgents`` folder is never touched.
     """
 
     def setUp(self) -> None:
+        super().setUp()
         self._tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmpdir.cleanup)
         self._plist_path = Path(self._tmpdir.name) / 'LaunchAgents' / 'com.usage-monitor-for-claude.plist'
-        self._patch = patch.object(autostart_mod, 'LAUNCH_AGENT_PATH', self._plist_path)
+        self._patch = patch.object(autostart_mod, '_launch_agent_path', return_value=self._plist_path)
         self._patch.start()
         self.addCleanup(self._patch.stop)
 
@@ -287,6 +300,133 @@ class TestMacOSAutostart(unittest.TestCase):
 
     def test_sync_returns_silently_when_plist_absent(self):
         autostart_mod.sync_autostart_path()  # should not raise
+
+
+class TestCustomConfigDirAutostart(unittest.TestCase):
+    """Per-instance registry naming and command for a non-default config dir."""
+
+    def setUp(self):
+        patcher_suffix = patch.object(autostart_mod, 'config_dir_suffix', return_value='_abc123def456')
+        patcher_default = patch.object(autostart_mod, 'is_default_config_dir', return_value=False)
+        patcher_env = patch.dict('os.environ', {'CLAUDE_CONFIG_DIR': r'C:\Users\test\.claude-second'})
+        patcher_suffix.start()
+        patcher_default.start()
+        patcher_env.start()
+        self.addCleanup(patcher_suffix.stop)
+        self.addCleanup(patcher_default.stop)
+        self.addCleanup(patcher_env.stop)
+
+    @patch.object(autostart_mod, 'winreg')
+    def test_enable_uses_suffixed_value_name(self, mock_winreg):
+        """Non-default config dir writes a suffixed registry value name."""
+        mock_key = MagicMock()
+        mock_winreg.OpenKey.return_value.__enter__ = MagicMock(return_value=mock_key)
+        mock_winreg.OpenKey.return_value.__exit__ = MagicMock(return_value=False)
+
+        autostart_mod.set_autostart(True)
+
+        name = mock_winreg.SetValueEx.call_args[0][1]
+        self.assertEqual(name, 'UsageMonitorForClaude_abc123def456')
+
+    @patch.object(autostart_mod, 'winreg')
+    def test_enable_command_includes_config_dir(self, mock_winreg):
+        """Stored command carries --config-dir so autostart targets the right account."""
+        mock_key = MagicMock()
+        mock_winreg.OpenKey.return_value.__enter__ = MagicMock(return_value=mock_key)
+        mock_winreg.OpenKey.return_value.__exit__ = MagicMock(return_value=False)
+
+        autostart_mod.set_autostart(True)
+
+        command = mock_winreg.SetValueEx.call_args[0][4]
+        self.assertEqual(command, f'"{sys.executable}" --config-dir="C:\\Users\\test\\.claude-second"')
+
+    @patch.object(autostart_mod, 'winreg')
+    def test_disable_deletes_suffixed_value(self, mock_winreg):
+        """Disabling removes the per-instance registry value."""
+        mock_key = MagicMock()
+        mock_winreg.OpenKey.return_value.__enter__ = MagicMock(return_value=mock_key)
+        mock_winreg.OpenKey.return_value.__exit__ = MagicMock(return_value=False)
+
+        autostart_mod.set_autostart(False)
+
+        mock_winreg.DeleteValue.assert_called_once_with(mock_key, 'UsageMonitorForClaude_abc123def456')
+
+    @patch.object(autostart_mod, 'set_autostart')
+    @patch.object(autostart_mod, 'winreg')
+    def test_sync_skips_when_command_matches(self, mock_winreg, mock_set):
+        """sync_autostart_path() compares against the command including --config-dir."""
+        mock_key = MagicMock()
+        mock_winreg.OpenKey.return_value.__enter__ = MagicMock(return_value=mock_key)
+        mock_winreg.OpenKey.return_value.__exit__ = MagicMock(return_value=False)
+        stored = f'"{sys.executable}" --config-dir="C:\\Users\\test\\.claude-second"'
+        mock_winreg.QueryValueEx.return_value = (stored, 1)
+
+        autostart_mod.sync_autostart_path()
+
+        mock_set.assert_not_called()
+
+    @patch.object(autostart_mod, 'set_autostart')
+    @patch.object(autostart_mod, 'winreg')
+    def test_sync_updates_when_flag_missing(self, mock_winreg, mock_set):
+        """A stored command without --config-dir is rewritten."""
+        mock_key = MagicMock()
+        mock_winreg.OpenKey.return_value.__enter__ = MagicMock(return_value=mock_key)
+        mock_winreg.OpenKey.return_value.__exit__ = MagicMock(return_value=False)
+        mock_winreg.QueryValueEx.return_value = (f'"{sys.executable}"', 1)
+
+        autostart_mod.sync_autostart_path()
+
+        mock_set.assert_called_once_with(True)
+
+
+@_MAC_ONLY
+class TestMacOSCustomConfigDirAutostart(unittest.TestCase):
+    """Per-instance LaunchAgent naming and command for a non-default config dir."""
+
+    def setUp(self):
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmpdir.cleanup)
+        patcher_home = patch.object(autostart_mod.Path, 'home', return_value=Path(self._tmpdir.name))
+        patcher_suffix = patch.object(autostart_mod, 'config_dir_suffix', return_value='_abc123def456')
+        patcher_default = patch.object(autostart_mod, 'is_default_config_dir', return_value=False)
+        patcher_config = patch.object(autostart_mod, 'effective_config_dir', return_value=Path('/Users/test/.claude-second'))
+        for patcher in (patcher_home, patcher_suffix, patcher_default, patcher_config):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self._plist_path = Path(self._tmpdir.name) / 'Library' / 'LaunchAgents' / 'com.usage-monitor-for-claude_abc123def456.plist'
+
+    def test_enable_writes_suffixed_plist_filename_and_label(self):
+        """Non-default config dir writes a suffixed plist file with a suffixed Label."""
+        autostart_mod.set_autostart(True)
+
+        self.assertTrue(self._plist_path.is_file())
+        content = self._plist_path.read_text()
+        label = content.split('<key>Label</key>', 1)[1].split('<string>', 1)[1].split('</string>', 1)[0]
+        self.assertEqual(label, 'com.usage-monitor-for-claude_abc123def456')
+
+    def test_enable_command_includes_config_dir(self):
+        """Stored launch argv carries --config-dir so autostart targets the right account."""
+        import xml.etree.ElementTree as ET
+        autostart_mod.set_autostart(True)
+
+        root = ET.fromstring(self._plist_path.read_text())
+        program_args = [element.text for element in root.findall('.//array/string')]
+        self.assertEqual(program_args, [sys.executable, '--config-dir=/Users/test/.claude-second'])
+
+    def test_associated_bundle_identifier_stays_base_label(self):
+        """Login Items attribution needs the app bundle id, never the suffixed label."""
+        autostart_mod.set_autostart(True)
+
+        content = self._plist_path.read_text()
+        bundle_assoc = content.split('AssociatedBundleIdentifiers</key>', 1)[1]
+        self.assertIn('<string>com.usage-monitor-for-claude</string>', bundle_assoc)
+
+    def test_disable_removes_suffixed_plist(self):
+        autostart_mod.set_autostart(True)
+        self.assertTrue(self._plist_path.is_file())
+
+        autostart_mod.set_autostart(False)
+        self.assertFalse(self._plist_path.is_file())
 
 
 if __name__ == '__main__':

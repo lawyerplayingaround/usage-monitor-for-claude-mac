@@ -10,9 +10,16 @@
 
 **Monitor your Claude rate limits in real time - from your Windows system tray or your macOS menu bar.**
 
-A native tray/menu bar app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, Claude Code Cowork, and IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits (Sonnet, Opus, Cowork, and any future quota types) you have left.
+A native tray/menu bar app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, Claude Code Cowork, and IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits (Sonnet, Opus, Fable, Cowork, and any future quota types) you have left.
 
 ![Detail popup showing account info and usage bars](screenshot.png)
+
+> [!TIP]
+> **Companion tool: [Agent Monitor for Claude](https://github.com/jens-duttke/agent-monitor-for-claude)**
+>
+> Usage Monitor for Claude tells you *how much* of your rate limits you have left. Its companion tool, [**Agent Monitor for Claude**](https://github.com/jens-duttke/agent-monitor-for-claude), tells you *what your agents are actually doing* - a live overview of every running Claude Code agent across all your projects: which ones are working, waiting for your input, blocked, finished, or errored, refreshed every few seconds. Agents are grouped by project with the ones that need attention floated to the top, each with its estimated cost, token breakdown, model, and host - and one click brings any agent's window to the foreground. If you run more than one agent at a time, it turns "which window was that again?" into a glance at the tray.
+>
+> You can even [launch it with a double-click on the tray icon](docs/event-commands.md#launch-agent-monitor-for-claude-on-double-click).
 
 ## What this fork adds
 
@@ -34,13 +41,14 @@ See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergenc
 - **Portable** - single executable, no installation, no Electron, no runtime required (Windows EXE ~12.5 MB; macOS `.app` ~32 MB onedir bundle). Download, place anywhere, run. To uninstall, drag it away
 - **Zero configuration** - authenticates through your existing Claude Code login, no API key or manual token entry needed
 - **Live tray / menu bar icon** with two [configurable](docs/configuration.md#tray-icon-bars) progress bars (session + weekly by default), [configurable tooltip](docs/configuration.md#tooltip-fields), percentage display, and theme-aware colors for light and dark backgrounds
-- **Detail popup** (left-click) showing account info, dynamically detected usage bars for all active quota types (Session, Weekly, Sonnet, Opus, Cowork, and any new quotas Anthropic adds) with [configurable field selection](docs/configuration.md#popup-fields), extra usage, reset countdowns, a stale-data indicator when values may be outdated, and a refresh button to force an immediate update on demand
-- **Claude Code versions** - the popup shows which version is installed in each environment (native CLI, VS Code, Cursor, Windsurf), making it easy to spot when your IDE extension is ahead of or behind the CLI
+- **Detail popup** (left-click) showing account info, dynamically detected usage bars for all active quota types (Session, Weekly, Sonnet, Opus, Fable, Cowork, and any new quotas Anthropic adds) with [configurable field selection](docs/configuration.md#popup-fields), extra usage, reset countdowns, a stale-data indicator when values may be outdated, and a refresh button to force an immediate update on demand; pin it open and move it while pinned (Windows) to keep usage details visible during long sessions, and [configure a compact pinned view](docs/configuration.md#compact-pinned-view) that hides the sections and bars you do not need. Reset times follow your system's 24-hour or 12-hour clock format automatically
+- **Claude Code versions** - the popup shows which version is installed in each environment (native CLI, VS Code, Cursor, Windsurf), making it easy to spot when your IDE extension is ahead of or behind the CLI. Run Claude Code somewhere the app cannot see it, such as WSL? Add it with the [`cli_command`](docs/configuration.md#claude-cli-command) setting and its version is listed alongside the rest
 - **Smart alerts** - configurable threshold notifications per quota type, with time-aware mode that only alerts when usage outpaces elapsed time. Reset notifications when a nearly exhausted quota refills
-- **[Event commands](docs/event-commands.md)** - run a custom shell command when a quota resets, a usage threshold is crossed, or the app starts up. Send push notifications to your phone, resume an AI agent, start a fresh 5-hour session automatically, play an alert sound, or trigger any custom workflow
-- **Time marker** on each bar showing elapsed time in the current period, so you can instantly see whether your usage is ahead of or behind the clock
-- **Automatic token refresh** - when the OAuth session expires, runs `claude update` in the background to renew the token without user intervention. If a CLI update is installed, shows a notification
-- **Adaptive polling** - speeds up during active usage, pauses when the computer is idle or locked, aligns to imminent quota resets, and backs off on rate-limit errors
+- **[Event commands](docs/event-commands.md)** - run a custom shell command when a quota resets, a usage threshold is crossed, the app starts up, or you double-click the tray icon. Send push notifications to your phone, resume an AI agent, start a fresh 5-hour session automatically, play an alert sound, launch a companion tool like [Agent Monitor for Claude](https://github.com/jens-duttke/agent-monitor-for-claude) on double-click, or trigger any custom workflow
+- **Time marker** on each bar showing elapsed time in the current period - in the detail popup and on the tray icon bars - so you can instantly see whether your usage is ahead of or behind the clock; bars that outpace the clock turn red, in the popup and tray alike
+- **Automatic token refresh** - when the OAuth session expires, runs `claude update` in the background to renew the token without user intervention. If a CLI update is installed, shows a notification (which you can turn off via the `notify_claude_update` setting)
+- **Adaptive polling** - speeds up during active usage, pauses when the computer is idle or locked, aligns to imminent quota resets, and backs off on rate-limit errors. Switching your Claude account refreshes the tray immediately, so it never lingers on the previous account's usage
+- **Multi-account** - monitor several Claude accounts side by side: launch one instance per account with `--config-dir="<path>"` pointing at each account's Claude config directory. Each tray icon shows its account's usage, with a `[dir-name]` tooltip prefix, per-instance settings, and its own autostart entry
 - **13 languages** (English, German, French, Spanish, Portuguese, Italian, Japanese, Korean, Hindi, Indonesian, Chinese Simplified, Chinese Traditional, Ukrainian) - auto-detected from your system language, with optional manual override via the `language` setting
 - **[Customizable](docs/configuration.md)** - optionally override polling intervals, colors, alert thresholds, and more via a JSON settings file
 
@@ -64,7 +72,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 
 - **macOS 11 (Big Sur) or later, on Apple Silicon** for the `.app` release of this fork. The build is `target_arch='arm64'`; switch to `universal2` in the spec if Intel Mac support is needed.
 - **Windows 10 or Windows 11** (64-bit) is also supported by the same source tree (the fork preserves all Windows code paths), but pre-built EXEs come from the [upstream release](https://github.com/jens-duttke/usage-monitor-for-claude/releases).
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). On Windows the app reads the OAuth token from `~/.claude/.credentials.json`; on macOS it reads from the system **Keychain** via `/usr/bin/security find-generic-password` (no file cache). If you have `CLAUDE_CONFIG_DIR` set, the Windows path honors it.
+- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). On Windows the app reads the OAuth token from `~/.claude/.credentials.json`; on macOS it reads from the system **Keychain** via `/usr/bin/security find-generic-password` (no file cache). If you have `CLAUDE_CONFIG_DIR` set, the Windows path honors it, and the `--config-dir="<path>"` command-line parameter overrides both - useful to run one instance per Claude account (log each extra account in via Claude Code with `CLAUDE_CONFIG_DIR` pointing to its own directory first).
 
 > [!TIP]
 > If the token expires, the app automatically runs `claude update` to refresh it. If the token is missing entirely, the app shows a notification and a "!" icon - log in to Claude Code and the monitor picks it up automatically.
@@ -94,6 +102,7 @@ To remove: turn off "Start at login" from the menu bar context menu first (if en
 |---|---|
 | **Hover** over the tray icon | Tooltip shows 5h and 7d usage percentages with reset times |
 | **Left-click** the tray icon | Opens the detail popup with account info and all usage bars |
+| **Double-click** the tray icon | Runs the [`on_double_click_command`](docs/event-commands.md) if configured (e.g. launch [Agent Monitor for Claude](https://github.com/jens-duttke/agent-monitor-for-claude)); otherwise does nothing |
 | **Right-click** the tray icon | Context menu: open popup, autostart toggle, test event commands, restart, GitHub link, or quit |
 | **Escape** or click outside | Closes the detail popup |
 
@@ -112,7 +121,7 @@ To remove: turn off "Start at login" from the menu bar context menu first (if en
 Each bar in the detail popup has up to four visual elements:
 
 1. **Blue fill** - how much of the limit you have used
-2. **Day dividers** - subtle gaps at local midnight boundaries, visually grouping usage into day segments (visible on the weekly bar)
+2. **Time dividers** - subtle gaps splitting the session bar into equal hour sections and marking local midnights on the weekly bars, visually grouping usage into hour and day segments
 3. **White vertical line** - how much *time* has passed in the current period. The fill turns **red** when it passes this marker, warning that you may hit the limit before the period resets.
 4. **Reset text** - when the limit resets, shown as a countdown with clock time
 
@@ -130,10 +139,11 @@ All settings work out of the box - no configuration file is needed. To customize
 }
 ```
 
-The app searches for this file in two locations (first match wins):
+The app searches for this file in these locations (first match wins):
 
-1. **Next to the EXE** (or project root when running from source)
-2. **`~/.claude/usage-monitor-settings.json`** (or `$CLAUDE_CONFIG_DIR/usage-monitor-settings.json` if set)
+1. **`$CLAUDE_CONFIG_DIR/usage-monitor-settings.json`** (when a custom config directory is set via `--config-dir` or `CLAUDE_CONFIG_DIR`) - so each instance can have its own settings
+2. **Next to the EXE** (or project root when running from source)
+3. **`~/.claude/usage-monitor-settings.json`**
 
 The app never creates or modifies this file. See [Configuration](docs/configuration.md) for all available settings (alert thresholds, polling intervals, colors, language, and more).
 
@@ -192,10 +202,10 @@ The same `build.py` and `usage_monitor_for_claude.spec` produce the appropriate 
 The popup UI lives in [`usage_monitor_for_claude/popup/`](usage_monitor_for_claude/popup/) as separate HTML, CSS, and JS files. To preview and iterate on the UI without running the full app:
 
 ```bash
-start http://localhost:8080/dev.html && python -m http.server 8080 -d usage_monitor_for_claude/popup
+start http://localhost:8080/usage_monitor_for_claude/popup/dev.html && python -m http.server 8080
 ```
 
-This starts a local server and opens the dev preview in your default browser. Use the buttons to switch between data presets (full, minimal, error, loading) and test CSS/JS changes with instant feedback.
+This starts a local server and opens the dev preview in your default browser. Use the buttons to switch between data presets (full, minimal, error, loading) and the language dropdown to preview every locale (so you can spot strings that overflow the popup width). Test CSS/JS changes with instant feedback.
 
 ### Create a Release
 

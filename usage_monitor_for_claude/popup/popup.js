@@ -3,6 +3,9 @@ let statusState = {};
 let translations = {};
 let textTimerId = null;
 let refreshCooldownId = null;
+let popupPinned = false;
+let compactHide = [];
+let lastData = null;
 
 // After a manual refresh, briefly disable the button so rapid clicks cannot
 // burst-fetch the usage endpoint into a rate limit. The first click is still
@@ -24,6 +27,7 @@ function init(config) {
     }
 
     translations = config.t;
+    compactHide = config.compact_hide || [];
     document.getElementById('title').textContent = translations.title;
     document.getElementById('headingAccount').textContent = translations.account;
     document.getElementById('labelEmail').textContent = translations.email;
@@ -36,6 +40,8 @@ function init(config) {
     changelogLink.textContent = translations.changelog;
     changelogLink.addEventListener('click', () => pywebview.api.open_url());
     document.getElementById('closeBtn').addEventListener('click', () => pywebview.api.close());
+    setupPinButton();
+    setupPinnedDrag();
 
     const refreshBtn = document.getElementById('refreshBtn');
     refreshBtn.title = translations.refresh;
@@ -51,6 +57,7 @@ function init(config) {
         planRow: document.getElementById('planRow'),
         planValue: document.getElementById('planValue'),
         usageSection: document.getElementById('usageSection'),
+        headingUsage: document.getElementById('headingUsage'),
         usageBars: document.getElementById('usageBars'),
         extraSection: document.getElementById('extraSection'),
         extraSpent: document.getElementById('extraSpent'),
@@ -67,14 +74,123 @@ function init(config) {
     requestAnimationFrame(() => document.body.classList.add('open'));
 }
 
+function setupPinButton() {
+    const pinBtn = document.getElementById('pinBtn');
+
+    // Pinning needs host-side window support. When the bridge does not
+    // expose it (the macOS host implements only close, open_url, refresh
+    // and report_height), hide the button instead of showing a dead control.
+    if (!window.pywebview?.api?.set_pinned) {
+        pinBtn.style.display = 'none';
+        return;
+    }
+
+    function render() {
+        document.body.classList.toggle('pinned', popupPinned);
+        pinBtn.classList.toggle('pinned', popupPinned);
+        pinBtn.setAttribute('aria-pressed', popupPinned ? 'true' : 'false');
+        pinBtn.setAttribute('aria-label', popupPinned ? translations.unpin_popup : translations.pin_popup);
+        pinBtn.title = popupPinned ? translations.unpin_popup : translations.pin_popup;
+    }
+
+    pinBtn.addEventListener('click', () => {
+        const nextPinned = !popupPinned;
+        popupPinned = nextPinned;
+        render();
+        reapplyData();
+        pywebview.api.set_pinned(nextPinned).then((applied) => {
+            popupPinned = !!applied;
+            render();
+            reapplyData();
+        }).catch(() => {
+            popupPinned = !nextPinned;
+            render();
+            reapplyData();
+        });
+    });
+
+    render();
+}
+
+/**
+ * Return true if a section or usage bar is hidden by the pinned compact view.
+ *
+ * Hiding only applies while the popup is pinned; unpinned it always shows
+ * everything.  `key` is a section key (account, extra_usage, claude_code,
+ * status) or a usage field name (e.g. seven_day_opus).
+ */
+function compactHidden(key) {
+    return popupPinned && compactHide.includes(key);
+}
+
+// Re-render the last snapshot so compact hiding takes effect on pin toggle.
+function reapplyData() {
+    if (lastData) {
+        updateData(lastData);
+    }
+}
+
+function setupPinnedDrag() {
+    // Move-while-pinned needs the same host-side support as pinning; without
+    // the drag bridge methods (macOS host) register no handlers at all.
+    if (!window.pywebview?.api?.begin_drag) {
+        return;
+    }
+
+    const header = document.querySelector('header');
+    let dragging = false;
+
+    function setDragging(active) {
+        dragging = active;
+        header.classList.toggle('dragging', active);
+    }
+
+    header.addEventListener('mousedown', (event) => {
+        if (!popupPinned || event.button !== 0 || event.target.closest('button')) {
+            return;
+        }
+        event.preventDefault();
+        setDragging(true);
+        pywebview.api.begin_drag().then((started) => {
+            setDragging(!!started);
+        }).catch(() => {
+            setDragging(false);
+        });
+    });
+
+    document.addEventListener('mousemove', (event) => {
+        if (!dragging) {
+            return;
+        }
+        // No button held (e.g. released outside the window): stop dragging.
+        if (event.buttons === 0) {
+            setDragging(false);
+            pywebview.api.end_drag();
+            return;
+        }
+        pywebview.api.drag().catch(() => {});
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (!dragging) {
+            return;
+        }
+        setDragging(false);
+        pywebview.api.end_drag();
+    });
+}
+
 /**
  * Update all popup sections with fresh data from Python.
  *
  * @param {object} data - Pre-formatted snapshot from _snapshot_to_dict().
  */
 function updateData(data) {
+    lastData = data;
+
     const hasProfile = !!data.profile;
-    els.accountSection.classList.toggle('visible', hasProfile);
+    const accountVisible = hasProfile && !compactHidden('account');
+    els.accountSection.classList.toggle('visible', accountVisible);
     if (hasProfile) {
         els.emailValue.textContent = data.profile.email;
         els.emailRow.style.display = data.profile.email ? '' : 'none';
@@ -82,14 +198,16 @@ function updateData(data) {
         els.planRow.style.display = data.profile.plan ? '' : 'none';
     }
 
-    const hasUsage = !!data.usage?.length;
+    const usage = (data.usage || []).filter((entry) => !compactHidden(entry.key));
+    const hasUsage = !!usage.length;
     els.usageSection.classList.toggle('visible', hasUsage);
     if (hasUsage) {
-        updateUsageBars(data.usage);
+        updateUsageBars(usage);
     }
 
     const hasExtra = !!data.extra;
-    els.extraSection.classList.toggle('visible', hasExtra);
+    const extraVisible = hasExtra && !compactHidden('extra_usage');
+    els.extraSection.classList.toggle('visible', extraVisible);
     if (hasExtra) {
         els.extraSpent.textContent = data.extra.spent_text;
         els.extraPct.textContent = data.extra.pct_text;
@@ -97,7 +215,13 @@ function updateData(data) {
     }
 
     const hasInstalls = !!data.installations?.length;
-    els.installSection.classList.toggle('visible', hasInstalls);
+    const installsVisible = hasInstalls && !compactHidden('claude_code');
+    els.installSection.classList.toggle('visible', installsVisible);
+
+    // The "Usage" heading only labels the bars against the other sections;
+    // when the usage bars stand alone, drop the now-redundant heading.
+    els.headingUsage.style.display = (hasUsage && !accountVisible && !extraVisible && !installsVisible) ? 'none' : '';
+
     if (hasInstalls) {
         els.installRows.replaceChildren(...data.installations.map((inst) => {
             const row = document.createElement('div');
@@ -130,7 +254,9 @@ function updateStatus(status) {
         return;
     }
 
-    els.statusSection.classList.add('visible');
+    // Keep the live timer running even when the footer is hidden in compact
+    // view, so the stale-dimming of the usage bars still updates.
+    els.statusSection.classList.toggle('visible', !compactHidden('status'));
 
     if (status.last_success_time !== undefined) {
         statusState = {
@@ -145,7 +271,7 @@ function updateStatus(status) {
     } else {
         statusState = {};
         els.statusText.textContent = status.text || '';
-        els.statusText.title = status.text || '';
+        els.statusText.title = status.is_error ? (status.text || '') : '';
         els.statusSection.classList.toggle('error', !!status.is_error);
     }
 
@@ -217,7 +343,8 @@ function tickStatusText() {
     }
 
     els.statusText.textContent = parts.join(' \u00b7 ');
-    els.statusText.title = els.statusText.textContent;
+    // Errors are raw API messages that can overflow; reveal the full text on hover.
+    els.statusText.title = statusState.error ? els.statusText.textContent : '';
 }
 
 /**
@@ -260,7 +387,14 @@ function formatCountdown(totalSeconds) {
 }
 
 function updateUsageBars(entries) {
-    if (entries.length !== els.usageBars.children.length) {
+    // Rebuild whenever the field set changes, not only the count - after an
+    // account switch the same number of bars can carry different quotas, and
+    // an in-place update would show the new values under the old labels.
+    const bars = els.usageBars.children;
+    const sameFields = entries.length === bars.length
+        && entries.every((entry, i) => bars[i].dataset.key === entry.key);
+
+    if (!sameFields) {
         els.usageBars.replaceChildren(...entries.map(createBarElement));
         requestAnimationFrame(() => {
             for (let i = 0; i < entries.length; i++) {
@@ -278,6 +412,7 @@ function updateUsageBars(entries) {
 function createBarElement(entry) {
     const div = document.createElement('div');
     div.className = 'usage-entry';
+    div.dataset.key = entry.key;
 
     const header = document.createElement('div');
     header.className = 'bar-header';
@@ -296,7 +431,7 @@ function createBarElement(entry) {
     fill.style.width = '0%';
     container.appendChild(fill);
 
-    for (const pos of entry.midnights) {
+    for (const pos of entry.dividers) {
         const d = document.createElement('div');
         d.className = 'bar-divider';
         d.style.left = `calc(${pos * 100}% - 1px)`;
@@ -337,29 +472,27 @@ function updateBarElement(div, entry) {
             marker.className = 'bar-marker';
             container.appendChild(marker);
         }
-        marker.style.left = `${entry.marker_rel * 100}%`;
+        marker.style.left = `calc(${entry.marker_rel * 100}% - 1px)`;
     } else if (marker) {
         marker.remove();
     }
 
     for (const d of container.querySelectorAll('.bar-divider')) d.remove();
-    for (const pos of entry.midnights) {
+    for (const pos of entry.dividers) {
         const d = document.createElement('div');
         d.className = 'bar-divider';
-        d.style.left = `${pos * 100}%`;
+        d.style.left = `calc(${pos * 100}% - 1px)`;
         container.appendChild(d);
     }
 
     let resetEl = div.querySelector('.reset-text');
     if (entry.reset_text) {
-        if (resetEl) {
-            resetEl.textContent = entry.reset_text;
-        } else {
+        if (!resetEl) {
             resetEl = document.createElement('div');
             resetEl.className = 'reset-text';
-            resetEl.textContent = entry.reset_text;
             div.appendChild(resetEl);
         }
+        resetEl.textContent = entry.reset_text;
     } else if (resetEl) {
         resetEl.remove();
     }

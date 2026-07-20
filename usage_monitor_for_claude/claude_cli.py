@@ -16,6 +16,8 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from .settings import CLI_COMMAND
+
 # CREATE_NO_WINDOW hides the brief console flash when subprocess.run() spawns
 # a child on Windows.  On POSIX systems there is no attached console for
 # windowless apps, so the flag is omitted entirely.
@@ -91,6 +93,14 @@ __all__ = ['CLAUDE_CLI_PATH', 'CHANGELOG_URL', 'PROJECT_URL', 'ClaudeInstallatio
 # Cache: path → (mtime, version) - avoids re-running subprocess when the binary hasn't changed
 _version_cache: dict[Path, tuple[float, str]] = {}
 
+# Cache for a custom cli_command version, keyed by the command tuple.  A custom
+# command (e.g. a WSL invocation) has no local file to stat for change
+# detection, so its version is cached for the process lifetime: updating that
+# CLI is picked up on the next app start.  Spawning it per read is not an
+# option - the popup re-reads on every data change, which would boot WSL every
+# few minutes.
+_command_version_cache: dict[tuple[str, ...], str] = {}
+
 
 @dataclass
 class ClaudeInstallation:
@@ -115,14 +125,16 @@ class RefreshResult:
 def find_installations() -> list[ClaudeInstallation]:
     """Discover Claude Code installations on the system.
 
-    Checks the native CLI path and common IDE extension directories.
-    Extension versions are extracted from directory names (no subprocess
-    needed).  The CLI version is read via ``claude --version``.
+    Checks the native CLI path, any ``cli_command`` configured by the user
+    (e.g. a WSL install), and common IDE extension directories.  Extension
+    versions are extracted from directory names (no subprocess needed).
+    CLI versions are read via ``claude --version``.
 
     Returns
     -------
     list[ClaudeInstallation]
-        Found installations sorted by name, CLI first.
+        Found installations, native CLI first, then configured commands,
+        then IDE extensions.
     """
     results: list[ClaudeInstallation] = []
 
@@ -132,27 +144,41 @@ def find_installations() -> list[ClaudeInstallation]:
         if version:
             results.append(ClaudeInstallation('CLI', version, CLAUDE_CLI_PATH))
 
+    # Configured commands - listed in addition to the native CLI, which stays
+    # visible because it is the install this app authenticates and refreshes with
+    for name, command in CLI_COMMAND.items():
+        version = _command_version(command)
+        if version:
+            # A custom command has no single binary path; its last argument
+            # is the closest match (e.g. the claude path behind ``wsl``).
+            results.append(ClaudeInstallation(name, version, Path(command[-1])))
+
     # IDE extensions - extract version from directory name
     for ide_name, ext_dir in _EXTENSION_DIRS:
-        if not ext_dir.is_dir():
-            continue
-
-        best_version = ''
-        best_parts: tuple[int, ...] = ()
-        best_path = None
-        for entry in ext_dir.iterdir():
-            if not entry.name.startswith(_EXTENSION_PREFIX):
+        try:
+            if not ext_dir.is_dir():
                 continue
-            # Directory name format: anthropic.claude-code-X.Y.Z-win32-x64
-            remainder = entry.name[len(_EXTENSION_PREFIX):]
-            match = re.match(r'(\d+\.\d+\.\d+)', remainder)
-            if match:
-                version = match.group(1)
-                parts = tuple(int(x) for x in version.split('.'))
-                if parts > best_parts:
-                    best_version = version
-                    best_parts = parts
-                    best_path = entry
+
+            best_version = ''
+            best_parts: tuple[int, ...] = ()
+            best_path = None
+            for entry in ext_dir.iterdir():
+                if not entry.name.startswith(_EXTENSION_PREFIX):
+                    continue
+                # Directory name format: anthropic.claude-code-X.Y.Z-win32-x64
+                remainder = entry.name[len(_EXTENSION_PREFIX):]
+                match = re.match(r'(\d+\.\d+\.\d+)', remainder)
+                if match:
+                    version = match.group(1)
+                    parts = tuple(int(x) for x in version.split('.'))
+                    if parts > best_parts:
+                        best_version = version
+                        best_parts = parts
+                        best_path = entry
+        except OSError:
+            # A directory that exists but cannot be enumerated (ACL denial,
+            # broken junction, cloud placeholder) must not break the popup.
+            continue
 
         if best_version and best_path:
             results.append(ClaudeInstallation(ide_name, best_version, best_path))
@@ -163,8 +189,11 @@ def find_installations() -> list[ClaudeInstallation]:
 def refresh_token() -> RefreshResult:
     """Run ``claude update`` to refresh the OAuth token.
 
-    Uses the native CLI binary only.  Parses the output to detect
-    whether an update was installed.
+    Uses the native CLI binary only - a ``cli_command`` entry is display
+    only.  The refresh works because the CLI renews the expired token in
+    the credentials file this app reads; a CLI behind ``cli_command``
+    (e.g. a WSL install) keeps its own credentials inside WSL and would
+    leave that file untouched, so the token would never change.
 
     Returns
     -------
@@ -227,10 +256,41 @@ def cli_version(path: Path) -> str:
             [str(path), '--version'],
             capture_output=True, text=True, timeout=10, **_NO_CONSOLE_KWARGS,
         )
-        # Output format: "2.1.69 (Claude Code)"
-        match = re.match(r'(\d+\.\d+\.\d+)', proc.stdout.strip())
-        version = match.group(1) if match else ''
+        version = _parse_version(proc.stdout)
         _version_cache[path] = (mtime, version)
         return version
     except Exception:
         return ''
+
+
+def _command_version(command: list[str]) -> str:
+    """Run ``<command> --version`` and return the version string, or ``''``.
+
+    Used for a custom ``cli_command`` that has no local file to stat; the
+    result is cached per command tuple for the process lifetime.
+    """
+    key = tuple(command)
+    cached = _command_version_cache.get(key)
+    if cached is not None:
+        return cached
+
+    try:
+        proc = subprocess.run(
+            [*command, '--version'],
+            capture_output=True, text=True, timeout=10, **_NO_CONSOLE_KWARGS,
+        )
+    except Exception:
+        return ''
+
+    version = _parse_version(proc.stdout)
+    _command_version_cache[key] = version
+    return version
+
+
+def _parse_version(output: str) -> str:
+    """Extract a leading ``X.Y.Z`` version from ``--version`` output.
+
+    Output format: ``"2.1.69 (Claude Code)"``.
+    """
+    match = re.match(r'(\d+\.\d+\.\d+)', output.strip())
+    return match.group(1) if match else ''

@@ -12,7 +12,9 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from usage_monitor_for_claude.app import UsageMonitorForClaude
+from usage_monitor_for_claude.app import (
+    POLL_FAST, RESET_BUFFER, WM_LBUTTONDBLCLK, WM_LBUTTONUP, UsageMonitorForClaude, _align_to_reset,
+)
 from usage_monitor_for_claude.cache import UpdateResult
 from usage_monitor_for_claude.claude_cli import RefreshResult
 
@@ -33,14 +35,27 @@ def _make_app(thresholds: list[float] | None = None) -> UsageMonitorForClaude:
          patch('usage_monitor_for_claude.app.get_icon_layout', return_value='classic'):
         app = UsageMonitorForClaude()
     app.icon = MagicMock()
-    app._thresholds_patch = patch('usage_monitor_for_claude.app.get_alert_thresholds', return_value=thresholds)
-    app._thresholds_patch.start()
+    # Patches active for the app's lifetime, stopped by _cleanup.  The presence
+    # defaults keep _is_user_away() False so notification tests are deterministic
+    # regardless of the real machine's idle/lock state (idle/lock tests override).
+    # ICON_FIELDS is pinned to its default so render tests do not inherit a
+    # usage-monitor-settings.json present on the machine running the suite
+    # (tests for custom fields override it per test).
+    app._patches = [
+        patch('usage_monitor_for_claude.app.get_alert_thresholds', return_value=thresholds),
+        patch('usage_monitor_for_claude.app.is_workstation_locked', return_value=False),
+        patch('usage_monitor_for_claude.app.get_idle_seconds', return_value=0.0),
+        patch('usage_monitor_for_claude.app.ICON_FIELDS', ['five_hour', 'seven_day']),
+    ]
+    for active_patch in app._patches:
+        active_patch.start()
     return app
 
 
 def _cleanup(app: UsageMonitorForClaude) -> None:
     """Stop patches started by _make_app."""
-    app._thresholds_patch.stop()
+    for active_patch in app._patches:
+        active_patch.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -428,7 +443,7 @@ class TestExtraUsageAlerts(unittest.TestCase):
 
     def test_notification_includes_credit_amounts(self):
         """Notification message includes formatted credit amounts."""
-        with patch('usage_monitor_for_claude.app.format_credits', side_effect=lambda c: f'${c / 100:.2f}'):
+        with patch('usage_monitor_for_claude.app.format_credits', side_effect=lambda c, *_: f'${c / 100:.2f}'):
             self.app._check_extra_usage_alerts(self._extra_data(used=820, limit=1000))
 
         args = self.app.icon.notify.call_args[0]
@@ -528,6 +543,20 @@ class TestUpdateOrchestration(unittest.TestCase):
 
         self.app.icon.notify.assert_not_called()
 
+    @patch('usage_monitor_for_claude.app.NOTIFY_CLAUDE_UPDATE', False)
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_update_notification_suppressed_when_disabled(self, _icon, _tooltip):
+        """No notification when notify_claude_update is disabled, even after a CLI update."""
+        data = {'five_hour': {'utilization': 10.0}}
+        refresh = RefreshResult(success=True, updated=True, old_version='2.1.38', new_version='2.1.69', error='')
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data, token_refresh=refresh)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_status_image')
     def test_error_returns_before_threshold_checks(self, _status, _tooltip):
@@ -617,6 +646,20 @@ class TestResetNotifications(unittest.TestCase):
         """Notification fires when 7d usage drops from >98% with 5h not blocking."""
         self.app._prev_utilization = {'five_hour': 50.0, 'seven_day': 99.0}
         data = {'five_hour': {'utilization': 50.0}, 'seven_day': {'utilization': 10.0}}
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=data)
+
+        self.app.update()
+
+        self.app.icon.notify.assert_called_once()
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_two_quotas_resetting_together_notify_once(self, _icon, _tooltip):
+        """Two quotas resetting within one polling gap (e.g. a weekly window and its
+        model-scoped sibling) produce a single reset notification, not one per field."""
+        self.app._prev_utilization = {'seven_day': 99.0, 'seven_day_fable': 99.0}
+        data = {'seven_day': {'utilization': 1.0}, 'seven_day_fable': {'utilization': 1.0}}
         self.app.cache = MagicMock()
         self.app.cache.update.return_value = UpdateResult(data=data)
 
@@ -926,17 +969,28 @@ class TestRenderTray(unittest.TestCase):
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['limits', 'five_hour'])
+    def test_icon_field_pointing_to_non_dict_defaults_to_zero(self, mock_icon, _tooltip):
+        """An icon field holding a non-dict response value (e.g. the limits array)
+        renders as 0% instead of crashing the render path."""
+        self.app._last_response = {'five_hour': {'utilization': 42.0}, 'limits': [{'percent': 12}]}
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(0, 42.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=None, time_pct_bottom=None, extra_usage_available=False, layout='classic')
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
     @patch('usage_monitor_for_claude.app.elapsed_pct', return_value=40.0)
     @patch('usage_monitor_for_claude.app.ICON_FIELDS', ['five_hour:overage', 'seven_day'])
     def test_overage_mode_passes_time_pct(self, mock_elapsed, mock_icon, _tooltip):
-        """Overage mode passes elapsed time pct to create_icon_image for the top bar."""
+        """Elapsed time pct is passed for both bars regardless of display mode."""
         self.app._last_response = {
             'five_hour': {'utilization': 60.0, 'resets_at': '2025-01-15T18:00:00Z'},
             'seven_day': {'utilization': 20.0},
         }
         self.app._render_tray()
 
-        mock_icon.assert_called_once_with(60.0, 20.0, False, mode_top='overage', mode_bottom='utilization', time_pct_top=40.0, time_pct_bottom=None, extra_usage_available=False, layout='classic')
+        mock_icon.assert_called_once_with(60.0, 20.0, False, mode_top='overage', mode_bottom='utilization', time_pct_top=40.0, time_pct_bottom=40.0, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -951,6 +1005,19 @@ class TestRenderTray(unittest.TestCase):
         self.app._render_tray()
 
         mock_icon.assert_called_once_with(30.0, 10.0, False, mode_top='overage', mode_bottom='overage', time_pct_top=50.0, time_pct_bottom=50.0, extra_usage_available=False, layout='classic')
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    @patch('usage_monitor_for_claude.app.elapsed_pct', return_value=35.0)
+    def test_utilization_mode_passes_time_pct(self, mock_elapsed, mock_icon, _tooltip):
+        """Default utilization mode passes elapsed time pct so the bars can draw the reset-time marker."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 42.0, 'resets_at': '2025-01-15T18:00:00Z'},
+            'seven_day': {'utilization': 10.0, 'resets_at': '2025-01-20T00:00:00Z'},
+        }
+        self.app._render_tray()
+
+        mock_icon.assert_called_once_with(42.0, 10.0, False, mode_top='utilization', mode_bottom='utilization', time_pct_top=35.0, time_pct_bottom=35.0, extra_usage_available=False, layout='classic')
 
     @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
     @patch('usage_monitor_for_claude.app.create_icon_image')
@@ -1221,8 +1288,8 @@ class TestResetAlignment(unittest.TestCase):
         with patch.object(self.app, '_seconds_until_next_reset', return_value=160.0):
             interval = self.app._calculate_poll_interval()
 
-        # next_reset(160) + 5 = 165 <= interval(180) * 1.5 = 270, so aligned
-        # max(165, POLL_FAST=120) = 165
+        # next_reset(160) + RESET_BUFFER(5) = 165 <= interval(180) * 1.5 = 270,
+        # so the confirming poll is committed to just after the reset.
         self.assertEqual(interval, 165)
 
     def test_distant_reset_no_alignment(self):
@@ -1242,6 +1309,159 @@ class TestResetAlignment(unittest.TestCase):
             self.app._calculate_poll_interval()
 
         self.assertGreaterEqual(self.app._fast_polls_remaining, 2)
+
+
+# ---------------------------------------------------------------------------
+# _align_to_reset
+# ---------------------------------------------------------------------------
+
+class TestAlignToReset(unittest.TestCase):
+    """Tests for the pure _align_to_reset() poll-phase math.
+
+    RESET_BUFFER = 5, POLL_FAST = 120, so the "danger" window (where a poll
+    can no longer be exact) is the last 115 seconds before a reset.
+    """
+
+    def test_no_reset(self):
+        """No upcoming reset keeps the normal interval, no alignment."""
+        self.assertEqual(_align_to_reset(180, None), (180, False))
+
+    def test_non_positive_reset(self):
+        """A non-positive next_reset keeps the normal interval."""
+        self.assertEqual(_align_to_reset(180, 0.0), (180, False))
+
+    def test_distant_reset(self):
+        """A reset beyond one cadence plus the danger window is not aligned."""
+        self.assertEqual(_align_to_reset(180, 500.0), (180, False))
+
+    def test_near_reset_commits(self):
+        """A reset within one cadence commits the confirming poll just after it."""
+        self.assertEqual(_align_to_reset(180, 160.0), (165, True))
+
+    def test_commit_upper_edge(self):
+        """next_reset at the commit threshold still commits (post == interval*1.5)."""
+        self.assertEqual(_align_to_reset(180, 265.0), (270, True))
+
+    def test_cap_pulls_last_poll_forward(self):
+        """Just past the commit threshold, the next poll is pulled to the danger boundary."""
+        # 280 - danger(115) = 165 >= POLL_FAST, so cap to 165 -> next poll lands at T_pre.
+        self.assertEqual(_align_to_reset(180, 280.0), (165, True))
+
+    def test_cap_high_edge(self):
+        """Highest next_reset that still needs a cap (below interval + danger)."""
+        self.assertEqual(_align_to_reset(180, 294.0), (179, True))
+
+    def test_just_beyond_cap_is_normal(self):
+        """At interval + danger a normal poll already lands safely at the boundary."""
+        self.assertEqual(_align_to_reset(180, 295.0), (180, False))
+
+    def test_danger_zone_falls_back_to_poll_fast(self):
+        """Inside the last POLL_FAST window the confirming poll can only be POLL_FAST later."""
+        self.assertEqual(_align_to_reset(180, 100.0), (POLL_FAST, True))
+
+    def test_danger_boundary(self):
+        """Exactly at the danger boundary uses POLL_FAST (lands at reset + buffer)."""
+        self.assertEqual(_align_to_reset(180, 115.0), (POLL_FAST, True))
+
+    def test_fast_base_commits_directly(self):
+        """With a POLL_FAST base, a mid-range reset commits directly (cap would break cooldown)."""
+        # post(205) > 120*1.5=180 and pre(85) < POLL_FAST, so commit at post.
+        self.assertEqual(_align_to_reset(120, 200.0), (205, True))
+
+    def test_two_step_cap_then_commit_lands_after_reset(self):
+        """Cap to the danger boundary, then the follow-up commits exactly to reset + buffer."""
+        interval, aligned = _align_to_reset(180, 280.0)
+        self.assertEqual((interval, aligned), (165, True))
+        # After 165s the next poll sits at the danger boundary (115s before reset);
+        # the fast follow-up base (POLL_FAST) then lands POLL_FAST later = reset + buffer.
+        self.assertEqual(_align_to_reset(POLL_FAST, 115.0), (POLL_FAST, True))
+
+    def test_never_schedules_below_poll_fast(self):
+        """No aligned interval is ever shorter than POLL_FAST (the cache cooldown)."""
+        for base in (POLL_FAST, 180):
+            for next_reset in range(1, 601):
+                interval, _ = _align_to_reset(base, float(next_reset))
+                self.assertGreaterEqual(
+                    interval, POLL_FAST,
+                    f'base={base}, next_reset={next_reset} -> {interval} < POLL_FAST',
+                )
+
+
+# ---------------------------------------------------------------------------
+# _reset_aligned_poll_target
+# ---------------------------------------------------------------------------
+
+class TestResetAlignedPollTarget(unittest.TestCase):
+    """Tests for _reset_aligned_poll_target() clamping."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app.cache = MagicMock()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_lands_just_after_reset(self, _mock_time):
+        """Well past the cooldown, the poll lands RESET_BUFFER after the reset."""
+        self.app.cache.last_success_time = 1000.0 - 300  # last fetch 300s ago
+        self.assertEqual(self.app._reset_aligned_poll_target(60.0), 1000.0 + 60.0 + RESET_BUFFER)
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_clamped_to_cooldown(self, _mock_time):
+        """Inside the cooldown window the poll is delayed to last_success + POLL_FAST."""
+        last = 1000.0 - 30  # last fetch 30s ago
+        self.app.cache.last_success_time = last
+        # reset+buffer (1025) is earlier than the cooldown floor (last + POLL_FAST)
+        self.assertEqual(self.app._reset_aligned_poll_target(20.0), last + POLL_FAST)
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_no_last_success_uses_reset_only(self, _mock_time):
+        """Without a prior fetch only reset + buffer applies."""
+        self.app.cache.last_success_time = None
+        self.assertEqual(self.app._reset_aligned_poll_target(60.0), 1000.0 + 60.0 + RESET_BUFFER)
+
+
+# ---------------------------------------------------------------------------
+# _should_refresh_usage (popup open decision)
+# ---------------------------------------------------------------------------
+
+class TestShouldRefreshUsage(unittest.TestCase):
+    """Tests for the popup's background-refresh decision."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app.cache = MagicMock()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_first_open_always_refreshes(self):
+        """With no data yet, refresh even if a reset is imminent."""
+        self.app.cache.last_success_time = None
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=30.0):
+            self.assertTrue(self.app._should_refresh_usage())
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_fresh_data_not_refreshed(self, _mock_time):
+        """Data younger than the cooldown is not refreshed."""
+        self.app.cache.last_success_time = 1000.0 - (POLL_FAST - 10)
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=None):
+            self.assertFalse(self.app._should_refresh_usage())
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_stale_data_refreshed_without_imminent_reset(self, _mock_time):
+        """Stale data refreshes when no reset is imminent."""
+        self.app.cache.last_success_time = 1000.0 - (POLL_FAST + 10)
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=300.0):
+            self.assertTrue(self.app._should_refresh_usage())
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_stale_data_deferred_when_reset_imminent(self, _mock_time):
+        """Stale data is not refreshed when a reset is within the cooldown."""
+        self.app.cache.last_success_time = 1000.0 - (POLL_FAST + 10)
+        with patch.object(self.app, '_seconds_until_next_reset', return_value=POLL_FAST - 1):
+            self.assertFalse(self.app._should_refresh_usage())
 
 
 # ---------------------------------------------------------------------------
@@ -1659,6 +1879,8 @@ class TestThresholdCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_RESETS_AT'], '2025-01-15T18:00:00Z')
         self.assertIn('USAGE_MONITOR_TITLE', env)
         self.assertIn('USAGE_MONITOR_MESSAGE', env)
+        # Threshold crossings fire automatically, so they stay silent (no error dialog).
+        self.assertFalse(mock_cmd.call_args[1].get('capture_output'))
 
     @patch('usage_monitor_for_claude.app.ON_THRESHOLD_COMMAND', [])
     @patch('usage_monitor_for_claude.app.run_event_command')
@@ -1815,6 +2037,8 @@ class TestTestEventCommands(unittest.TestCase):
         self.assertIn('USAGE_MONITOR_RESETS_AT', env)
         self.assertIn('USAGE_MONITOR_TITLE', env)
         self.assertIn('USAGE_MONITOR_MESSAGE', env)
+        # Test-menu invocations are user-driven, so failures are surfaced.
+        self.assertTrue(mock_cmd.call_args[1].get('capture_output'))
 
     @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
     @patch('usage_monitor_for_claude.app.run_event_command')
@@ -1920,7 +2144,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         # returns at deadline while still idle, breaks to poll again.
         call_count = [0]
 
-        def update_side_effect():
+        def update_side_effect(force=False):
             call_count[0] += 1
             if call_count[0] >= 2:
                 self.app.running = False
@@ -1928,6 +2152,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         mock_time.side_effect = [
             100.0,   # target = time() + interval
             100.0,   # inner loop: time() < target
+            100.0,   # backward-jump clamp check
             100.0,   # _wait_for_activity: time() for deadline calc
             200.0,   # second iteration target
             200.0,   # inner loop exits (running=False)
@@ -1956,7 +2181,8 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         mock_time.side_effect = [
             100.0,   # target = time() + interval
             100.0,   # inner loop: time() < target
-            200.0,   # after _wait_for_activity: time() - lst >= interval
+            100.0,   # backward-jump clamp check
+            200.0,   # after _wait_for_activity: reset realign / interval check
         ]
 
         with patch.object(self.app, 'update'), \
@@ -1982,6 +2208,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         mock_time.side_effect = [
             100.0,   # target = time() + interval
             100.0,   # inner loop: time() < target
+            100.0,   # backward-jump clamp check
             200.0,   # after _wait_for_activity: time() - lst >= interval
         ]
 
@@ -2008,7 +2235,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
 
         update_count = [0]
 
-        def update_side_effect():
+        def update_side_effect(force=False):
             update_count[0] += 1
             if update_count[0] >= 3:
                 self.app.running = False
@@ -2019,9 +2246,11 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         mock_time.side_effect = [
             100.0,    # 1st iter: target = time() + interval
             100.0,    # 1st inner loop: time() < target
+            100.0,    # backward-jump clamp check
             100.0,    # deadline calc: time() + 30 + 5
             200.0,    # 2nd iter: target = time() + interval
             200.0,    # 2nd inner loop: time() < target
+            200.0,    # backward-jump clamp check
             200.0,    # deadline calc (_idle_reset_pending path): time() + 180
             400.0,    # 3rd iter: target = time() + interval
             400.0,    # 3rd inner loop: time() < target -> running=False
@@ -2053,16 +2282,19 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
 
         update_count = [0]
 
-        def update_side_effect():
+        def update_side_effect(force=False):
             update_count[0] += 1
             if update_count[0] >= 2:
                 self.app.running = False
 
+        # Reset is far off (not imminent), so the user return polls immediately
+        # rather than realigning to the reset - the path exercised here.
         # _is_user_away: True on first check (enter idle), False after _wait_for_activity (user returned)
         mock_time.side_effect = [
             100.0,    # 1st iter: target = time() + interval
             100.0,    # 1st inner loop: time() < target
-            100.0,    # deadline calc: time() + 30 + 5
+            100.0,    # backward-jump clamp check
+            100.0,    # deadline calc: time() + 300 + 5
             200.0,    # after wait: time() - lst >= interval -> break
             200.0,    # 2nd iter: target = time() + interval
             200.0,    # 2nd inner loop: time() < target -> running=False
@@ -2072,7 +2304,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
              patch.object(self.app, '_calculate_poll_interval', return_value=180), \
              patch.object(self.app, '_is_user_away', side_effect=[True, False, False, False]), \
              patch.object(self.app, '_wait_for_activity', side_effect=capture_wait), \
-             patch.object(self.app, '_seconds_until_next_reset', return_value=30.0):
+             patch.object(self.app, '_seconds_until_next_reset', return_value=300.0):
             self.app.poll_loop()
 
         # Flag persists so that if the user locks again before the
@@ -2092,7 +2324,7 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
 
         update_count = [0]
 
-        def update_side_effect():
+        def update_side_effect(force=False):
             update_count[0] += 1
             if update_count[0] >= 3:
                 self.app.running = False
@@ -2105,9 +2337,11 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         mock_time.side_effect = [
             100.0,    # 1st iter: target
             100.0,    # 1st inner loop check
+            100.0,    # backward-jump clamp check
             100.0,    # deadline calc: time() + 30 + 5
             200.0,    # 2nd iter: target
             200.0,    # 2nd inner loop check
+            200.0,    # backward-jump clamp check
             200.0,    # deadline calc (_idle_reset_pending): time() + 180
             400.0,    # 3rd iter: target
             400.0,    # 3rd inner loop check -> running=False
@@ -2124,6 +2358,255 @@ class TestPollLoopIdleInterruption(unittest.TestCase):
         self.assertEqual(update_count[0], 3)
         # Second wait used POLL_INTERVAL deadline (not None)
         self.assertAlmostEqual(wait_calls[1], 380.0, places=0)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', ['echo reset'])
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_user_return_near_reset_realigns_instead_of_polling(self, mock_time, mock_sleep):
+        """Returning within POLL_FAST of a reset defers the poll to just after the reset."""
+        self.app.cache.last_success_time = 1000.0
+
+        away_sequence = [True, False]
+
+        def is_away():
+            if away_sequence:
+                return away_sequence.pop(0)
+            self.app.running = False
+            return False
+
+        update_count = [0]
+
+        def update_side_effect(force=False):
+            update_count[0] += 1
+
+        with patch.object(self.app, 'update', side_effect=update_side_effect), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_is_user_away', side_effect=is_away), \
+             patch.object(self.app, '_wait_for_activity'), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=30.0):
+            self.app.poll_loop()
+
+        # Poll was deferred, not fired immediately: update ran only the first time.
+        self.assertEqual(update_count[0], 1)
+        # Next poll realigned to max(now + 30 + RESET_BUFFER, last_success + POLL_FAST)
+        # = max(1035, 1120) = 1120, i.e. the cooldown floor just past the reset.
+        self.assertEqual(self.app._next_poll_time, 1000.0 + POLL_FAST)
+        self.assertTrue(self.app._idle_reset_pending)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', [])
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_midwait_fetch_near_reset_capped_to_reset_slot(self, mock_time):
+        """A concurrent fetch near a reset must not push the poll a full interval past it."""
+        self.app.cache.last_success_time = 900.0
+
+        def advance_success(_seconds):
+            # Simulate a popup fetch completing mid-wait.
+            self.app.cache.last_success_time = 1000.0
+
+        def is_away():
+            self.app.running = False
+            return False
+
+        with patch.object(self.app, 'update'), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_is_user_away', side_effect=is_away), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=30.0), \
+             patch('usage_monitor_for_claude.app.time.sleep', side_effect=advance_success):
+            self.app.poll_loop()
+
+        # Capped to the reset-aligned slot (1000 + POLL_FAST = 1120), not the
+        # uncapped push-forward (last_success + interval = 1180).
+        self.assertEqual(self.app._next_poll_time, 1000.0 + POLL_FAST)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', [])
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_midwait_fetch_without_reset_not_capped(self, mock_time):
+        """With no reset nearby, the push-forward is not clamped to a reset slot."""
+        self.app.cache.last_success_time = 900.0
+
+        def advance_success(_seconds):
+            self.app.cache.last_success_time = 1000.0
+
+        def is_away():
+            self.app.running = False
+            return False
+
+        with patch.object(self.app, 'update'), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_is_user_away', side_effect=is_away), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=None), \
+             patch('usage_monitor_for_claude.app.time.sleep', side_effect=advance_success):
+            self.app.poll_loop()
+
+        # No reset: poll stays at last_success + interval (1000 + 180 = 1180).
+        self.assertEqual(self.app._next_poll_time, 1000.0 + 180)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', [])
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_midwait_fetch_never_lands_in_danger_window(self, mock_time):
+        """A pushed-forward poll must not land in the danger window (the last
+        POLL_FAST - RESET_BUFFER seconds before a reset), from where the
+        reset-confirming poll would overshoot the reset by up to a cooldown."""
+        self.app.cache.last_success_time = 900.0
+
+        def advance_success(_seconds):
+            self.app.cache.last_success_time = 1000.0
+
+        def is_away():
+            self.app.running = False
+            return False
+
+        # Reset in 209 s: interval (180) <= 209 < interval + danger (295), so the
+        # pushed target 1000 + 180 = 1180 would land at reset - 29, inside the
+        # danger window [1094, 1209).
+        with patch.object(self.app, 'update'), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_is_user_away', side_effect=is_away), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=209.0), \
+             patch('usage_monitor_for_claude.app.time.sleep', side_effect=advance_success):
+            self.app.poll_loop()
+
+        # Deferred to the reset-aligned slot just after the reset:
+        # max(1000 + 209 + RESET_BUFFER, 1000 + POLL_FAST) = 1214.
+        self.assertEqual(self.app._next_poll_time, 1000.0 + 209.0 + RESET_BUFFER)
+
+    @patch('usage_monitor_for_claude.app.ON_RESET_COMMAND', [])
+    def test_backward_clock_jump_reanchors_poll_target(self):
+        """A backward clock jump must not leave the next poll stuck at a target
+        that is now hours in the future - the wait re-anchors to the interval."""
+        self.app.cache.last_success_time = 9000.0
+        clock = {'now': 10000.0}
+
+        def jump_back(_seconds):
+            clock['now'] = 5000.0
+
+        def is_away():
+            self.app.running = False
+            return False
+
+        with patch.object(self.app, 'update'), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_is_user_away', side_effect=is_away), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=None), \
+             patch('usage_monitor_for_claude.app.time.time', side_effect=lambda: clock['now']), \
+             patch('usage_monitor_for_claude.app.time.sleep', side_effect=jump_back):
+            self.app.poll_loop()
+
+        self.assertEqual(self.app._next_poll_time, 5000.0 + 180)
+
+
+class TestPollLoopAccountSwitch(unittest.TestCase):
+    """Tests for the poll loop's reaction to a credentials token change."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app.cache = MagicMock()
+        self.app.cache.last_success_time = 0.0
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    @patch('usage_monitor_for_claude.app.time.time', return_value=1000.0)
+    def test_deferred_notifications_flushed_when_user_present(self, _mock_time, _mock_sleep):
+        """Notifications deferred while away are shown once the user is present,
+        even when the poll loop's away branch is never entered (the user
+        returned in the gap between the deferral and the next away check)."""
+        self.app._deferred_notifications = {'reset': ('msg', 'title')}
+
+        def is_away():
+            self.app.running = False
+            return False
+
+        with patch.object(self.app, 'update'), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_is_user_away', side_effect=is_away), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=None):
+            self.app.poll_loop()
+
+        self.app.icon.notify.assert_called_once_with('msg', 'title')
+        self.assertEqual(self.app._deferred_notifications, {})
+
+    def test_flush_tolerates_concurrent_deferral(self):
+        """A deferral landing while the queue is being flushed (popup thread vs
+        poll thread) must neither crash the flush nor get lost."""
+        self.app._deferred_notifications = {'a': ('m1', 't1'), 'b': ('m2', 't2')}
+
+        def add_during_notify(*_args):
+            self.app._deferred_notifications['c'] = ('m3', 't3')
+
+        self.app.icon.notify.side_effect = add_during_notify
+
+        self.app._flush_deferred_notifications()
+
+        self.assertEqual(self.app.icon.notify.call_count, 2)
+        self.assertEqual(self.app._deferred_notifications, {'c': ('m3', 't3')})
+
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    @patch('usage_monitor_for_claude.app.time.time', return_value=100.0)
+    def test_token_change_to_other_account_forces_update(self, _mock_time, _mock_sleep):
+        """A token change confirmed as a different account triggers a forced update."""
+        force_calls = []
+
+        def update_side_effect(force=False):
+            force_calls.append(force)
+            if len(force_calls) >= 2:
+                self.app.running = False
+
+        with patch.object(self.app, 'update', side_effect=update_side_effect), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_account_switched', return_value=True), \
+             patch.object(self.app, '_is_user_away', return_value=False), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=None), \
+             patch('usage_monitor_for_claude.app.read_access_token', side_effect=['tok-a', 'tok-b', 'tok-b', 'tok-b']):
+            self.app.poll_loop()
+
+        # First poll is the normal cadence, the second is forced by the switch.
+        self.assertEqual(force_calls, [False, True])
+
+    @patch('usage_monitor_for_claude.app.time.time', return_value=100.0)
+    def test_token_refresh_same_account_does_not_force(self, _mock_time):
+        """A token change that is only a refresh of the same account does not force a poll."""
+        force_calls = []
+
+        def sleep_side_effect(_seconds):
+            # End the loop after one inner tick so the test terminates.
+            self.app.running = False
+
+        with patch.object(self.app, 'update', side_effect=lambda force=False: force_calls.append(force)), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=180), \
+             patch.object(self.app, '_account_switched', return_value=False), \
+             patch.object(self.app, '_is_user_away', return_value=False), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=None), \
+             patch('usage_monitor_for_claude.app.time.sleep', side_effect=sleep_side_effect), \
+             patch('usage_monitor_for_claude.app.read_access_token', side_effect=['tok-a', 'tok-b', 'tok-b']):
+            self.app.poll_loop()
+
+        # Only the initial cadence poll ran; the same-account token change forced nothing.
+        self.assertEqual(force_calls, [False])
+
+    @patch('usage_monitor_for_claude.app.time.sleep')
+    @patch('usage_monitor_for_claude.app.time.time', return_value=100.0)
+    def test_token_change_retries_after_auth_error(self, _mock_time, _mock_sleep):
+        """A token change while the last fetch failed auth triggers an immediate retry."""
+        self.app._last_response = {'error': 'expired', 'auth_error': True}
+        force_calls = []
+
+        def update_side_effect(force=False):
+            force_calls.append(force)
+            if len(force_calls) >= 2:
+                self.app.running = False
+
+        with patch.object(self.app, 'update', side_effect=update_side_effect), \
+             patch.object(self.app, '_calculate_poll_interval', return_value=30), \
+             patch.object(self.app, '_account_switched', return_value=False), \
+             patch.object(self.app, '_is_user_away', return_value=False), \
+             patch.object(self.app, '_seconds_until_next_reset', return_value=None), \
+             patch('usage_monitor_for_claude.app.read_access_token', side_effect=['tok-a', 'tok-b', 'tok-b', 'tok-b']):
+            self.app.poll_loop()
+
+        # Initial error poll, then an immediate (non-forced) retry on the new token.
+        self.assertEqual(force_calls, [False, False])
 
 
 class TestIdleResetPendingCleared(unittest.TestCase):
@@ -2345,6 +2828,168 @@ class TestAccountSwitchDetection(unittest.TestCase):
 
         self.app.icon.notify.assert_not_called()
 
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_profile_failure_keeps_account_baseline(self, _icon, _tooltip):
+        """A failed profile fetch must not wipe the known account UUID baseline."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app._prev_account_uuid = 'uuid-old'
+        mock = MagicMock()
+        mock.update.return_value = UpdateResult(data=data)
+        mock.profile = None
+        self.app.cache = mock
+
+        self.app.update()
+
+        self.assertEqual(self.app._prev_account_uuid, 'uuid-old')
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_switch_detected_after_transient_profile_failure(self, _icon, _tooltip):
+        """An account switch is still detected when the profile fetch failed once in between."""
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app._prev_utilization = {'five_hour': 97.0}
+
+        # Poll during the switch: usage OK, profile fetch failed
+        mock = MagicMock()
+        mock.update.return_value = UpdateResult(data={'five_hour': {'utilization': 5.0}})
+        mock.profile = None
+        self.app.cache = mock
+        self.app.update()
+
+        # Next poll: profile is back and reports the new account
+        self.app.cache = self._make_cache_mock('uuid-new', 'new@example.com', {'five_hour': {'utilization': 5.0}})
+        self.app.update()
+
+        self.app.icon.notify.assert_called_once()
+        self.assertIn('new@example.com', self.app.icon.notify.call_args[0][0])
+        self.assertEqual(self.app._prev_account_uuid, 'uuid-new')
+        self.assertEqual(self.app._prev_utilization, {})
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_null_account_in_profile_does_not_crash(self, _icon, _tooltip):
+        """A profile response with account: null must not crash the poll thread."""
+        data = {'five_hour': {'utilization': 10.0}}
+        self.app._prev_account_uuid = 'uuid-old'
+        mock = MagicMock()
+        mock.update.return_value = UpdateResult(data=data)
+        mock.profile = {'account': None, 'organization': None}
+        self.app.cache = mock
+
+        self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+        self.assertEqual(self.app._prev_account_uuid, 'uuid-old')
+
+    @patch('usage_monitor_for_claude.app.format_tooltip', return_value='tooltip')
+    @patch('usage_monitor_for_claude.app.create_icon_image')
+    def test_no_reset_notification_while_account_identity_unknown(self, _icon, _tooltip):
+        """A usage drop is not reported as a quota reset while the profile is unknown -
+        the data may already belong to a different account."""
+        data = {'five_hour': {'utilization': 5.0}}
+        self.app._prev_utilization = {'five_hour': 97.0}
+        self.app._prev_account_uuid = 'uuid-old'
+        mock = MagicMock()
+        mock.update.return_value = UpdateResult(data=data)
+        mock.profile = None
+        self.app.cache = mock
+
+        self.app.update()
+
+        self.app.icon.notify.assert_not_called()
+        # The old baseline is kept so the comparison can resume once the
+        # account identity is known again.
+        self.assertEqual(self.app._prev_utilization, {'five_hour': 97.0})
+
+
+# ---------------------------------------------------------------------------
+# _account_switched (immediate switch detection)
+# ---------------------------------------------------------------------------
+
+class TestAccountSwitchedProbe(unittest.TestCase):
+    """Tests for _account_switched() used by the poll loop's token watcher."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app.cache = MagicMock()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_no_baseline_returns_false(self):
+        """Before the first account UUID is known, no switch is reported."""
+        self.app._prev_account_uuid = None
+        self.app.cache.profile = {'account': {'uuid': 'uuid-new'}}
+
+        self.assertFalse(self.app._account_switched())
+        self.app.cache.ensure_profile.assert_not_called()
+
+    def test_different_uuid_returns_true(self):
+        """A profile UUID differing from the baseline reports a switch."""
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache.profile = {'account': {'uuid': 'uuid-new'}}
+
+        self.assertTrue(self.app._account_switched())
+
+    def test_same_uuid_returns_false(self):
+        """An unchanged profile UUID (mere token refresh) is not a switch."""
+        self.app._prev_account_uuid = 'uuid-same'
+        self.app.cache.profile = {'account': {'uuid': 'uuid-same'}}
+
+        self.assertFalse(self.app._account_switched())
+
+    def test_missing_profile_returns_false(self):
+        """When the profile could not be loaded, no switch is reported."""
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache.profile = None
+
+        self.assertFalse(self.app._account_switched())
+
+    def test_null_account_returns_false(self):
+        """A profile response with account: null must not crash the token watcher."""
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache.profile = {'account': None}
+
+        self.assertFalse(self.app._account_switched())
+
+    def test_probes_profile_bypassing_backoff(self):
+        """The profile probe bypasses the rate-limit backoff so a switch is caught mid-backoff."""
+        self.app._prev_account_uuid = 'uuid-old'
+        self.app.cache.profile = {'account': {'uuid': 'uuid-new'}}
+
+        self.app._account_switched()
+
+        self.app.cache.ensure_profile.assert_called_once_with(bypass_rate_limit=True)
+
+
+# ---------------------------------------------------------------------------
+# update(force=... / bypass_cooldown=...)
+# ---------------------------------------------------------------------------
+
+class TestUpdateForce(unittest.TestCase):
+    """Tests that update() forwards the force / bypass_cooldown flags to the cache."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app.cache = MagicMock()
+        self.app.cache.update.return_value = UpdateResult(data=None)
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_force_forwarded_to_cache_update(self):
+        self.app.update(force=True)
+        self.app.cache.update.assert_called_once_with(force=True, bypass_cooldown=False)
+
+    def test_bypass_cooldown_forwarded_to_cache_update(self):
+        self.app.update(bypass_cooldown=True)
+        self.app.cache.update.assert_called_once_with(force=False, bypass_cooldown=True)
+
+    def test_default_not_forced(self):
+        self.app.update()
+        self.app.cache.update.assert_called_once_with(force=False, bypass_cooldown=False)
+
 
 # ---------------------------------------------------------------------------
 # on_startup_command
@@ -2383,6 +3028,8 @@ class TestStartupCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_RESETS_AT_FIVE_HOUR'], '')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '45')
         self.assertEqual(env['USAGE_MONITOR_RESETS_AT_SEVEN_DAY'], '2025-01-20T12:00:00Z')
+        # Startup fires automatically (not user-driven), so it stays silent.
+        self.assertFalse(mock_cmd.call_args[1].get('capture_output'))
 
     @patch('usage_monitor_for_claude.app.ON_STARTUP_COMMAND', ['echo startup'])
     @patch('usage_monitor_for_claude.app.run_event_command')
@@ -2510,6 +3157,219 @@ class TestStartupCommand(unittest.TestCase):
         self.assertEqual(env['USAGE_MONITOR_RESETS_AT_FIVE_HOUR'], '')
         self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '0')
         self.assertNotEqual(env['USAGE_MONITOR_RESETS_AT_SEVEN_DAY'], '')
+
+
+# ---------------------------------------------------------------------------
+# Double-click command
+# ---------------------------------------------------------------------------
+
+class TestDoubleClickCommand(unittest.TestCase):
+    """Tests for on_double_click_command execution and its env snapshot."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', ['run.exe'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_fires_with_current_quota_snapshot(self, mock_cmd):
+        """Double-click command fires with env vars from the latest response."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 30.0, 'resets_at': '2025-01-15T18:00:00Z'},
+            'seven_day': {'utilization': 55.0, 'resets_at': '2025-01-20T12:00:00Z'},
+        }
+
+        self.app._run_double_click_command()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, ['run.exe'])
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'double_click')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '30')
+        self.assertEqual(env['USAGE_MONITOR_RESETS_AT_FIVE_HOUR'], '2025-01-15T18:00:00Z')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '55')
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', ['run.exe'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_captures_output_so_failures_surface(self, mock_cmd):
+        """A double-click is user-driven, so it requests output capture (error dialog on failure)."""
+        self.app._last_response = {'five_hour': {'utilization': 10.0}}
+
+        self.app._run_double_click_command()
+
+        self.assertTrue(mock_cmd.call_args[1].get('capture_output'))
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', [])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_no_fire_when_command_unset(self, mock_cmd):
+        """No command runs when ON_DOUBLE_CLICK_COMMAND is empty."""
+        self.app._last_response = {'five_hour': {'utilization': 30.0}}
+
+        self.app._run_double_click_command()
+
+        mock_cmd.assert_not_called()
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', ['run.exe'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_empty_response_emits_only_event(self, mock_cmd):
+        """Double-clicking before any data yields only the event var."""
+        self.app._last_response = {}
+
+        self.app._run_double_click_command()
+
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'double_click')
+        self.assertNotIn('USAGE_MONITOR_UTILIZATION_FIVE_HOUR', env)
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', ['run.exe'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_error_response_emits_only_event(self, mock_cmd):
+        """An error response contributes no quota vars."""
+        self.app._last_response = {'error': 'server down', 'auth_error': True}
+
+        self.app._run_double_click_command()
+
+        env = mock_cmd.call_args[0][1]
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'double_click')
+        self.assertFalse([k for k in env if k.startswith('USAGE_MONITOR_UTILIZATION')])
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', ['run.exe'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_extra_usage_env_vars_when_enabled(self, mock_cmd):
+        """Extra usage credit vars are included when enabled."""
+        self.app._last_response = {
+            'five_hour': {'utilization': 10.0},
+            'extra_usage': {'is_enabled': True, 'used_credits': 8.20, 'monthly_limit': 10.0},
+        }
+
+        self.app._run_double_click_command()
+
+        env = mock_cmd.call_args[0][1]
+        self.assertIn('USAGE_MONITOR_EXTRA_USED', env)
+        self.assertIn('USAGE_MONITOR_EXTRA_LIMIT', env)
+        self.assertNotIn('USAGE_MONITOR_UTILIZATION_EXTRA_USAGE', env)
+
+    @patch('usage_monitor_for_claude.app.ON_DOUBLE_CLICK_COMMAND', ['run.exe'])
+    @patch('usage_monitor_for_claude.app.run_event_command')
+    def test_test_menu_handler_passes_expected_env(self, mock_cmd):
+        """on_test_double_click passes the documented sample env vars."""
+        self.app.on_test_double_click()
+
+        mock_cmd.assert_called_once()
+        cmd, env = mock_cmd.call_args[0]
+        self.assertEqual(cmd, ['run.exe'])
+        self.assertEqual(env['USAGE_MONITOR_EVENT'], 'double_click')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_FIVE_HOUR'], '30')
+        self.assertEqual(env['USAGE_MONITOR_UTILIZATION_SEVEN_DAY'], '55')
+        self.assertNotEqual(env['USAGE_MONITOR_RESETS_AT_FIVE_HOUR'], '')
+
+
+# ---------------------------------------------------------------------------
+# Double-click detection (_on_tray_message)
+# ---------------------------------------------------------------------------
+
+class TestDoubleClickDetection(unittest.TestCase):
+    """Tests for _on_tray_message single/double-click dispatch."""
+
+    def setUp(self):
+        self.app = _make_app()
+        self.app._double_click_seconds = 0.5
+        self.app._pystray_on_notify = MagicMock()
+
+    def tearDown(self):
+        if self.app._single_click_timer is not None:
+            self.app._single_click_timer.cancel()
+        _cleanup(self.app)
+
+    @patch('usage_monitor_for_claude.app.threading.Timer')
+    def test_single_release_schedules_deferred_popup(self, mock_timer):
+        """A left-button release schedules the popup after the double-click interval."""
+        self.app._on_tray_message(0, WM_LBUTTONUP)
+
+        mock_timer.assert_called_once_with(0.5, self.app._fire_single_click)
+        mock_timer.return_value.start.assert_called_once()
+
+    @patch('usage_monitor_for_claude.app.threading.Timer')
+    def test_double_click_cancels_popup_and_runs_command(self, mock_timer):
+        """A double-click cancels the pending popup and runs the command."""
+        with patch.object(self.app, '_run_double_click_command') as mock_cmd:
+            self.app._on_tray_message(0, WM_LBUTTONUP)
+            self.app._on_tray_message(0, WM_LBUTTONDBLCLK)
+
+        mock_timer.return_value.cancel.assert_called_once()
+        mock_cmd.assert_called_once()
+
+    @patch('usage_monitor_for_claude.app.threading.Timer')
+    def test_trailing_release_after_double_click_swallowed(self, mock_timer):
+        """The release that follows a double-click does not schedule a second popup."""
+        with patch.object(self.app, '_run_double_click_command'):
+            self.app._on_tray_message(0, WM_LBUTTONUP)      # first click's release
+            self.app._on_tray_message(0, WM_LBUTTONDBLCLK)  # second click
+            self.app._on_tray_message(0, WM_LBUTTONUP)      # trailing release
+
+        self.assertEqual(mock_timer.call_count, 1)
+
+    @patch('usage_monitor_for_claude.app.threading.Timer')
+    def test_single_click_after_double_click_schedules_again(self, mock_timer):
+        """A genuine single click after a completed double-click still schedules the popup."""
+        with patch.object(self.app, '_run_double_click_command'):
+            self.app._on_tray_message(0, WM_LBUTTONUP)
+            self.app._on_tray_message(0, WM_LBUTTONDBLCLK)
+            self.app._on_tray_message(0, WM_LBUTTONUP)      # swallowed trailing release
+            self.app._on_tray_message(0, WM_LBUTTONUP)      # new single click
+
+        self.assertEqual(mock_timer.call_count, 2)
+
+    def test_other_message_falls_through_to_pystray(self):
+        """Non-left-button messages delegate to pystray's original handler."""
+        wm_rbuttonup = 0x0205
+        self.app._on_tray_message(7, wm_rbuttonup)
+
+        self.app._pystray_on_notify.assert_called_once_with(7, wm_rbuttonup)
+
+    def test_fire_single_click_opens_popup(self):
+        """The deferred callback opens the popup and clears the timer reference."""
+        self.app._single_click_timer = MagicMock()
+        with patch.object(self.app, 'on_show_popup') as mock_popup:
+            self.app._fire_single_click()
+
+        mock_popup.assert_called_once()
+        self.assertIsNone(self.app._single_click_timer)
+
+    def test_fire_single_click_noop_after_cancel(self):
+        """A fired-but-cancelled timer callback does not open the popup."""
+        self.app._single_click_timer = None  # a double-click cancelled it just as it fired
+        with patch.object(self.app, 'on_show_popup') as mock_popup:
+            self.app._fire_single_click()
+
+        mock_popup.assert_not_called()
+
+
+class TestInstallDoubleClickHandler(unittest.TestCase):
+    """Tests for _install_double_click_handler swapping pystray's message handler."""
+
+    def setUp(self):
+        self.app = _make_app()
+
+    def tearDown(self):
+        _cleanup(self.app)
+
+    def test_replaces_notify_handler_only(self):
+        """The WM_NOTIFY entry is replaced with _on_tray_message; other entries stay."""
+        original_notify = MagicMock(name='on_notify')
+        other_handler = MagicMock(name='other')
+        fake_icon = MagicMock()
+        fake_icon._on_notify = original_notify
+        fake_icon._message_handlers = {0x40B: original_notify, 0x0002: other_handler}
+        self.app.icon = fake_icon
+
+        self.app._install_double_click_handler()
+
+        self.assertEqual(fake_icon._message_handlers[0x40B], self.app._on_tray_message)
+        self.assertIs(fake_icon._message_handlers[0x0002], other_handler)
+        self.assertIs(self.app._pystray_on_notify, original_notify)
 
 
 if __name__ == '__main__':

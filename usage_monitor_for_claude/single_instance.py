@@ -2,7 +2,9 @@
 Single-Instance Guard
 ======================
 
-Prevents multiple instances from running simultaneously.
+Prevents multiple instances from running simultaneously.  Each monitor
+instance (one per Claude config directory) guards its own lock, so one
+monitor per Claude account can run concurrently.
 
 On Windows, a named Win32 mutex tracks the holder, and a page-file-backed
 shared memory segment stores its PID and version so a new instance can
@@ -21,11 +23,12 @@ import sys
 
 from . import __version__
 from .i18n import T
+from .instance_id import config_dir_suffix
 
 __all__ = ['ensure_single_instance', 'release_instance_lock']
 
-_MUTEX_NAME = 'UsageMonitorForClaude_SingleInstance'
-_PID_MAPPING_NAME = 'UsageMonitorForClaude_HolderPID'
+_MUTEX_BASE_NAME = 'UsageMonitorForClaude_SingleInstance'
+_PID_MAPPING_BASE_NAME = 'UsageMonitorForClaude_HolderPID'
 
 
 if sys.platform == 'win32':
@@ -33,6 +36,7 @@ if sys.platform == 'win32':
     import ctypes.wintypes
     import struct
 
+    _ERROR_ACCESS_DENIED = 0x5
     _ERROR_ALREADY_EXISTS = 0xB7
     _INVALID_HANDLE = ctypes.c_void_p(-1).value
     _PAGE_READWRITE = 0x04
@@ -85,11 +89,25 @@ if sys.platform == 'win32':
     _mutex_handle: int | None = None
     _pid_mapping_handle: int | None = None
 
+    def _object_names() -> tuple[str, str]:
+        """Return the per-instance ``(mutex_name, pid_mapping_name)`` pair.
+
+        The names carry a config-dir suffix so one monitor instance per
+        Claude account can run concurrently, each a singleton for its own
+        config directory.
+        """
+        suffix = config_dir_suffix()
+        return _MUTEX_BASE_NAME + suffix, _PID_MAPPING_BASE_NAME + suffix
+
     def _store_holder_info() -> None:
-        """Store our PID and version in named shared memory (page-file backed)."""
+        """Store our PID and version in named shared memory.
+
+        The shared memory is backed by the page file (no disk I/O) and is
+        automatically released when this process terminates.
+        """
         global _pid_mapping_handle
         _pid_mapping_handle = _kernel32.CreateFileMappingW(
-            _INVALID_HANDLE, None, _PAGE_READWRITE, 0, _SHARED_MEM_SIZE, _PID_MAPPING_NAME,
+            _INVALID_HANDLE, None, _PAGE_READWRITE, 0, _SHARED_MEM_SIZE, _object_names()[1],
         )
         if not _pid_mapping_handle:
             return
@@ -104,8 +122,15 @@ if sys.platform == 'win32':
         _kernel32.UnmapViewOfFile(view)
 
     def _read_holder_info() -> tuple[int | None, str | None]:
-        """Read PID and version of the mutex-holding instance from shared memory."""
-        mapping = _kernel32.OpenFileMappingW(_FILE_MAP_READ, False, _PID_MAPPING_NAME)
+        """Read PID and version of the mutex-holding instance from shared memory.
+
+        Returns
+        -------
+        tuple[int | None, str | None]
+            ``(pid, version)`` of the holder, or ``(None, None)`` if the
+            shared memory does not exist.
+        """
+        mapping = _kernel32.OpenFileMappingW(_FILE_MAP_READ, False, _object_names()[1])
         if not mapping:
             return None, None
 
@@ -126,7 +151,12 @@ if sys.platform == 'win32':
         return pid if pid else None, version
 
     def _terminate_pid(pid: int) -> None:
-        """Terminate a process by PID and wait until it is fully dead."""
+        """Terminate a process by PID and wait until it is fully dead.
+
+        Uses OpenProcess + TerminateProcess + WaitForSingleObject so the
+        process has released all kernel objects (mutexes, handles) before
+        this function returns.
+        """
         PROCESS_TERMINATE = 0x0001
         PROCESS_SYNCHRONIZE = 0x00100000
 
@@ -142,13 +172,38 @@ if sys.platform == 'win32':
         _kernel32.CloseHandle(handle)
 
     def ensure_single_instance() -> bool:
-        """Ensure only one instance is running.  Prompts to replace an existing instance."""
+        """Ensure only one instance of the application is running.
+
+        If another instance holds the mutex, shows a dialog asking the user
+        whether to replace it.  The dialog title includes the running
+        instance's version when available.
+
+        Returns
+        -------
+        bool
+            True if this instance may proceed, False if it should exit.
+        """
         global _mutex_handle
-        _mutex_handle = _kernel32.CreateMutexW(None, False, _MUTEX_NAME)
-        if ctypes.get_last_error() != _ERROR_ALREADY_EXISTS:
+        mutex_name = _object_names()[0]
+        _mutex_handle = _kernel32.CreateMutexW(None, False, mutex_name)
+        last_error = ctypes.get_last_error()
+
+        if _mutex_handle and last_error != _ERROR_ALREADY_EXISTS:
             _store_holder_info()
             return True
 
+        # A NULL handle with ERROR_ACCESS_DENIED means the mutex exists but was
+        # created under a different security context (e.g. an elevated instance):
+        # treat it as "already running".  Any other NULL failure is unexpected -
+        # fail closed rather than run a second, unguarded instance.
+        if not _mutex_handle and last_error != _ERROR_ACCESS_DENIED:
+            ctypes.windll.user32.MessageBoxW(
+                None, f'Failed to create the single-instance mutex (Windows error {last_error}).',
+                T['popup_title'], 0x10,  # MB_ICONERROR
+            )
+            return False
+
+        # Another instance is running - ask the user.
         MB_YESNO = 0x04
         MB_ICONQUESTION = 0x20
         MB_TOPMOST = 0x40000
@@ -160,22 +215,45 @@ if sys.platform == 'win32':
         if running_version:
             title += f' v{running_version}'
 
-        message = T['already_running'].format(running_version=running_version or '?')
+        message = T['already_running'].format(
+            running_version=running_version or '?',
+        )
 
         answer = ctypes.windll.user32.MessageBoxW(
             None, message, title,
             MB_YESNO | MB_ICONQUESTION | MB_TOPMOST,
         )
         if answer != IDYES:
-            _kernel32.CloseHandle(_mutex_handle)
+            if _mutex_handle:
+                _kernel32.CloseHandle(_mutex_handle)
             _mutex_handle = None
             return False
 
-        if holder_pid:
+        # Re-read the holder info after the dialog: it can stay open for a long
+        # time, the old instance may have exited meanwhile, and Windows recycles
+        # PIDs - terminating the snapshotted PID could kill an unrelated process.
+        # The shared memory vanishes with its owner, so a matching re-read PID is
+        # a liveness signal for the snapshot.
+        current_holder_pid, _ = _read_holder_info()
+        if holder_pid and current_holder_pid == holder_pid:
             _terminate_pid(holder_pid)
-        _kernel32.CloseHandle(_mutex_handle)
+        if _mutex_handle:
+            _kernel32.CloseHandle(_mutex_handle)
+            _mutex_handle = None
 
-        _mutex_handle = _kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+        # Recreating the mutex is the ground truth for whether the old instance
+        # is really gone: its open handle keeps the named object alive, so only
+        # a fresh creation (valid handle, no ERROR_ALREADY_EXISTS) proves the
+        # holder has exited.  _terminate_pid is best effort - it cannot open an
+        # elevated process, and the old instance may need a moment to die.
+        _mutex_handle = _kernel32.CreateMutexW(None, False, mutex_name)
+        if not _mutex_handle or ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
+            if _mutex_handle:
+                _kernel32.CloseHandle(_mutex_handle)
+            _mutex_handle = None
+            ctypes.windll.user32.MessageBoxW(None, T['replace_failed'], title, 0x10 | MB_TOPMOST)  # MB_ICONERROR
+            return False
+
         _store_holder_info()
         return True
 
@@ -197,14 +275,23 @@ else:
     # POSIX: a per-user lock file under the home directory.  The lock is held
     # via flock LOCK_EX|LOCK_NB and released either explicitly or when the
     # process exits (the OS releases all flocks held by a dying process).
-    _LOCK_PATH = os.path.expanduser('~/.usage-monitor-for-claude.lock')
     _lock_file = None
+
+    def _lock_path() -> str:
+        """Return the per-instance lock file path.
+
+        The file name carries the same config-dir suffix as the Windows
+        kernel object names, so one monitor instance per Claude account
+        can run concurrently (empty suffix keeps the legacy path for the
+        default ``~/.claude`` directory).
+        """
+        return os.path.expanduser(f'~/.usage-monitor-for-claude{config_dir_suffix()}.lock')
 
     def ensure_single_instance() -> bool:
         """Ensure only one instance is running by holding an flock on a lock file."""
         global _lock_file
         try:
-            _lock_file = open(_LOCK_PATH, 'w')
+            _lock_file = open(_lock_path(), 'w')
         except OSError:
             # Cannot create lock file - allow startup rather than refusing.
             return True
