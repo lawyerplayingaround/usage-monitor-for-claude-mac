@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Menu choices on macOS now truly apply immediately.** Picking an Icon style, a Language, the Fable toggle, or Restart previously only took effect after one more click on the menu-bar icon - the restart now happens the moment the choice is made.
+
 [Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.4...HEAD)
 
 ## [1.20.0-fork.4] - 2026-07-20
