@@ -25,9 +25,14 @@
 ; ============================================================================
 
 #define MyAppName "Usage Monitor for Claude"
-#define MyAppVersion "1.15.1-fork.win.5"
+; Version is injected by build_installer.ps1 (/DMyAppVersion=...) from
+; usage_monitor_for_claude/__init__.py so it can never go stale; the
+; fallback below is deliberately unshippable to make a bare ISCC run obvious.
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0-dev"
+#endif
 #define MyAppPublisher "lawyerplayingaround"
-#define MyAppURL "https://github.com/lawyerplayingaround/usage-monitor-for-claude"
+#define MyAppURL "https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac"
 #define MyAppExeName "UsageMonitorForClaude.exe"
 
 ; Override on the CLI with /DPayloadDir=... and /DOutputDirOverride=...

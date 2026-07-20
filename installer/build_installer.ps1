@@ -142,7 +142,12 @@ Copy-Item -Path $licenseFile -Destination (Join-Path $payloadDir 'LICENSE.txt') 
 Write-Section 'Compiling setup.iss'
 $iscc = Find-Iscc
 Write-Host "  ISCC: $iscc"
+$initFile = Join-Path (Split-Path $scriptDir -Parent) 'usage_monitor_for_claude\__init__.py'
+$appVersion = (Select-String -Path $initFile -Pattern "__version__\s*=\s*'([^']+)'").Matches[0].Groups[1].Value
+if (-not $appVersion) { throw "Could not read __version__ from $initFile" }
+
 & $iscc `
+    "/DMyAppVersion=$appVersion" `
     "/DPayloadDir=$payloadDir" `
     "/DOutputDirOverride=$outputDir" `
     $issFile
