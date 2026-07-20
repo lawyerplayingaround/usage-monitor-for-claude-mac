@@ -453,9 +453,11 @@ link styling, and status footer.  Differences are data-driven only
 
 ## Known limitations on macOS today
 
-- **App is unsigned.**  Phase 4 produces an unsigned `.app`; macOS Gatekeeper
-  will require right-click - Open the first time.  Distributable signed
-  builds would require enrolling the developer in Apple's notarization
+- **App is unsigned.**  Phase 4 produces an unsigned `.app`; on first launch
+  macOS Gatekeeper refuses it - open it once to get the refusal dialog, then
+  System Settings > Privacy & Security > "Open Anyway", relaunch, and confirm
+  (the old right-click - Open bypass was removed in macOS 15).  Distributable
+  signed builds would require enrolling the developer in Apple's notarization
   programme, which is out of scope for this port.
 - **arm64-only build.**  ``target_arch='arm64'`` keeps the bundle small
   on Apple Silicon.  Switch to ``'universal2'`` in the spec if Intel

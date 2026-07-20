@@ -371,7 +371,12 @@ class PopupController:
 
         frame = Foundation.NSMakeRect(0, 0, self._width, self._initial_height)
         self._webview = WebKit.WKWebView.alloc().initWithFrame_configuration_(frame, config)
-        self._webview.setValue_forKey_(False, 'drawsBackground')
+        try:
+            # Private WebKit KVC key; tolerate a future WebKit dropping it
+            # (the popup then paints its own background, slightly less flush).
+            self._webview.setValue_forKey_(False, 'drawsBackground')
+        except Exception:
+            pass
         self._nav_delegate = _NavigationDelegate.alloc().initWithCallback_(self._on_did_finish_load)
         self._webview.setNavigationDelegate_(self._nav_delegate)
 

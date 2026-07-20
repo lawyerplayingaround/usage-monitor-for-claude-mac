@@ -23,7 +23,7 @@ A native tray/menu bar app that shows your Claude usage at a glance - lightweigh
 
 ## What this fork adds
 
-Relative to upstream, this fork adds a macOS port, a popup refresh button, an Icon Style toggle, a double-click-opens-Claude toggle, a Language submenu, a "Log in to Claude Code" menu shortcut, and a custom app icon. Prefer the pristine Windows original? Use the upstream release.
+Relative to upstream, this fork adds a macOS port, a popup refresh button, an Icon Style toggle, a double-click-opens-Claude toggle, a Language submenu, a "Log in to Claude Code" menu shortcut, a "Show Fable usage separately" toggle for credit-based models, and a custom app icon. Prefer the pristine Windows original? Use the upstream release.
 
 - **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock, your saved UI preferences, and the optional LaunchAgent plist (none holding your token or usage data).
 - **Menu bar icon** rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density.
@@ -71,7 +71,7 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 ## Requirements
 
 - **macOS 11 (Big Sur) or later, on Apple Silicon** for the `.app` release of this fork. The build is `target_arch='arm64'`; switch to `universal2` in the spec if Intel Mac support is needed.
-- **Windows 10 or Windows 11** (64-bit) is also supported by the same source tree (the fork preserves all Windows code paths), but pre-built EXEs come from the [upstream release](https://github.com/jens-duttke/usage-monitor-for-claude/releases).
+- **Windows 10 or Windows 11** (64-bit) is also supported by the same source tree (the fork preserves all Windows code paths), and every release here ships a pre-built, CI-built `UsageMonitorForClaude.exe`.
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and logged in (CLI, VS Code extension, or JetBrains plugin - any variant works). On Windows the app reads the OAuth token from `~/.claude/.credentials.json`; on macOS it reads from the system **Keychain** via `/usr/bin/security find-generic-password` (no file cache). If you have `CLAUDE_CONFIG_DIR` set, the Windows path honors it, and the `--config-dir="<path>"` command-line parameter overrides both - useful to run one instance per Claude account (log each extra account in via Claude Code with `CLAUDE_CONFIG_DIR` pointing to its own directory first).
 
 > [!TIP]
@@ -86,13 +86,13 @@ This tool handles your Claude Code OAuth token, so you should be able to verify 
 **No Python required.** Download the latest **`UsageMonitorForClaude.app.zip`** from this fork's [Releases](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/releases/latest), unzip it (Safari unzips automatically; in other browsers double-click the `.zip`), drag the `UsageMonitorForClaude.app` into `/Applications` (or anywhere you prefer), and launch it. The icon appears in the menu bar.
 
 > [!NOTE]
-> The `.app` is **unsigned and unnotarized**. On first launch macOS Gatekeeper will refuse to open it - **right-click → Open** the first time, then click "Open" in the confirmation dialog. Subsequent launches work normally. Signing/notarization would require Apple Developer enrollment, which is out of scope for this fork.
+> The `.app` is **unsigned and unnotarized**. On first launch macOS Gatekeeper will refuse to open it - **open it once to get the refusal dialog, then System Settings > Privacy & Security > "Open Anyway", relaunch, and confirm. Subsequent launches work normally. Signing/notarization would require Apple Developer enrollment, which is out of scope for this fork.
 
 To remove: turn off "Start at login" from the menu bar context menu first (if enabled - this deletes `~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`), then drag the `.app` to the Trash.
 
-### Windows (upstream)
+### Windows
 
-**No Python required.** Download the latest [**UsageMonitorForClaude.exe**](https://github.com/jens-duttke/usage-monitor-for-claude/releases/latest) from the upstream release, place it wherever you like, and run it. To remove, disable "Start with Windows" in the context menu first (if enabled), then delete the file.
+**No Python required.** Download the latest [**UsageMonitorForClaude.exe**](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/releases/latest) from this fork's releases (CI-built from the tagged source), place it wherever you like, and run it. To remove, disable "Start with Windows" in the context menu first (if enabled), then delete the file.
 
 ---
 

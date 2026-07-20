@@ -178,6 +178,9 @@ if _IS_MAC:
             'CFBundleVersion': _VERSION,
             'NSHumanReadableCopyright': 'Original work Copyright (c) 2026 Jens Duttke. macOS port released under the same MIT license.',
             'NSHighResolutionCapable': True,
+            # Purpose string for the macOS Automation consent prompt raised by
+            # the "Log in to Claude Code" menu item (osascript drives Terminal).
+            'NSAppleEventsUsageDescription': 'Usage Monitor opens Terminal to run the Claude CLI login command when you choose "Log in to Claude Code".',
             # Minimum macOS that supports Apple Silicon native + modern WKWebView.
             'LSMinimumSystemVersion': '11.0',
         },
