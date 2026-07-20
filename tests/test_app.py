@@ -12,6 +12,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
+import usage_monitor_for_claude.app as app_mod
 from usage_monitor_for_claude.app import (
     POLL_FAST, RESET_BUFFER, WM_LBUTTONDBLCLK, WM_LBUTTONUP, UsageMonitorForClaude, _align_to_reset,
 )
@@ -3374,3 +3375,26 @@ class TestInstallDoubleClickHandler(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestLoginTerminal(unittest.TestCase):
+    """Tests for the cross-platform Claude CLI login launcher."""
+
+    def test_win32_spawns_new_console(self):
+        """Windows opens cmd /k with the discovered CLI and a new console."""
+        mock_subprocess = MagicMock()
+        with patch.object(app_mod.sys, 'platform', 'win32'), patch.object(app_mod, 'subprocess', mock_subprocess):
+            app_mod._open_login_terminal()
+        args, kwargs = mock_subprocess.Popen.call_args
+        self.assertEqual(args[0][:2], ['cmd.exe', '/k'])
+        self.assertEqual(args[0][-2:], ['auth', 'login'])
+        self.assertEqual(kwargs['creationflags'], mock_subprocess.CREATE_NEW_CONSOLE)
+
+    def test_darwin_uses_osascript_terminal(self):
+        """macOS drives Terminal via osascript with the quoted CLI path."""
+        mock_subprocess = MagicMock()
+        with patch.object(app_mod.sys, 'platform', 'darwin'), patch.object(app_mod, 'subprocess', mock_subprocess):
+            app_mod._open_login_terminal()
+        argv = mock_subprocess.run.call_args[0][0]
+        self.assertEqual(argv[0], '/usr/bin/osascript')
+        self.assertIn('auth login', argv[2])

@@ -68,12 +68,15 @@ _POPUP_REOPEN_GUARD_S = (_SINGLE_CLICK_DEFER_S + 0.2) if sys.platform == 'darwin
 
 
 def _open_login_terminal() -> None:
-    """Open the system terminal running ``claude auth login`` (macOS).
+    """Open the system terminal running ``claude auth login``.
 
     Uses the discovered CLI path because a bundle launched by Finder/launchd
     inherits a minimal PATH without Homebrew.  The AppleScript string only
     ever contains our own quoted path, but escape it defensively anyway.
     """
+    if sys.platform == 'win32':
+        subprocess.Popen(['cmd.exe', '/k', str(CLAUDE_CLI_PATH), 'auth', 'login'], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        return
     if sys.platform != 'darwin':
         return
     shell_command = f"'{CLAUDE_CLI_PATH}' auth login".replace('\\', '\\\\').replace('"', '\\"')
@@ -203,22 +206,25 @@ class UsageMonitorForClaude:
                     T['menu_dblclick_open_claude'], self.on_toggle_dblclick_open_claude,
                     checked=lambda item: get_dblclick_open_claude(),
                 ),
-                pystray.MenuItem(T['menu_language'], pystray.Menu(
-                    pystray.MenuItem(
-                        T['language_system_default'], self.on_set_language(''),
-                        checked=lambda item: get_language() == '',
-                    ),
-                    pystray.Menu.SEPARATOR,
-                    *(
-                        pystray.MenuItem(
-                            name, self.on_set_language(code),
-                            checked=lambda item, code=code: get_language() == code,
-                        )
-                        for code, name in sorted(LANGUAGE_NAMES.items(), key=lambda pair: pair[1].lower())
-                    ),
-                )),
-                pystray.MenuItem(T['menu_login'], self.on_login_claude),
             )
+
+        # Cross-platform fork menu entries: the Language submenu and the
+        # Claude CLI login shortcut work identically on Windows and macOS.
+        language_menu = pystray.MenuItem(T['menu_language'], pystray.Menu(
+            pystray.MenuItem(
+                T['language_system_default'], self.on_set_language(''),
+                checked=lambda item: get_language() == '',
+            ),
+            pystray.Menu.SEPARATOR,
+            *(
+                pystray.MenuItem(
+                    name, self.on_set_language(code),
+                    checked=lambda item, code=code: get_language() == code,
+                )
+                for code, name in sorted(LANGUAGE_NAMES.items(), key=lambda pair: pair[1].lower())
+            ),
+        ))
+        login_item = pystray.MenuItem(T['menu_login'], self.on_login_claude)
 
         self.icon = pystray.Icon(
             'usage_monitor',
@@ -228,6 +234,8 @@ class UsageMonitorForClaude:
                 pystray.MenuItem(T['menu_show'], self.on_show_popup, default=True),
                 pystray.Menu.SEPARATOR,
                 *darwin_menu_items,
+                language_menu,
+                login_item,
                 pystray.MenuItem(
                     T['menu_start_at_login'] if sys.platform == 'darwin' else T['autostart'],
                     self.on_toggle_autostart,
