@@ -32,6 +32,7 @@ __all__ = [
     'get_icon_layout', 'set_icon_layout',
     'get_dblclick_open_claude', 'set_dblclick_open_claude',
     'get_language', 'set_language',
+    'get_show_fable_separately', 'set_show_fable_separately',
 ]
 
 ICON_LAYOUT_CLASSIC = 'classic'
@@ -44,6 +45,8 @@ DEFAULT_DBLCLICK_OPEN_CLAUDE = True
 _ICON_LAYOUT_NAME = 'IconLayout'
 _DBLCLICK_NAME = 'DblclickOpenClaude'
 _LANGUAGE_NAME = 'Language'
+_SHOW_FABLE_NAME = 'ShowFableSeparately'
+DEFAULT_SHOW_FABLE_SEPARATELY = True
 
 
 # ---------------------------------------------------------------------------
@@ -181,3 +184,13 @@ def get_language() -> str:
 def set_language(code: str) -> None:
     """Persist the UI language code; ``''`` selects the system default."""
     _write_str(_LANGUAGE_NAME, code)
+
+
+def get_show_fable_separately() -> bool:
+    """Return whether the Fable model-scoped limit is shown as its own bar."""
+    return _read_bool(_SHOW_FABLE_NAME, DEFAULT_SHOW_FABLE_SEPARATELY)
+
+
+def set_show_fable_separately(enabled: bool) -> None:
+    """Persist whether the Fable model-scoped limit is shown as its own bar."""
+    _write_bool(_SHOW_FABLE_NAME, bool(enabled))

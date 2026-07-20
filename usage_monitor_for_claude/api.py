@@ -20,6 +20,7 @@ from typing import Any
 import requests
 
 from .i18n import T
+from .preferences import get_show_fable_separately
 
 __all__ = ['API_URL_USAGE', 'API_URL_PROFILE', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CREDENTIALS', 'read_access_token', 'api_headers', 'fetch_usage', 'fetch_profile']
 
@@ -193,7 +194,13 @@ def _merge_scoped_limits(data: dict[str, Any]) -> dict[str, Any]:
         if not display_name or not prefix:
             continue
 
-        field = f'{prefix}_{_model_slug(display_name)}'
+        slug = _model_slug(display_name)
+        # Fable is credit-based rather than quota-based for most accounts, so
+        # its scoped weekly limit can be hidden via the menu toggle.
+        if slug == 'fable' and not get_show_fable_separately():
+            continue
+
+        field = f'{prefix}_{slug}'
         if merged.get(field) is not None:
             continue
         merged[field] = {'utilization': float(limit.get('percent') or 0), 'resets_at': limit.get('resets_at')}

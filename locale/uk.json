@@ -75,5 +75,6 @@
     "menu_start_at_login": "Відкривати під час входу",
     "menu_login": "Увійти в Claude Code",
     "menu_language": "Мова",
-    "language_system_default": "Системна за замовчуванням"
+    "language_system_default": "Системна за замовчуванням",
+    "menu_show_fable": "Показувати використання Fable окремо"
 }

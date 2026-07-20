@@ -75,5 +75,6 @@
     "menu_start_at_login": "ログイン時に開く",
     "menu_login": "Claude Code にログイン",
     "menu_language": "言語",
-    "language_system_default": "システムのデフォルト"
+    "language_system_default": "システムのデフォルト",
+    "menu_show_fable": "Fable の使用状況を個別に表示"
 }

@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.3...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.4...HEAD)
+
+## [1.20.0-fork.4] - 2026-07-20
+
+### Added
+
+- **"Show Fable usage separately" menu toggle.** With Fable moving to credit-based usage, its weekly limit bar can now be hidden from the popup, tooltip, and alerts via the right-click menu (on by default; applies after the automatic restart).
+
+### Fixed
+
+- **Menu choices on macOS apply immediately.** Picking an Icon style, a Language, or any other restart-applied preference previously left the app frozen on the old state until the next click on the menu-bar icon - the restart now happens the moment the choice is made.
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.3...v1.20.0-fork.4)
 
 ## [1.20.0-fork.3] - 2026-07-19
 

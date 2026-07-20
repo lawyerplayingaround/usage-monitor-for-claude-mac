@@ -92,3 +92,20 @@ class TestLanguagePreference(unittest.TestCase):
             self.assertEqual(prefs.get_language(), 'pt-BR')
             prefs.set_language('')
             self.assertEqual(prefs.get_language(), '')
+
+
+class TestShowFablePreference(unittest.TestCase):
+    """Tests for the Show-Fable-separately preference accessors."""
+
+    def test_default_is_on(self):
+        with patch.object(prefs, '_read_bool', lambda name, default: default):
+            self.assertTrue(prefs.get_show_fable_separately())
+
+    def test_roundtrip(self):
+        store = {}
+        with patch.object(prefs, '_read_bool', lambda name, default: bool(store[name]) if name in store else default), \
+             patch.object(prefs, '_write_bool', lambda name, value: store.__setitem__(name, bool(value))):
+            prefs.set_show_fable_separately(False)
+            self.assertFalse(prefs.get_show_fable_separately())
+            prefs.set_show_fable_separately(True)
+            self.assertTrue(prefs.get_show_fable_separately())

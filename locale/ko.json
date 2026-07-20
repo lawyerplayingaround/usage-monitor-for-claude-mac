@@ -75,5 +75,6 @@
     "menu_start_at_login": "로그인 시 열기",
     "menu_login": "Claude Code 로그인",
     "menu_language": "언어",
-    "language_system_default": "시스템 기본값"
+    "language_system_default": "시스템 기본값",
+    "menu_show_fable": "Fable 사용량 별도 표시"
 }

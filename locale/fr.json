@@ -75,5 +75,6 @@
     "menu_start_at_login": "Ouvrir à la connexion",
     "menu_login": "Se connecter à Claude Code",
     "menu_language": "Langue",
-    "language_system_default": "Par défaut du système"
+    "language_system_default": "Par défaut du système",
+    "menu_show_fable": "Afficher l'utilisation de Fable séparément"
 }

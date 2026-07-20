@@ -13,6 +13,7 @@ from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import usage_monitor_for_claude.api as api
 from usage_monitor_for_claude.api import (
     API_URL_USAGE, _extract_server_message, _merge_scoped_limits, _model_slug, _parse_retry_after, fetch_usage, read_access_token,
 )
@@ -689,3 +690,29 @@ class TestModelSlug(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestShowFableToggle(unittest.TestCase):
+    """The Show-Fable-separately toggle filters the scoped-limit merge."""
+
+    _RESPONSE = {
+        'five_hour': {'utilization': 10, 'resets_at': '2026-07-20T10:00:00Z'},
+        'seven_day': {'utilization': 20, 'resets_at': '2026-07-24T10:00:00Z'},
+        'limits': [
+            {'group': 'weekly', 'resets_at': '2026-07-24T10:00:00Z'},
+            {'group': 'weekly', 'scope': {'model': {'display_name': 'Fable'}}, 'percent': 5, 'resets_at': '2026-07-24T10:00:00Z'},
+            {'group': 'weekly', 'scope': {'model': {'display_name': 'Opus'}}, 'percent': 7, 'resets_at': '2026-07-24T10:00:00Z'},
+        ],
+    }
+
+    def test_fable_shown_by_default(self):
+        with patch('usage_monitor_for_claude.api.get_show_fable_separately', return_value=True):
+            merged = api._merge_scoped_limits(dict(self._RESPONSE))
+        self.assertIn('seven_day_fable', merged)
+        self.assertIn('seven_day_opus', merged)
+
+    def test_fable_hidden_when_toggled_off(self):
+        with patch('usage_monitor_for_claude.api.get_show_fable_separately', return_value=False):
+            merged = api._merge_scoped_limits(dict(self._RESPONSE))
+        self.assertNotIn('seven_day_fable', merged)
+        self.assertIn('seven_day_opus', merged)

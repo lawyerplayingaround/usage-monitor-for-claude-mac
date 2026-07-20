@@ -24,7 +24,7 @@ import io
 import sys
 import types
 
-__all__ = ['install_macos_tray_patch']
+__all__ = ['install_macos_tray_patch', 'wake_runloop']
 
 
 def install_macos_tray_patch(icon) -> None:
@@ -68,3 +68,24 @@ def install_macos_tray_patch(icon) -> None:
         self._status_item.button().setImage_(self._icon_image)
 
     icon._assert_image = types.MethodType(_assert_image, icon)
+
+
+def wake_runloop() -> None:
+    """Post a no-op event so a pending ``NSApplication.stop_`` takes effect now.
+
+    Cocoa's ``stop:`` only breaks ``NSApplication.run()`` after the runloop
+    processes one more *event*; a menu action alone does not produce one, so
+    a quit or restart chosen from the menu would otherwise hang until the
+    user's next click.  The synthetic application-defined event supplies that
+    one event immediately.
+    """
+    import AppKit  # type: ignore[import-untyped]  # pyobjc has no type stubs
+    import Foundation  # type: ignore[import-untyped]  # pyobjc has no type stubs
+
+    def _post() -> None:
+        event = AppKit.NSEvent.otherEventWithType_location_modifierFlags_timestamp_windowNumber_context_subtype_data1_data2_(
+            AppKit.NSEventTypeApplicationDefined, Foundation.NSMakePoint(0, 0), 0, 0.0, 0, None, 0, 0, 0,
+        )
+        AppKit.NSApp.postEvent_atStart_(event, False)
+
+    Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(_post)

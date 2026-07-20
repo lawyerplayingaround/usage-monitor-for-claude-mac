@@ -75,5 +75,6 @@
     "menu_start_at_login": "Buka saat Masuk",
     "menu_login": "Masuk ke Claude Code",
     "menu_language": "Bahasa",
-    "language_system_default": "Bawaan sistem"
+    "language_system_default": "Bawaan sistem",
+    "menu_show_fable": "Tampilkan penggunaan Fable secara terpisah"
 }

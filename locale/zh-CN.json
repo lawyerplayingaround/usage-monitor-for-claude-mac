@@ -75,5 +75,6 @@
     "menu_start_at_login": "登录时打开",
     "menu_login": "登录 Claude Code",
     "menu_language": "语言",
-    "language_system_default": "系统默认"
+    "language_system_default": "系统默认",
+    "menu_show_fable": "单独显示 Fable 用量"
 }

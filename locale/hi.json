@@ -75,5 +75,6 @@
     "menu_start_at_login": "लॉगिन पर खोलें",
     "menu_login": "Claude Code में लॉग इन करें",
     "menu_language": "भाषा",
-    "language_system_default": "सिस्टम डिफ़ॉल्ट"
+    "language_system_default": "सिस्टम डिफ़ॉल्ट",
+    "menu_show_fable": "Fable उपयोग अलग से दिखाएं"
 }

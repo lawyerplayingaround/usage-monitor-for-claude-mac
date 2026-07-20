@@ -36,8 +36,8 @@ from .i18n import LANGUAGE_NAMES, T
 from .popup import UsagePopup
 from .preferences import (
     ICON_LAYOUT_CLASSIC, ICON_LAYOUT_COMPACT,
-    get_dblclick_open_claude, get_icon_layout, get_language,
-    set_dblclick_open_claude, set_icon_layout, set_language,
+    get_dblclick_open_claude, get_icon_layout, get_language, get_show_fable_separately,
+    set_dblclick_open_claude, set_icon_layout, set_language, set_show_fable_separately,
 )
 from .tray_dblclick import _SINGLE_CLICK_DEFER_S, launch_claude_desktop
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
@@ -225,6 +225,10 @@ class UsageMonitorForClaude:
             ),
         ))
         login_item = pystray.MenuItem(T['menu_login'], self.on_login_claude)
+        show_fable_item = pystray.MenuItem(
+            T['menu_show_fable'], self.on_toggle_show_fable,
+            checked=lambda item: get_show_fable_separately(),
+        )
 
         self.icon = pystray.Icon(
             'usage_monitor',
@@ -234,6 +238,7 @@ class UsageMonitorForClaude:
                 pystray.MenuItem(T['menu_show'], self.on_show_popup, default=True),
                 pystray.Menu.SEPARATOR,
                 *darwin_menu_items,
+                show_fable_item,
                 language_menu,
                 login_item,
                 pystray.MenuItem(
@@ -313,6 +318,10 @@ class UsageMonitorForClaude:
                 set_language(code)
                 self.on_restart(icon, item)
         return handler
+
+    def on_toggle_show_fable(self, icon: Any = None, item: Any = None) -> None:
+        set_show_fable_separately(not get_show_fable_separately())
+        self.on_restart(icon, item)
 
     def on_login_claude(self, icon: Any = None, item: Any = None) -> None:
         """Open a terminal running the Claude CLI login flow.
@@ -399,6 +408,9 @@ class UsageMonitorForClaude:
     def on_quit(self, icon: Any = None, item: Any = None) -> None:
         self.running = False
         self.icon.stop()
+        if sys.platform == 'darwin':
+            from ._macos_tray import wake_runloop
+            wake_runloop()
 
     # Popup
 
