@@ -11,7 +11,25 @@ import locale
 from pathlib import Path
 from typing import Any
 
-__all__ = ['LOCALE_DIR', 'detect_lang_code', 'load_translations', 'T']
+__all__ = ['LANGUAGE_NAMES', 'LOCALE_DIR', 'detect_lang_code', 'load_translations', 'T']
+
+# Native display names for the Language menu, keyed by locale file name.
+# These are intentionally not translated: each language is listed in itself.
+LANGUAGE_NAMES = {
+    'de': 'Deutsch',
+    'en': 'English',
+    'es': 'Español',
+    'fr': 'Français',
+    'hi': 'हिन्दी',
+    'id': 'Bahasa Indonesia',
+    'it': 'Italiano',
+    'ja': '日本語',
+    'ko': '한국어',
+    'pt-BR': 'Português (Brasil)',
+    'uk': 'Українська',
+    'zh-CN': '简体中文',
+    'zh-TW': '繁體中文',
+}
 
 LOCALE_DIR = Path(__file__).parent.parent / 'locale'
 
@@ -71,8 +89,19 @@ def detect_lang_code(lang: str) -> str:
 
 
 def load_translations() -> dict[str, Any]:
-    """Load translations for the configured or detected system language, fallback to English."""
+    """Load translations for the chosen or detected system language, fallback to English.
+
+    Priority: the Language menu preference, then the ``language`` setting
+    from ``usage-monitor-settings.json``, then the system language.
+    """
+    from .preferences import get_language
     from .settings import LANGUAGE
+
+    preferred = get_language()
+    if preferred:
+        lang_file = LOCALE_DIR / f'{preferred}.json'
+        if lang_file.exists():
+            return json.loads(lang_file.read_text(encoding='utf-8'))
 
     if LANGUAGE:
         lang_file = LOCALE_DIR / f'{LANGUAGE}.json'

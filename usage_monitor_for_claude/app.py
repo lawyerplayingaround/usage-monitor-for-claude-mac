@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ctypes
 import math
+import subprocess
 import sys
 import threading
 import time
@@ -21,7 +22,7 @@ import pystray  # type: ignore[import-untyped]  # no type stubs available
 from .api import api_headers, read_access_token
 from .autostart import is_autostart_enabled, set_autostart, sync_autostart_path
 from .cache import UsageCache
-from .claude_cli import PROJECT_URL
+from .claude_cli import CLAUDE_CLI_PATH, PROJECT_URL
 from .command import run_event_command
 from .idle import get_idle_seconds, is_workstation_locked
 from .instance_id import effective_config_dir, is_default_config_dir
@@ -31,11 +32,12 @@ from .settings import (
     POLL_ERROR, POLL_FAST, POLL_FAST_EXTRA, POLL_INTERVAL, get_alert_thresholds,
 )
 from .formatting import elapsed_pct, field_period, format_credits, format_tooltip, parse_field_name, popup_label
-from .i18n import T
+from .i18n import LANGUAGE_NAMES, T
 from .popup import UsagePopup
 from .preferences import (
     ICON_LAYOUT_CLASSIC, ICON_LAYOUT_COMPACT,
-    get_dblclick_open_claude, get_icon_layout, set_dblclick_open_claude, set_icon_layout,
+    get_dblclick_open_claude, get_icon_layout, get_language,
+    set_dblclick_open_claude, set_icon_layout, set_language,
 )
 from .tray_dblclick import _SINGLE_CLICK_DEFER_S, launch_claude_desktop
 from .tray_icon import create_icon_image, create_status_image, taskbar_uses_light_theme, watch_theme_change
@@ -63,6 +65,23 @@ WM_LBUTTONDBLCLK = 0x0203
 # the popup would immediately reopen. Windows uses a different dismiss path and
 # keeps its original short debounce.
 _POPUP_REOPEN_GUARD_S = (_SINGLE_CLICK_DEFER_S + 0.2) if sys.platform == 'darwin' else 0.15
+
+
+def _open_login_terminal() -> None:
+    """Open the system terminal running ``claude auth login`` (macOS).
+
+    Uses the discovered CLI path because a bundle launched by Finder/launchd
+    inherits a minimal PATH without Homebrew.  The AppleScript string only
+    ever contains our own quoted path, but escape it defensively anyway.
+    """
+    if sys.platform != 'darwin':
+        return
+    shell_command = f"'{CLAUDE_CLI_PATH}' auth login".replace('\\', '\\\\').replace('"', '\\"')
+    subprocess.run([
+        '/usr/bin/osascript',
+        '-e', f'tell application "Terminal" to do script "{shell_command}"',
+        '-e', 'tell application "Terminal" to activate',
+    ], check=False, timeout=15)
 
 
 def _future_iso(**kwargs: float) -> str:
@@ -184,6 +203,21 @@ class UsageMonitorForClaude:
                     T['menu_dblclick_open_claude'], self.on_toggle_dblclick_open_claude,
                     checked=lambda item: get_dblclick_open_claude(),
                 ),
+                pystray.MenuItem(T['menu_language'], pystray.Menu(
+                    pystray.MenuItem(
+                        T['language_system_default'], self.on_set_language(''),
+                        checked=lambda item: get_language() == '',
+                    ),
+                    pystray.Menu.SEPARATOR,
+                    *(
+                        pystray.MenuItem(
+                            name, self.on_set_language(code),
+                            checked=lambda item, code=code: get_language() == code,
+                        )
+                        for code, name in sorted(LANGUAGE_NAMES.items(), key=lambda pair: pair[1].lower())
+                    ),
+                )),
+                pystray.MenuItem(T['menu_login'], self.on_login_claude),
             )
 
         self.icon = pystray.Icon(
@@ -263,6 +297,23 @@ class UsageMonitorForClaude:
     def on_toggle_dblclick_open_claude(self, icon: Any = None, item: Any = None) -> None:
         set_dblclick_open_claude(not get_dblclick_open_claude())
         self.on_restart(icon, item)
+
+    def on_set_language(self, code: str) -> Any:
+        """Return a menu handler that persists *code* and restarts to apply it."""
+        def handler(icon: Any = None, item: Any = None) -> None:
+            if get_language() != code:
+                set_language(code)
+                self.on_restart(icon, item)
+        return handler
+
+    def on_login_claude(self, icon: Any = None, item: Any = None) -> None:
+        """Open a terminal running the Claude CLI login flow.
+
+        Always available - especially when the app shows an auth error, this
+        is the recovery path.  The CLI itself opens the browser window for
+        the OAuth approval, so login is one click plus the browser.
+        """
+        threading.Thread(target=_open_login_terminal, daemon=True).start()
 
     def on_restart(self, icon: Any = None, item: Any = None) -> None:
         self.restart_requested = True

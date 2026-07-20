@@ -72,5 +72,8 @@
     "icon_style_classic": "クラシック",
     "icon_style_compact": "コンパクト",
     "menu_dblclick_open_claude": "ダブルクリックで Claude Desktop を開く",
-    "menu_start_at_login": "ログイン時に開く"
+    "menu_start_at_login": "ログイン時に開く",
+    "menu_login": "Claude Code にログイン",
+    "menu_language": "言語",
+    "language_system_default": "システムのデフォルト"
 }

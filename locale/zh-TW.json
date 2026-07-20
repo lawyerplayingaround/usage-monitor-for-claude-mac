@@ -72,5 +72,8 @@
     "icon_style_classic": "經典",
     "icon_style_compact": "精簡",
     "menu_dblclick_open_claude": "按兩下開啟 Claude Desktop",
-    "menu_start_at_login": "登入時開啟"
+    "menu_start_at_login": "登入時開啟",
+    "menu_login": "登入 Claude Code",
+    "menu_language": "語言",
+    "language_system_default": "系統預設"
 }

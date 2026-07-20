@@ -72,5 +72,8 @@
     "icon_style_classic": "Класичний",
     "icon_style_compact": "Компактний",
     "menu_dblclick_open_claude": "Подвійний клік відкриває Claude Desktop",
-    "menu_start_at_login": "Відкривати під час входу"
+    "menu_start_at_login": "Відкривати під час входу",
+    "menu_login": "Увійти в Claude Code",
+    "menu_language": "Мова",
+    "language_system_default": "Системна за замовчуванням"
 }

@@ -31,6 +31,7 @@ __all__ = [
     'DEFAULT_ICON_LAYOUT', 'DEFAULT_DBLCLICK_OPEN_CLAUDE',
     'get_icon_layout', 'set_icon_layout',
     'get_dblclick_open_claude', 'set_dblclick_open_claude',
+    'get_language', 'set_language',
 ]
 
 ICON_LAYOUT_CLASSIC = 'classic'
@@ -42,6 +43,7 @@ DEFAULT_DBLCLICK_OPEN_CLAUDE = True
 
 _ICON_LAYOUT_NAME = 'IconLayout'
 _DBLCLICK_NAME = 'DblclickOpenClaude'
+_LANGUAGE_NAME = 'Language'
 
 
 # ---------------------------------------------------------------------------
@@ -165,3 +167,17 @@ def get_dblclick_open_claude() -> bool:
 def set_dblclick_open_claude(enabled: bool) -> None:
     """Persist whether double-click launches Claude Desktop."""
     _write_bool(_DBLCLICK_NAME, bool(enabled))
+
+
+def get_language() -> str:
+    """Return the stored UI language code, or ``''`` for the system default.
+
+    Callers must treat an unknown code like the system default (the locale
+    file may have been removed); this module does not validate codes.
+    """
+    return _read_str(_LANGUAGE_NAME, '')
+
+
+def set_language(code: str) -> None:
+    """Persist the UI language code; ``''`` selects the system default."""
+    _write_str(_LANGUAGE_NAME, code)

@@ -72,5 +72,8 @@
     "icon_style_classic": "Clásico",
     "icon_style_compact": "Compacto",
     "menu_dblclick_open_claude": "Doble clic abre Claude Desktop",
-    "menu_start_at_login": "Abrir al iniciar sesión"
+    "menu_start_at_login": "Abrir al iniciar sesión",
+    "menu_login": "Iniciar sesión en Claude Code",
+    "menu_language": "Idioma",
+    "language_system_default": "Predeterminado del sistema"
 }

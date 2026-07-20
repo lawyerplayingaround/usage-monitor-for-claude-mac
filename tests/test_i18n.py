@@ -13,6 +13,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+import usage_monitor_for_claude.i18n as i18n
 from usage_monitor_for_claude.i18n import LOCALE_DIR, detect_lang_code, load_translations
 
 MOCK_LOCALE_FILES = ['en.json', 'de.json', 'es.json', 'fr.json', 'hi.json', 'id.json', 'ja.json', 'pt-BR.json', 'uk.json', 'zh-CN.json', 'zh-TW.json']
@@ -284,3 +285,23 @@ class TestLocaleConsistency(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestLanguagePreferenceOverride(unittest.TestCase):
+    """The Language menu preference outranks the settings file and system locale."""
+
+    def test_preference_wins(self):
+        with patch('usage_monitor_for_claude.preferences.get_language', return_value='de'):
+            translations = i18n.load_translations()
+        self.assertEqual(translations['menu_language'], 'Sprache')
+
+    def test_unknown_preference_falls_through(self):
+        """A stored code without a locale file falls back to the normal chain."""
+        with patch('usage_monitor_for_claude.preferences.get_language', return_value='xx-XX'):
+            translations = i18n.load_translations()
+        self.assertIn('menu_language', translations)
+
+    def test_language_names_cover_all_locales(self):
+        """Every locale file has a native display name for the menu."""
+        codes = {p.stem for p in i18n.LOCALE_DIR.glob('*.json')}
+        self.assertEqual(codes, set(i18n.LANGUAGE_NAMES))

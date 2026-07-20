@@ -72,5 +72,8 @@
     "icon_style_classic": "Klasik",
     "icon_style_compact": "Ringkas",
     "menu_dblclick_open_claude": "Klik dua kali membuka Claude Desktop",
-    "menu_start_at_login": "Buka saat Masuk"
+    "menu_start_at_login": "Buka saat Masuk",
+    "menu_login": "Masuk ke Claude Code",
+    "menu_language": "Bahasa",
+    "language_system_default": "Bawaan sistem"
 }

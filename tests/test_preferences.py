@@ -73,3 +73,22 @@ class TestMacOSBackend(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestLanguagePreference(unittest.TestCase):
+    """Tests for the Language menu preference accessors."""
+
+    def test_default_is_system(self):
+        """No stored value means system default (empty string)."""
+        with patch.object(prefs, '_read_str', lambda name, default: default):
+            self.assertEqual(prefs.get_language(), '')
+
+    def test_roundtrip(self):
+        """set_language persists a code that get_language returns."""
+        store = {}
+        with patch.object(prefs, '_read_str', lambda name, default: store.get(name, default)), \
+             patch.object(prefs, '_write_str', lambda name, value: store.__setitem__(name, value)):
+            prefs.set_language('pt-BR')
+            self.assertEqual(prefs.get_language(), 'pt-BR')
+            prefs.set_language('')
+            self.assertEqual(prefs.get_language(), '')

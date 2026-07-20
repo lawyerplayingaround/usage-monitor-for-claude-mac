@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.mac.1...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.mac.2...HEAD)
+
+## [1.20.0-fork.mac.2] - 2026-07-19
+
+### Added
+
+- **"Log in to Claude Code" menu item (macOS).** One click opens Terminal running `claude auth login`, which itself opens the browser window for the OAuth approval - so recovering from a logged-out or expired session no longer requires finding the right command. The item is always available, especially when the app shows an authentication error.
+- **Language submenu (macOS).** The right-click menu now offers all 13 UI languages by their native names, plus "System default". The choice is stored in the standard preferences domain, outranks the `language` setting from `usage-monitor-settings.json`, and the app restarts itself to apply it.
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.mac.1...v1.20.0-fork.mac.2)
 
 ## [1.20.0-fork.mac.1] - 2026-07-19
 
