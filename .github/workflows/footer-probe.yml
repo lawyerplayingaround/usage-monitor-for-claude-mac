@@ -1,0 +1,34 @@
+# Diagnostic-only workflow for the missing popup footer on Windows.
+# Runs the real WebView2 popup host against synthetic data on a Windows
+# runner and uploads the evidence log. Lives on the debug/footer-probe
+# branch only; deleted once the bug is fixed.
+name: footer-probe
+
+on:
+  push:
+    branches: [debug/footer-probe]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run popup probe
+        run: python scripts/footer_probe.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: footer-probe-log
+          path: probe_log.txt
+          if-no-files-found: error
