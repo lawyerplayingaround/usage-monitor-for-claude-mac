@@ -93,11 +93,35 @@ def get_window_rect(hwnd: int) -> tuple[int, int, int, int] | None:
     return (rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top)
 
 
+# Installed once per tick (no-op after the first): records every body-size
+# change with a timestamp, independent of the app's own report_height guard.
+RO_LOG_JS = """
+(function () {
+    if (window.__roLog) { return; }
+    window.__roLog = [['install', Math.round(performance.now()), document.body.scrollHeight]];
+    new ResizeObserver(function () {
+        window.__roLog.push(['ro', Math.round(performance.now()), document.body.scrollHeight]);
+    }).observe(document.body);
+})()
+"""
+
 PROBE_JS = """
 (function () {
     var f = document.getElementById('statusSection');
     var r = f ? f.getBoundingClientRect() : null;
+    var probe = document.getElementById('__probeRuler');
+    if (!probe) {
+        probe = document.createElement('span');
+        probe.id = '__probeRuler';
+        probe.textContent = 'Session (5hr) ruler text 123';
+        probe.style.cssText = 'position:absolute;top:0;left:0;visibility:hidden;white-space:nowrap;font-size:13px;';
+        document.body.appendChild(probe);
+    }
     return JSON.stringify({
+        roLog: window.__roLog || null,
+        rulerWidth: Math.round(probe.getBoundingClientRect().width * 100) / 100,
+        rulerHeight: Math.round(probe.getBoundingClientRect().height * 100) / 100,
+        bodyFontSize: getComputedStyle(document.body).fontSize,
         readyState: document.readyState,
         elsDefined: typeof els !== 'undefined' && !!els,
         apiKeys: window.pywebview && window.pywebview.api ? Object.keys(window.pywebview.api) : null,
@@ -117,10 +141,42 @@ PROBE_JS = """
 """
 
 
+def log_environment() -> None:
+    """Record monitor layout, per-monitor DPI and the Windows text scale."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'Software\Microsoft\Accessibility') as key:
+            text_scale = winreg.QueryValueEx(key, 'TextScaleFactor')[0]
+    except OSError:
+        text_scale = 100
+    log(f'text scale factor: {text_scale}%')
+
+    monitors: list[str] = []
+
+    def enum_proc(hmon, hdc, rect_ptr, lparam):
+        rect = rect_ptr.contents
+        dpi_x = ctypes.c_uint()
+        dpi_y = ctypes.c_uint()
+        try:
+            ctypes.windll.shcore.GetDpiForMonitor(hmon, 0, ctypes.byref(dpi_x), ctypes.byref(dpi_y))
+        except OSError:
+            dpi_x.value = 0
+        monitors.append(f'({rect.left},{rect.top})-({rect.right},{rect.bottom}) dpi={dpi_x.value}')
+        return True
+
+    proc_type = ctypes.WINFUNCTYPE(
+        ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.POINTER(ctypes.wintypes.RECT), ctypes.c_double,
+    )
+    ctypes.windll.user32.EnumDisplayMonitors(None, None, proc_type(enum_proc), 0)
+    log('monitors: ' + '; '.join(monitors))
+
+
 def probe_main() -> None:
     try:
         from importlib.metadata import version as pkg_version
         log(f'probe start: pywebview={pkg_version("pywebview")} python={sys.version.split()[0]}')
+        log_environment()
 
         app = SimpleNamespace(
             cache=SimpleNamespace(snapshot=make_snapshot()),
@@ -138,20 +194,27 @@ def probe_main() -> None:
 
         # Give the popup time to create, load, report, resize and show.
         # webview.windows[0] is the hidden dummy from __main__ parity below;
-        # the popup is the second window once created.
-        for second in range(12):
-            time.sleep(1)
+        # the popup is the second window once created.  Dense 250ms ticks for
+        # the first 3s catch the load/init/report ordering; 1s ticks after
+        # that catch late layout changes (e.g. async text scaling).
+        ticks = [0.25] * 12 + [1.0] * 12
+        elapsed = 0.0
+        for delay in ticks:
+            time.sleep(delay)
+            elapsed += delay
+            stamp = f't+{elapsed:5.2f}s'
             if len(webview.windows) < 2:
-                log(f't+{second + 1}s: popup window not in webview.windows yet')
+                log(f'{stamp}: popup window not in webview.windows yet')
                 continue
             wv = webview.windows[1]
             try:
+                wv.evaluate_js(RO_LOG_JS)
                 state = wv.evaluate_js(PROBE_JS)
                 hwnd = wv.native.Handle.ToInt32() if wv.native else 0
                 dpi = ctypes.windll.user32.GetDpiForWindow(hwnd) if hwnd else 0
-                log(f't+{second + 1}s: rect={get_window_rect(hwnd)} dpi={dpi} dom={state}')
+                log(f'{stamp}: rect={get_window_rect(hwnd)} dpi={dpi} dom={state}')
             except Exception:
-                log(f't+{second + 1}s: probe evaluate_js failed:\n' + traceback.format_exc())
+                log(f'{stamp}: probe evaluate_js failed:\n' + traceback.format_exc())
 
         log('probe done')
     except Exception:
