@@ -48,6 +48,8 @@ if sys.platform == 'darwin':
 
 __all__ = ['UsageMonitorForClaude', 'crash_log']
 
+
+
 # Seconds after a reset at which to place the confirming poll.  A small buffer
 # absorbs minor timing differences (clocks, caches, server-side propagation).
 RESET_BUFFER = 5
@@ -85,6 +87,39 @@ def _open_login_terminal() -> None:
         '-e', f'tell application "Terminal" to do script "{shell_command}"',
         '-e', 'tell application "Terminal" to activate',
     ], check=False, timeout=15)
+
+
+def _hard_restart_or_exit(restart: bool) -> None:
+    """Restart or exit the process directly when the AppKit loop will not return.
+
+    Mirrors the normal post-run restart in ``__main__``: release the
+    single-instance lock, spawn the replacement (for a restart), and exit.
+    Used only on macOS, where a stopped ``NSApplication.run()`` has been
+    observed to keep blocking until the next real user event.
+    """
+    import os
+
+    from .instance_id import effective_config_dir, is_default_config_dir
+    from .single_instance import release_instance_lock
+
+    try:
+        release_instance_lock()
+    except Exception:
+        pass
+
+    if restart:
+        passthrough_args = []
+        if not is_default_config_dir():
+            passthrough_args.append(f'--config-dir={effective_config_dir()}')
+        try:
+            if getattr(sys, 'frozen', False):
+                env = {k: v for k, v in os.environ.items() if not k.startswith(('_PYI_', '_MEI'))}
+                subprocess.Popen([sys.executable, *passthrough_args], env=env)
+            else:
+                subprocess.Popen([sys.executable, '-m', 'usage_monitor_for_claude', *passthrough_args])
+        except Exception:
+            pass
+    os._exit(0)
 
 
 def _future_iso(**kwargs: float) -> str:
@@ -182,6 +217,7 @@ class UsageMonitorForClaude:
         self._dblclick_open_claude = get_dblclick_open_claude()
 
         self.restart_requested = False
+        self.loop_exited = False
 
         # Non-default config dirs get a tooltip prefix so multiple
         # instances (one per Claude account) can be told apart.
@@ -189,24 +225,22 @@ class UsageMonitorForClaude:
 
         # Menu entries for the macOS-only tray preferences (icon layout and
         # double-click opens Claude Desktop).
-        darwin_menu_items: tuple[pystray.MenuItem, ...] = ()
-        if sys.platform == 'darwin':
-            darwin_menu_items = (
-                pystray.MenuItem(T['menu_icon_style'], pystray.Menu(
-                    pystray.MenuItem(
-                        T['icon_style_classic'], self.on_set_icon_layout_classic,
-                        checked=lambda item: get_icon_layout() == ICON_LAYOUT_CLASSIC,
-                    ),
-                    pystray.MenuItem(
-                        T['icon_style_compact'], self.on_set_icon_layout_compact,
-                        checked=lambda item: get_icon_layout() == ICON_LAYOUT_COMPACT,
-                    ),
-                )),
+        preference_menu_items = (
+            pystray.MenuItem(T['menu_icon_style'], pystray.Menu(
                 pystray.MenuItem(
-                    T['menu_dblclick_open_claude'], self.on_toggle_dblclick_open_claude,
-                    checked=lambda item: get_dblclick_open_claude(),
+                    T['icon_style_classic'], self.on_set_icon_layout_classic,
+                    checked=lambda item: get_icon_layout() == ICON_LAYOUT_CLASSIC,
                 ),
-            )
+                pystray.MenuItem(
+                    T['icon_style_compact'], self.on_set_icon_layout_compact,
+                    checked=lambda item: get_icon_layout() == ICON_LAYOUT_COMPACT,
+                ),
+            )),
+            pystray.MenuItem(
+                T['menu_dblclick_open_claude'], self.on_toggle_dblclick_open_claude,
+                checked=lambda item: get_dblclick_open_claude(),
+            ),
+        )
 
         # Cross-platform fork menu entries: the Language submenu and the
         # Claude CLI login shortcut work identically on Windows and macOS.
@@ -237,7 +271,7 @@ class UsageMonitorForClaude:
             menu=pystray.Menu(
                 pystray.MenuItem(T['menu_show'], self.on_show_popup, default=True),
                 pystray.Menu.SEPARATOR,
-                *darwin_menu_items,
+                *preference_menu_items,
                 show_fable_item,
                 language_menu,
                 login_item,
@@ -271,7 +305,7 @@ class UsageMonitorForClaude:
         self._click_lock = threading.Lock()
         self._single_click_timer: threading.Timer | None = None
         self._swallow_next_up = False
-        if sys.platform == 'win32' and ON_DOUBLE_CLICK_COMMAND:
+        if sys.platform == 'win32' and (ON_DOUBLE_CLICK_COMMAND or self._dblclick_open_claude):
             self._double_click_seconds = ctypes.windll.user32.GetDoubleClickTime() / 1000.0
             self._install_double_click_handler()
 
@@ -415,7 +449,20 @@ class UsageMonitorForClaude:
             # the whole stop to a background thread lands it after the
             # tracking session has ended; pystray posts its wake event from
             # the calling thread, which reliably breaks the main event wait.
-            timer = threading.Timer(0.2, self.icon.stop)
+            def _deferred_stop() -> None:
+                self.icon.stop()
+                # NSApplication.run() does not reliably exit on stop_ here
+                # (observed on macOS 27: the loop only returns on the next
+                # real user event).  After a grace period, take over: perform
+                # the restart or exit directly instead of waiting for the
+                # main loop.  loop_exited is set by __main__ the moment
+                # icon.run() actually returns, which makes the two paths
+                # mutually exclusive.
+                time.sleep(1.0)
+                if self.loop_exited:
+                    return
+                _hard_restart_or_exit(self.restart_requested)
+            timer = threading.Timer(0.2, _deferred_stop)
             timer.daemon = True
             timer.start()
         else:
@@ -508,7 +555,10 @@ class UsageMonitorForClaude:
                 if self._single_click_timer is not None:
                     self._single_click_timer.cancel()
                     self._single_click_timer = None
-            self._run_double_click_command()
+            if ON_DOUBLE_CLICK_COMMAND:
+                self._run_double_click_command()
+            else:
+                threading.Thread(target=launch_claude_desktop, daemon=True).start()
             return 0
 
         return self._pystray_on_notify(wparam, lparam)

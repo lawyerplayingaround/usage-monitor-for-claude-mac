@@ -20,7 +20,7 @@ Prioritize readability and auditability - users handle credentials and must be a
 ## Tray Icon Interaction
 - pystray has no native double-click support (it fires the default menu item on every `WM_LBUTTONUP`). Double-click is added only when `on_double_click_command` is set: `_install_double_click_handler()` swaps the `WM_NOTIFY` entry in pystray's private `_message_handlers` table (matched by identity against `icon._on_notify`) for `_on_tray_message`. This reaches into pystray internals - if a pystray upgrade renames `_message_handlers`/`_on_notify`, this is where it breaks
 - With a command configured, the single click (popup) is deferred by `GetDoubleClickTime()` via a `threading.Timer` and cancelled when the second click arrives; the trailing `WM_LBUTTONUP` that always follows a `WM_LBUTTONDBLCLK` is swallowed via `_swallow_next_up`. All tray-message state is guarded by `_click_lock`, and `_fire_single_click()` re-checks the timer under the lock so a double-click landing exactly as the timer fires still suppresses the popup
-- When no `on_double_click_command` is set, the handler is **not** installed - pystray's instant single-click popup must stay untouched (no double-click delay). Do not make the deferral unconditional
+- The handler is installed when `on_double_click_command` is set OR the fork's "Double-click opens Claude Desktop" preference is on (its default). The command takes precedence at dispatch; without one, a double-click launches Claude Desktop. Only when BOTH are off does pystray's instant single-click popup stay untouched (no deferral) - do not make the deferral unconditional
 - `WM_NOTIFY` and other message handlers (right-click menu) must still fall through to the saved `_pystray_on_notify`
 
 ## Event Commands

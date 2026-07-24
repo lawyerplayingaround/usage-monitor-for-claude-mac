@@ -180,7 +180,7 @@ if _IS_MAC:
             'NSHighResolutionCapable': True,
             # Purpose string for the macOS Automation consent prompt raised by
             # the "Log in to Claude Code" menu item (osascript drives Terminal).
-            'NSAppleEventsUsageDescription': 'Usage Monitor opens Terminal to run the Claude CLI login command when you choose "Log in to Claude Code".',
+            'NSAppleEventsUsageDescription': 'Usage Monitor uses AppleScript to open Terminal for the Claude CLI login and to bring Claude Desktop forward when you double-click the menu bar icon.',
             # Minimum macOS that supports Apple Silicon native + modern WKWebView.
             'LSMinimumSystemVersion': '11.0',
         },

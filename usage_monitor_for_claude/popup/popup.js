@@ -72,6 +72,19 @@ function init(config) {
 
     updateData(config.data);
     requestAnimationFrame(() => document.body.classList.add('open'));
+
+    // Re-report the content height once everything init() made visible has
+    // laid out, and once more after fonts settle.  WebView2 has been observed
+    // to coalesce the ResizeObserver callback into a measurement taken before
+    // the footer became visible, leaving the window too short to show it.
+    reportHeightNow();
+    setTimeout(reportHeightNow, 250);
+}
+
+function reportHeightNow() {
+    if (window.pywebview?.api?.report_height) {
+        pywebview.api.report_height(document.body.scrollHeight);
+    }
 }
 
 function setupPinButton() {
@@ -499,9 +512,4 @@ function updateBarElement(div, entry) {
 }
 
 // Report content height changes to the host (pywebview or dev.html iframe parent).
-new ResizeObserver(() => {
-    const height = document.body.scrollHeight;
-    if (window.pywebview?.api?.report_height) {
-        pywebview.api.report_height(height);
-    }
-}).observe(document.body);
+new ResizeObserver(reportHeightNow).observe(document.body);

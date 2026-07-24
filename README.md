@@ -25,7 +25,7 @@ A native tray/menu bar app that shows your Claude usage at a glance - lightweigh
 
 Relative to upstream, this fork adds a macOS port, a popup refresh button, an Icon Style toggle, a double-click-opens-Claude toggle, a Language submenu, a "Log in to Claude Code" menu shortcut, a "Show Fable usage separately" toggle for credit-based models, and a custom app icon. Prefer the pristine Windows original? Use the upstream release.
 
-- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (never cached on disk), single network destination (`api.anthropic.com`), no file writes outside a small PID lock, your saved UI preferences, and the optional LaunchAgent plist (none holding your token or usage data).
+- **Native macOS menu bar app** (`UsageMonitorForClaude.app`, ~32 MB, Apple Silicon onedir bundle). Same auditability guarantees as upstream: credentials read from the system **Keychain** (with a fallback to Claude Code's own credentials file; never cached or written by the monitor), single network destination (`api.anthropic.com`), no file writes outside a small PID lock, your saved UI preferences, and the optional LaunchAgent plist (none holding your token or usage data).
 - **Menu bar icon** rendered with SF Pro Semibold at 2x status-bar thickness and marked as an AppKit template image, so it adapts automatically to light/dark menu bars at retina density.
 - **Click behavior**: left single-click opens the usage popup, left double-click opens Claude Desktop (via `claude://`, falling back to the `com.anthropic.claudefordesktop` bundle ID, then to `claude.ai` in the default browser), right-click or Ctrl+click shows the context menu.
 - **Popup hosted in a native `NSPanel` + `WKWebView`** (no pywebview Cocoa backend), so AppKit's `NSApplication.run()` is owned cleanly by pystray. The upstream `popup.html`/`popup.css`/`popup.js` are reused unchanged - a small `WKUserScript` shims `window.pywebview.api.{close, open_url, refresh, report_height}` onto a `WKScriptMessageHandler`.
@@ -234,6 +234,15 @@ This starts a local server and opens the dev preview in your default browser. Us
 </details>
 
 ---
+
+## Troubleshooting: frequent login prompts on macOS
+
+Two separate mechanisms can make macOS ask you to log in (or approve access) more often than Windows does:
+
+- **Keychain approval per release.** The app is not code-signed with a Developer ID, so each release has a new code identity and macOS re-asks permission to read the Claude Code Keychain entry once per update. Click **Always Allow** and it stays quiet until the next release.
+- **Claude Code's own Keychain flakiness.** Claude Code on macOS sometimes loses its Keychain session, forcing re-logins independent of this monitor. Claude Code can be switched to file-based credential storage (`~/.claude/.credentials.json`, the same mode it uses on Windows and Linux), which many users report fixes the frequent re-logins. Trade-off to decide knowingly: the Keychain is encrypted at rest, the JSON file is plain text on disk. The monitor supports both modes automatically (it reads the Keychain first, then falls back to the file), so no monitor configuration is needed either way. If macOS asks whether the monitor may access files when the file mode is active, allow it - that is the credentials read.
+
+The permanent fix for the per-release prompts is Developer ID signing, which is on the roadmap.
 
 ## Contributing
 

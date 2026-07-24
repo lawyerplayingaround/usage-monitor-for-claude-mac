@@ -1505,10 +1505,26 @@ class TestMenuActions(unittest.TestCase):
         """on_quit() sets running to False and stops the icon (deferred on darwin)."""
         immediate_timer = MagicMock()
         immediate_timer.side_effect = lambda delay, fn: MagicMock(start=fn)
-        with patch.object(app_mod.threading, 'Timer', immediate_timer):
+        self.app.loop_exited = True
+        with patch.object(app_mod.threading, 'Timer', immediate_timer), \
+             patch.object(app_mod.time, 'sleep'), \
+             patch.object(app_mod, '_hard_restart_or_exit') as mock_hard:
             self.app.on_quit()
         self.assertFalse(self.app.running)
         self.app.icon.stop.assert_called_once()
+        mock_hard.assert_not_called()
+
+    def test_on_quit_hard_path_when_loop_stays_blocked(self):
+        """When the run loop never exits, the deferred stop takes the hard path."""
+        immediate_timer = MagicMock()
+        immediate_timer.side_effect = lambda delay, fn: MagicMock(start=fn)
+        self.app.loop_exited = False
+        self.app.restart_requested = True
+        with patch.object(app_mod.threading, 'Timer', immediate_timer), \
+             patch.object(app_mod.time, 'sleep'), \
+             patch.object(app_mod, '_hard_restart_or_exit') as mock_hard:
+            self.app.on_quit()
+        mock_hard.assert_called_once_with(True)
 
     def test_set_icon_layout_classic_persists_and_restarts(self):
         """Choosing Classic stores the pref and restarts to apply it."""
@@ -3298,7 +3314,8 @@ class TestDoubleClickDetection(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.threading.Timer')
     def test_double_click_cancels_popup_and_runs_command(self, mock_timer):
         """A double-click cancels the pending popup and runs the command."""
-        with patch.object(self.app, '_run_double_click_command') as mock_cmd:
+        with patch.object(app_mod, 'ON_DOUBLE_CLICK_COMMAND', ['cmd']), \
+             patch.object(self.app, '_run_double_click_command') as mock_cmd:
             self.app._on_tray_message(0, WM_LBUTTONUP)
             self.app._on_tray_message(0, WM_LBUTTONDBLCLK)
 
@@ -3308,7 +3325,8 @@ class TestDoubleClickDetection(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.threading.Timer')
     def test_trailing_release_after_double_click_swallowed(self, mock_timer):
         """The release that follows a double-click does not schedule a second popup."""
-        with patch.object(self.app, '_run_double_click_command'):
+        with patch.object(app_mod, 'ON_DOUBLE_CLICK_COMMAND', ['cmd']), \
+             patch.object(self.app, '_run_double_click_command'):
             self.app._on_tray_message(0, WM_LBUTTONUP)      # first click's release
             self.app._on_tray_message(0, WM_LBUTTONDBLCLK)  # second click
             self.app._on_tray_message(0, WM_LBUTTONUP)      # trailing release
@@ -3318,13 +3336,23 @@ class TestDoubleClickDetection(unittest.TestCase):
     @patch('usage_monitor_for_claude.app.threading.Timer')
     def test_single_click_after_double_click_schedules_again(self, mock_timer):
         """A genuine single click after a completed double-click still schedules the popup."""
-        with patch.object(self.app, '_run_double_click_command'):
+        with patch.object(app_mod, 'ON_DOUBLE_CLICK_COMMAND', ['cmd']), \
+             patch.object(self.app, '_run_double_click_command'):
             self.app._on_tray_message(0, WM_LBUTTONUP)
             self.app._on_tray_message(0, WM_LBUTTONDBLCLK)
             self.app._on_tray_message(0, WM_LBUTTONUP)      # swallowed trailing release
             self.app._on_tray_message(0, WM_LBUTTONUP)      # new single click
 
         self.assertEqual(mock_timer.call_count, 2)
+
+    @patch('usage_monitor_for_claude.app.threading.Timer')
+    def test_double_click_without_command_launches_claude(self, mock_timer):
+        """With no event command configured, a double-click launches Claude Desktop."""
+        with patch.object(app_mod, 'ON_DOUBLE_CLICK_COMMAND', []), \
+             patch.object(app_mod.threading, 'Thread') as mock_thread:
+            self.app._on_tray_message(0, WM_LBUTTONUP)
+            self.app._on_tray_message(0, WM_LBUTTONDBLCLK)
+        self.assertEqual(mock_thread.call_args.kwargs.get('target') or mock_thread.call_args[1].get('target'), app_mod.launch_claude_desktop)
 
     def test_other_message_falls_through_to_pystray(self):
         """Non-left-button messages delegate to pystray's original handler."""
@@ -3418,9 +3446,13 @@ class TestQuitStopDeferral(unittest.TestCase):
         app, mock_timer = self._quit('darwin')
         self.assertFalse(app.running)
         app.icon.stop.assert_not_called()
-        args = mock_timer.call_args[0]
-        self.assertEqual(args[1], app.icon.stop)
+        delay, deferred = mock_timer.call_args[0]
+        self.assertGreater(delay, 0)
         mock_timer.return_value.start.assert_called_once()
+        app.loop_exited = True
+        with patch.object(app_mod.time, 'sleep'):
+            deferred()
+        app.icon.stop.assert_called_once()
 
     def test_win32_stops_immediately(self):
         app, mock_timer = self._quit('win32')

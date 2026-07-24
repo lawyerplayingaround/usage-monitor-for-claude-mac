@@ -22,6 +22,8 @@ import requests
 from .i18n import T
 from .preferences import get_show_fable_separately
 
+
+
 __all__ = ['API_URL_USAGE', 'API_URL_PROFILE', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CREDENTIALS', 'read_access_token', 'api_headers', 'fetch_usage', 'fetch_profile']
 
 # API endpoints & credentials
@@ -48,8 +50,18 @@ def read_access_token() -> str | None:
     The token is never cached in memory beyond the duration of the caller.
     """
     if sys.platform == 'darwin':
-        return _read_access_token_macos()
+        token = _read_access_token_macos()
+        if token:
+            return token
+        # Claude Code can be configured to store credentials in the JSON
+        # file instead of the Keychain; fall through to the same file read
+        # the other platforms use so both storage modes work.
 
+    return _read_credentials_file()
+
+
+def _read_credentials_file() -> str | None:
+    """Read the access token from the JSON credentials file, or None."""
     if not CLAUDE_CREDENTIALS.exists():
         return None
 

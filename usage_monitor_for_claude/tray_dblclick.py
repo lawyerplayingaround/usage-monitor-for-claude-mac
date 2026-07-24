@@ -58,6 +58,8 @@ if sys.platform == 'win32':
 
 __all__ = ['IconWithDoubleClick', 'install_macos_dblclick_handler', 'launch_claude_desktop']
 
+
+
 # Maximum time after the double-click event during which the trailing
 # trailing single-click event (released after the double-click) is
 # suppressed.  The OS-default double-click interval is around 500 ms;
@@ -71,7 +73,7 @@ _DBLCLICK_GUARD_S = 0.7
 # catches double-clicks within roughly the 90th percentile of human click
 # intervals (matching the Windows fork); a slower double-click opens the popup,
 # which the user can close, and the next attempt fires the double-click action.
-_SINGLE_CLICK_DEFER_S = 0.12
+_SINGLE_CLICK_DEFER_S = 0.2
 
 # Common fallback for both platforms when no Claude Desktop install is
 # found.
@@ -275,22 +277,28 @@ if sys.platform == 'darwin':
                 self._show_menu()
                 return
 
+            if kind == _CLICK_IGNORE:
+                return
+
+            # Doubles are detected by timing, not by NSEvent.clickCount:
+            # newer macOS releases deliver every status-item click with
+            # clickCount == 1 (observed on macOS 27: pairs 106-116 ms apart,
+            # both count 1), so a second left click landing while the
+            # single-click defer timer is still pending IS the double-click.
             with self._lock:
-                if self._pending_timer is not None:
+                if self._double is None:
+                    # No double action configured: fire the popup instantly,
+                    # no defer needed at all.
+                    callback = self._single
+                elif self._pending_timer is not None:
                     self._pending_timer.cancel()
                     self._pending_timer = None
-
-                if kind == _CLICK_SINGLE:
+                    callback = self._double
+                else:
                     timer = threading.Timer(_SINGLE_CLICK_DEFER_S, self._fire_single)
                     timer.daemon = True
                     self._pending_timer = timer
                     timer.start()
-                    callback = None
-                elif kind == _CLICK_DOUBLE:
-                    # With the double-click action disabled (None), fall back to
-                    # the single action so the click still opens the popup.
-                    callback = self._double if self._double is not None else self._single
-                else:
                     callback = None
 
             if callback is not None:
@@ -385,10 +393,12 @@ def install_macos_dblclick_handler(
     button = icon._status_item.button()
     button.setTarget_(dispatcher)
     button.setAction_('handleClick:')
-    # Fire the action on mouse down for both buttons so NSEvent.clickCount
-    # is already final when handleClick_ runs.
+    # Left clicks fire on mouse UP: newer macOS releases stop delivering the
+    # second mouse-down of a double-click to a status-item action, but the
+    # mouse-up still carries the final NSEvent.clickCount.  The menu keeps
+    # firing on right mouse DOWN for the native drop-down feel.
     button.sendActionOn_(
-        AppKit.NSEventMaskLeftMouseDown | AppKit.NSEventMaskRightMouseDown,
+        AppKit.NSEventMaskLeftMouseUp | AppKit.NSEventMaskRightMouseDown,
     )
 
     icon._dblclick_installed = True  # type: ignore[attr-defined]  # marker that the patch is in place
@@ -411,6 +421,8 @@ def launch_claude_desktop() -> None:
         if _try_windows_registry_exe():
             return
     elif sys.platform == 'darwin':
+        if _try_macos_reopen_running():
+            return
         if _try_macos_uri_launch():
             return
         if _try_macos_bundle_id_launch():
@@ -488,6 +500,31 @@ if sys.platform == 'win32':
 
 if sys.platform == 'darwin':
     _CLAUDE_BUNDLE_ID = 'com.anthropic.claudefordesktop'
+
+    def _try_macos_reopen_running() -> bool:
+        """Bring an already-running Claude Desktop forward, unminimizing it.
+
+        ``open claude://`` delivers the URL to a running app but leaves a
+        minimized window in the Dock.  The ``reopen`` Apple event carries the
+        same semantics as clicking the app's Dock icon - the app unminimizes
+        or recreates its window - so it is sent first whenever the app is
+        already running.  ``NSRunningApplication`` supplies a launch-free
+        running check (AppleScript's own ``running`` property can launch the
+        app as a side effect).
+        """
+        import AppKit  # type: ignore[import-untyped]  # pyobjc has no type stubs
+
+        if not AppKit.NSRunningApplication.runningApplicationsWithBundleIdentifier_(_CLAUDE_BUNDLE_ID):
+            return False
+        try:
+            result = subprocess.run([
+                '/usr/bin/osascript',
+                '-e', f'tell application id "{_CLAUDE_BUNDLE_ID}" to reopen',
+                '-e', f'tell application id "{_CLAUDE_BUNDLE_ID}" to activate',
+            ], capture_output=True, timeout=5)
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+        return result.returncode == 0
 
     def _try_macos_uri_launch() -> bool:
         """Open Claude Desktop via its registered ``claude://`` URL handler."""

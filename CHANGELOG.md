@@ -7,11 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.5...HEAD)
+
+## [1.20.0-fork.5] - 2026-07-24
+
+### Added
+
+- **Credentials file fallback on macOS.** The monitor now reads the Claude Code token from the Keychain first and falls back to `~/.claude/.credentials.json`, so it keeps working when Claude Code is switched to file-based credential storage. A new README troubleshooting section explains the frequent-login mechanics on macOS and the storage trade-off.
+
 ### Fixed
 
-- **Menu choices on macOS now truly apply immediately.** Picking an Icon style, a Language, the Fable toggle, or Restart previously only took effect after one more click on the menu-bar icon - the restart now happens the moment the choice is made.
+- **Menu choices on macOS now truly apply immediately.** Picking an Icon style, a Language, the Fable toggle, or Restart previously only took effect after one more click on the menu-bar icon - the app now restarts itself the moment the choice is made.
+- **Double-click opens Claude Desktop again on macOS.** Newer macOS releases stopped counting status-item double-clicks, so the app never saw them; clicks are now timed by the app itself. A double-click also brings an already-running, minimized Claude Desktop back to the front instead of doing nothing.
+- **Double-click works on Windows without any configuration.** The "Double-click opens Claude Desktop" toggle now drives the Windows tray as well; a configured `on_double_click_command` still takes precedence.
+- **The "Icon style" submenu and the double-click toggle are back in the Windows menu** (they had disappeared in the v1.20.0 merge).
+- **Windows popup footer no longer cut off.** The refresh button and version line could be clipped below the window's bottom edge; the popup now re-measures its height after the first layout.
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.4...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.4...v1.20.0-fork.5)
 
 ## [1.20.0-fork.4] - 2026-07-20
 

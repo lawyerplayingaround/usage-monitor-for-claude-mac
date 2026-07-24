@@ -33,7 +33,8 @@ class TestLaunchClaudeDesktopFallback(unittest.TestCase):
 
         with patch.object(dblclick_mod, 'webbrowser') as mock_browser:
             if sys.platform == 'darwin':
-                with patch.object(dblclick_mod, '_try_macos_uri_launch', return_value=False), \
+                with patch.object(dblclick_mod, '_try_macos_reopen_running', return_value=False), \
+                     patch.object(dblclick_mod, '_try_macos_uri_launch', return_value=False), \
                      patch.object(dblclick_mod, '_try_macos_bundle_id_launch', return_value=False):
                     dblclick_mod.launch_claude_desktop()
             else:
@@ -51,7 +52,8 @@ class TestLaunchClaudeDesktopFallback(unittest.TestCase):
         with patch.object(dblclick_mod, 'webbrowser') as mock_browser:
             mock_browser.open.side_effect = RuntimeError('no browser')
             if sys.platform == 'darwin':
-                with patch.object(dblclick_mod, '_try_macos_uri_launch', return_value=False), \
+                with patch.object(dblclick_mod, '_try_macos_reopen_running', return_value=False), \
+                     patch.object(dblclick_mod, '_try_macos_uri_launch', return_value=False), \
                      patch.object(dblclick_mod, '_try_macos_bundle_id_launch', return_value=False):
                     dblclick_mod.launch_claude_desktop()  # must not raise
             else:

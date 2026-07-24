@@ -135,6 +135,8 @@ try:
         # runloop via NSOperationQueue from popup worker threads.
         _verbose_step('running pystray on main thread (macOS)...')
         _run_app()
+        if _result.get('app'):
+            _result['app'].loop_exited = True
         _verbose_step('pystray.run returned')
     else:
         # pywebview requires the main thread for its GUI event loop.
