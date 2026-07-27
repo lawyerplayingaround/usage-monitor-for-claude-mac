@@ -688,11 +688,12 @@ class TestPinState(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# report_height / first show
+# report_height (Windows bridge)
 # ---------------------------------------------------------------------------
 
 class TestReportHeight(unittest.TestCase):
-    """Tests for _PopupApi.report_height - the first report must always show the window."""
+    """Tests for _PopupApi.report_height - records content height; sizing is
+    owned by _layout_and_reveal before reveal and by the dead-band guard after."""
 
     def _build_popup(self):
         """Run the real UsagePopup.__init__ with webview mocked, return (popup, api).
@@ -722,36 +723,18 @@ class TestReportHeight(unittest.TestCase):
         self.addCleanup(popup._closed.set)
 
         popup._resize_and_position = MagicMock()
-        popup._show_window = MagicMock()
         return popup, api
 
-    def test_first_report_at_initial_window_height_shows_popup(self):
-        """A first content height equal to the initial window height must still show the window."""
-        popup, api = self._build_popup()
-        initial_window_height = mock_height = 400
-
-        api.report_height(mock_height)
-
-        popup._resize_and_position.assert_called_once_with(initial_window_height)
-        popup._show_window.assert_called_once()
-
-    def test_first_report_at_other_height_shows_popup(self):
-        """A first content height different from the window height shows the window."""
+    def test_report_before_reveal_records_without_sizing(self):
+        """Pre-reveal reports only record the height - _layout_and_reveal owns sizing."""
         popup, api = self._build_popup()
 
         api.report_height(523)
 
-        popup._resize_and_position.assert_called_once_with(523)
-        popup._show_window.assert_called_once()
-
-    def test_repeated_report_with_same_height_is_deduplicated(self):
-        """A second report with an unchanged height must not resize again."""
-        popup, api = self._build_popup()
-
-        api.report_height(523)
-        api.report_height(523)
-
-        popup._resize_and_position.assert_called_once_with(523)
+        self.assertEqual(popup._content_height, 523)
+        self.assertTrue(popup._content_reported)
+        popup._resize_and_position.assert_not_called()
+        self.assertFalse(popup._shown)
 
     def test_zero_height_ignored(self):
         """A zero height report is ignored entirely."""
@@ -759,28 +742,48 @@ class TestReportHeight(unittest.TestCase):
 
         api.report_height(0)
 
+        self.assertFalse(popup._content_reported)
         popup._resize_and_position.assert_not_called()
-        popup._show_window.assert_not_called()
 
-    def test_stale_height_report_cannot_overwrite_newer_resize(self):
-        """pywebview dispatches each bridge call on a fresh thread; two rapid
-        height reports must not interleave so that the earlier resize is
-        applied after (and overwrites) the later one."""
+    def test_report_after_reveal_applies_height_with_pad(self):
+        """Post-reveal reports resize the window to content plus the learned pad."""
         popup, api = self._build_popup()
+        popup._shown = True
+        popup._height_pad = 40
+
+        api.report_height(523)
+
+        popup._resize_and_position.assert_called_once_with(563)
+        self.assertEqual(popup._applied_height, 563)
+
+    def test_report_within_deadband_after_reveal_is_ignored(self):
+        """Post-reveal changes inside the dead-band must not resize (DPI jitter guard)."""
+        popup, api = self._build_popup()
+        popup._shown = True
+
+        api.report_height(523)
+        api.report_height(523 + UsagePopup._HEIGHT_DEADBAND)
+
+        popup._resize_and_position.assert_called_once_with(523)
+
+    def test_concurrent_reports_leave_consistent_final_size(self):
+        """Racing bridge threads must leave the applied size matching the bookkeeping."""
+        popup, api = self._build_popup()
+        popup._shown = True
 
         first_entered = threading.Event()
         release_first = threading.Event()
         applied = []
 
         def resize(height):
-            if height == 400:
+            if height == 450:
                 first_entered.set()
                 release_first.wait(2)
             applied.append(height)
 
         popup._resize_and_position = MagicMock(side_effect=resize)
 
-        first = threading.Thread(target=lambda: api.report_height(400), daemon=True)
+        first = threading.Thread(target=lambda: api.report_height(450), daemon=True)
         first.start()
         self.assertTrue(first_entered.wait(2))
 
@@ -792,37 +795,118 @@ class TestReportHeight(unittest.TestCase):
         second.join(2)
 
         # The window size (last applied resize) must match the tracked height.
-        self.assertEqual(applied[-1], popup._last_height)
+        self.assertEqual(applied[-1], popup._applied_height)
 
-    def test_concurrent_first_reports_start_show_only_once(self):
-        """Two pre-show reports racing each other must not both run _show_window
-        (which would start two update-push loops for one popup)."""
-        popup, api = self._build_popup()
 
-        show_entered = threading.Event()
-        release_show = threading.Event()
-        show_calls = []
+# ---------------------------------------------------------------------------
+# Viewport-deficit correction (_layout_and_reveal)
+# ---------------------------------------------------------------------------
 
-        def show():
-            show_calls.append(1)
-            show_entered.set()
-            release_show.wait(2)
-            popup._shown = True
+class TestViewportPadCorrection(unittest.TestCase):
+    """Tests for _layout_and_reveal - the mixed-DPI viewport-deficit pad.
 
-        popup._show_window = MagicMock(side_effect=show)
+    On a multi-monitor setup where the secondary monitor's DPI scale differs
+    from the primary, pywebview's resize() yields a WebView viewport shorter
+    than the requested window height, clipping the footer.  The layout pass
+    measures window.innerHeight while the window is still transparent and
+    grows the window by the deficit before revealing it.
+    """
 
-        first = threading.Thread(target=lambda: api.report_height(400), daemon=True)
-        first.start()
-        self.assertTrue(show_entered.wait(2))
+    def setUp(self):
+        self.addCleanup(setattr, UsagePopup, '_learned_pad', 0)
+        patcher_sleep = patch('usage_monitor_for_claude.popup.time.sleep', lambda seconds: None)
+        patcher_sleep.start()
+        self.addCleanup(patcher_sleep.stop)
 
-        second = threading.Thread(target=lambda: api.report_height(523), daemon=True)
-        second.start()
-        time.sleep(0.1)
-        release_show.set()
-        first.join(2)
-        second.join(2)
+    def _make_popup(self, content_height=500, pad=0, inner_heights=()):
+        """Build a minimal popup with the layout state and mocked window."""
+        popup = object.__new__(UsagePopup)
+        popup._running = True
+        popup._shown = False
+        popup._geometry_lock = threading.Lock()
+        popup._content_height = content_height
+        popup._applied_height = 400
+        popup._height_pad = pad
+        popup._content_reported = True
+        popup._popup_hwnd = 0
+        popup._resize_and_position = MagicMock()
+        popup._update_loop = lambda: None
+        popup._window = MagicMock()
+        popup._window.evaluate_js.side_effect = list(inner_heights)
+        return popup
 
-        self.assertEqual(len(show_calls), 1)
+    def test_viewport_deficit_grows_window_by_pad(self):
+        """A viewport shorter than the content grows the window by the deficit."""
+        popup = self._make_popup(content_height=500, inner_heights=[450, 500])
+
+        popup._layout_and_reveal()
+
+        self.assertEqual(popup._height_pad, 50)
+        self.assertEqual(UsagePopup._learned_pad, 50)
+        self.assertEqual(popup._resize_and_position.call_args[0][0], 550)
+        self.assertTrue(popup._shown)
+
+    def test_zero_deficit_leaves_pad_unchanged(self):
+        """On a single-DPI setup the viewport matches and no pad is learned."""
+        popup = self._make_popup(content_height=500, inner_heights=[500])
+
+        popup._layout_and_reveal()
+
+        self.assertEqual(popup._height_pad, 0)
+        self.assertEqual(UsagePopup._learned_pad, 0)
+        self.assertEqual(popup._resize_and_position.call_args[0][0], 500)
+        self.assertTrue(popup._shown)
+
+    def test_negative_deficit_shrinks_stale_pad(self):
+        """A stale pad from another monitor self-corrects instead of leaving blank space."""
+        popup = self._make_popup(content_height=500, pad=80, inner_heights=[580])
+
+        popup._layout_and_reveal()
+
+        self.assertEqual(popup._height_pad, 0)
+        self.assertEqual(popup._resize_and_position.call_args[0][0], 500)
+        self.assertTrue(popup._shown)
+
+    def test_pad_clamped_to_maximum(self):
+        """A nonsense viewport reading cannot grow the window without bound."""
+        popup = self._make_popup(content_height=500, inner_heights=[100, 500])
+
+        popup._layout_and_reveal()
+
+        self.assertEqual(popup._height_pad, 300)
+        self.assertEqual(popup._resize_and_position.call_args[0][0], 800)
+
+    def test_reveal_reached_when_viewport_measure_raises(self):
+        """An evaluate_js failure must never leave the window stuck transparent."""
+        popup = self._make_popup(content_height=500)
+        popup._window.evaluate_js.side_effect = RuntimeError('window torn down')
+
+        popup._layout_and_reveal()
+
+        self.assertTrue(popup._shown)
+        self.assertEqual(popup._resize_and_position.call_args[0][0], 500)
+
+    def test_no_reveal_after_close_during_layout(self):
+        """Closing the popup mid-layout must not reveal or resize a dead window."""
+        popup = self._make_popup(content_height=500, inner_heights=[450])
+        popup._running = False
+
+        popup._layout_and_reveal()
+
+        self.assertFalse(popup._shown)
+        popup._resize_and_position.assert_not_called()
+
+    def test_learned_pad_seeds_next_popup(self):
+        """The pad learned by one popup is inherited by the next via the class attribute."""
+        popup = self._make_popup(content_height=500, inner_heights=[450, 500])
+        popup._layout_and_reveal()
+        self.assertEqual(UsagePopup._learned_pad, 50)
+
+        second = self._make_popup(content_height=500, pad=UsagePopup._learned_pad, inner_heights=[500])
+        second._layout_and_reveal()
+
+        self.assertEqual(second._resize_and_position.call_args[0][0], 550)
+        self.assertEqual(second._height_pad, 50)
 
 
 # ---------------------------------------------------------------------------

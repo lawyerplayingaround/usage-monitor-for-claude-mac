@@ -235,22 +235,19 @@ class _PopupApi:
     def report_height(self, height: int) -> None:
         """Called by JS ResizeObserver when content height changes.
 
-        pywebview dispatches every bridge call on a fresh thread, so two
-        rapid reports could interleave and apply the earlier resize after
-        the later one, or both start the show path.  The geometry lock
-        serializes the whole check-resize-show sequence.
+        pywebview dispatches every bridge call on a fresh thread; the
+        geometry lock serializes the record-and-apply sequence.  Before the
+        popup is revealed, ``_layout_and_reveal`` owns all sizing; afterwards
+        (e.g. the status text changing length) this re-applies the height,
+        but only for changes larger than the dead-band so DPI jitter cannot
+        start a resize loop.
         """
         if not height:
             return
 
         popup = self._popup
         with popup._geometry_lock:
-            if height == popup._last_height:
-                return
-            popup._last_height = height
-            popup._resize_and_position(height)
-            if not popup._shown:
-                popup._show_window()
+            popup._set_content_height(int(height))
 
 
 # ---------------------------------------------------------------------------
@@ -262,6 +259,21 @@ class UsagePopup:
 
     WIDTH = 340
     _CHECK_MS = 2000
+
+    # Window-outer vs WebView-viewport height deficit, in logical px.  On a
+    # single-DPI primary monitor this stays 0.  On a secondary monitor with a
+    # different DPI scale, pywebview's resize() yields a viewport that is
+    # shorter than the requested window height (the footer would be clipped),
+    # so the correction loop learns the offset and we remember it here to
+    # avoid a visible re-grow on subsequent opens within the same session.
+    _learned_pad = 0
+
+    # Ignore content-height changes smaller than this (logical px) once the
+    # popup is visible.  Prevents a resize feedback loop: every resize nudges
+    # WebView2's DPI rasterization, which jitters the measured content height
+    # by a few px; without a dead-band those few px would trigger another
+    # resize, and so on.
+    _HEIGHT_DEADBAND = 6
 
     def __init__(self, app: UsageMonitorForClaude) -> None:
         """Create and display a popup window with usage details.
@@ -294,8 +306,18 @@ class UsagePopup:
         # 0 means "no height reported yet": the first ResizeObserver report
         # must always count as a change so the window gets resized,
         # positioned, and shown even when the content is exactly
-        # initial_height tall.
+        # initial_height tall.  (macOS bridge path only; on Windows the
+        # height bookkeeping below drives all sizing.)
         self._last_height = 0
+        # Height bookkeeping (Windows).  ``_content_height`` is what JS
+        # reports the body needs; ``_applied_height`` is what we last sized
+        # the window to; ``_height_pad`` compensates for the window-vs-
+        # viewport deficit so the footer is never clipped on mixed-DPI
+        # multi-monitor setups (see ``_layout_and_reveal``).
+        self._content_height = initial_height
+        self._applied_height = initial_height
+        self._height_pad = UsagePopup._learned_pad
+        self._content_reported = False
         snap = app.cache.snapshot
         self._last_version = snap.version
         self._shown = False
@@ -356,17 +378,132 @@ class UsagePopup:
         ctypes.windll.user32.SetLayeredWindowAttributes(self._popup_hwnd, 0, 0, _LWA_ALPHA)
         self._window.show()
 
+        # Size (and DPI-correct) the still-transparent window, then reveal it
+        # once at the final height so the user never sees a resize jump.
+        threading.Thread(target=self._layout_and_reveal, daemon=True).start()
+
     def _show_window(self) -> None:
-        """Make the popup visible after the first resize positioned it correctly."""
-        if sys.platform == 'darwin':
-            self._controller.show()
-            self._shown = True
-            threading.Thread(target=self._update_loop, daemon=True).start()
+        """Make the popup visible after the first resize positioned it correctly (macOS)."""
+        self._controller.show()
+        self._shown = True
+        threading.Thread(target=self._update_loop, daemon=True).start()
+
+    def _set_content_height(self, height: int) -> None:
+        """Record the body content height reported by JS (Windows).
+
+        Called from the JS bridge (``_PopupApi.report_height``) with the
+        geometry lock held.  Before the popup is revealed,
+        ``_layout_and_reveal`` owns all sizing; afterwards this re-applies
+        the height through the dead-band guard in ``_apply_height``.
+        """
+        self._content_height = height
+        self._content_reported = True
+        if self._shown:
+            self._apply_height()
+
+    def _apply_height(self, *, force: bool = False) -> None:
+        """Resize and reposition the window to content height plus the pad.
+
+        ``_height_pad`` compensates for the gap between the window's outer
+        height and the WebView's usable viewport (``window.innerHeight``),
+        which on a secondary monitor running a different DPI scale than the
+        primary can be ~50 px shorter than requested - enough to clip the
+        footer.  Adding the pad keeps the viewport at least as tall as the
+        content.
+
+        ``force`` bypasses the dead-band for the deliberate sizing steps done
+        during layout; the dead-band only guards against post-reveal jitter.
+        """
+        target = self._content_height + self._height_pad
+        if not force and abs(target - self._applied_height) <= self._HEIGHT_DEADBAND:
             return
 
-        # Remove the layered style to restore normal rendering
-        ex_style = ctypes.windll.user32.GetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE, ex_style & ~_WS_EX_LAYERED)
+        self._applied_height = target
+        self._resize_and_position(target)
+
+    def _layout_and_reveal(self) -> None:
+        """Size and DPI-correct the transparent window, then reveal it once.
+
+        Waits for JS to report the real content height, sizes/positions the
+        window on its final (tray) monitor, then makes at most two correction
+        passes - each after a settle so WebView2 has re-rasterized at that
+        monitor's DPI before the viewport is measured.  This is deliberately
+        *not* a tight loop: re-measuring and re-resizing repeatedly creates a
+        feedback oscillation on mixed-DPI multi-monitor setups (each resize
+        re-rasterizes and shifts the measured height).  The correction is
+        bidirectional, so a wrong starting pad self-corrects.  All of this
+        happens while the window is fully transparent, so it is revealed
+        exactly once at the final size with no visible jump.  On a single-DPI
+        setup the deficit is ~0 and the first pass exits immediately.
+
+        The body runs under ``try/finally`` so ``_reveal`` is reached on any
+        path - an exception during sizing must never leave the window stuck
+        transparent (invisible and, because the dismiss watcher gates on
+        ``_shown``, undismissable).
+        """
+        try:
+            waited = 0.0
+            while self._running and not self._content_reported and waited < 2.5:
+                time.sleep(0.05)
+                waited += 0.05
+            if not self._running:
+                return
+
+            # Initial size + position on the tray monitor.
+            with self._geometry_lock:
+                self._apply_height(force=True)
+
+            # Bounded correction: after a settle (so WebView2 has re-rasterized
+            # at the tray monitor's DPI), measure the viewport and adjust the
+            # window by the deficit - at most twice.  The adjustment is
+            # bidirectional: a positive deficit grows the window (viewport too
+            # short, footer would clip); a negative deficit shrinks it (e.g. a
+            # stale pad cached from another monitor leaving blank space) so a
+            # wrong starting pad self-corrects.
+            for _ in range(2):
+                time.sleep(0.3)
+                if not self._running:
+                    return
+                try:
+                    raw = self._window.evaluate_js('window.innerHeight')
+                    inner = int(raw) if raw else 0
+                except Exception:
+                    break
+                if not inner:
+                    continue
+
+                with self._geometry_lock:
+                    deficit = self._content_height - inner
+                    if abs(deficit) <= self._HEIGHT_DEADBAND:
+                        break
+                    new_pad = max(0, min(300, self._height_pad + deficit))
+                    if new_pad == self._height_pad:
+                        break
+                    self._height_pad = new_pad
+                    UsagePopup._learned_pad = new_pad
+                    self._apply_height(force=True)
+        finally:
+            self._reveal()
+
+    def _reveal(self) -> None:
+        """Make the popup visible after it has been correctly sized (Windows).
+
+        Best-effort: even if the final resize or the layered-style removal
+        raises (e.g. the window was torn down mid-layout), ``_shown`` is still
+        set so the dismiss watcher can close the popup - it is never left both
+        invisible and undismissable.
+        """
+        if self._shown or not self._running:
+            return
+
+        try:
+            with self._geometry_lock:
+                self._apply_height(force=True)
+            # Remove the layered style to restore normal rendering
+            ex_style = ctypes.windll.user32.GetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(self._popup_hwnd, _GWL_EXSTYLE, ex_style & ~_WS_EX_LAYERED)
+        except Exception:
+            pass
         self._shown = True
         threading.Thread(target=self._update_loop, daemon=True).start()
 
@@ -602,7 +739,7 @@ class UsagePopup:
         current_dpi = ctypes.windll.user32.GetDpiForWindow(self._popup_hwnd) or ctypes.windll.user32.GetDpiForSystem()
         if current_dpi != self._drag_start_dpi:
             with self._geometry_lock:
-                self._window.resize(self.WIDTH, self._last_height)
+                self._window.resize(self.WIDTH, self._applied_height)
 
     def _update_loop(self) -> None:
         """Poll for data changes and push updates to the popup."""

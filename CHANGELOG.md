@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.5...HEAD)
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.6...HEAD)
+
+## [1.20.0-fork.6] - 2026-07-27
+
+### Fixed
+
+- **Windows popup footer no longer clipped on mixed-DPI multi-monitor setups.** With monitors on different display scales, the WebView viewport comes out shorter than the window, hiding the refresh button and version line at the bottom. The popup now measures the viewport while still invisible and grows the window by the shortfall before showing itself (restores a fix from the 1.15 fork that was lost in the v1.20.0 merge).
+
+[Show all code changes](https://github.com/lawyerplayingaround/usage-monitor-for-claude-mac/compare/v1.20.0-fork.5...v1.20.0-fork.6)
 
 ## [1.20.0-fork.5] - 2026-07-24
 
