@@ -12,7 +12,9 @@
 
 A native tray/menu bar app that shows your Claude usage at a glance - lightweight, portable, and fully auditable. Rate limits are shared across claude.ai, Claude Code, Claude Code Cowork, and IDE extensions for VS Code and JetBrains - always know how much of your session and weekly limits (Sonnet, Opus, Fable, Cowork, and any future quota types) you have left.
 
-![Detail popup showing account info and usage bars](screenshot.png)
+| macOS | Windows |
+|:---:|:---:|
+| ![macOS detail popup showing account info and usage bars](screenshot.png) | ![Windows detail popup showing account info, usage bars, and the pin button](screenshot-windows.png) |
 
 > [!TIP]
 > **Companion tool: [Agent Monitor for Claude](https://github.com/jens-duttke/agent-monitor-for-claude)**
@@ -32,7 +34,9 @@ Relative to upstream, this fork adds a macOS port, a popup refresh button, an Ic
 - **Autostart via LaunchAgent** (`~/Library/LaunchAgents/com.usage-monitor-for-claude.plist`) when "Start at login" is toggled. The plist self-heals if the `.app` is moved to a new location.
 - **POSIX single-instance guard** using `flock` on `~/.usage-monitor-for-claude.lock` (a small file containing only PID + app version - no credentials).
 
-![macOS menu bar context menu showing the Icon style submenu, the double-click toggle, and Open at Login](screenshot-menu.png)
+| macOS | Windows |
+|:---:|:---:|
+| ![macOS menu bar context menu showing the Icon style submenu, the double-click toggle, and Open at Login](screenshot-menu.png) | ![Windows tray context menu showing the same items, with Start with Windows](screenshot-menu-windows.png) |
 
 See [`MAC_PORT.md`](MAC_PORT.md) for the full per-module list of macOS divergences, the network/filesystem audit performed before release, and build details.
 
